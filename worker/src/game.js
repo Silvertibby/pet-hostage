@@ -78,5 +78,6 @@ export function view(state, now = Date.now()) {
     pet: state.pet, mood: mood(state, np), perilLabel: PERIL_LABELS[Math.min(state.pet.peril, 3)],
     deathAt: RULES.DEATH_AT, graveyard: state.graveyard, days,
     push: !!state.sub, events: (state.events || []).slice(-5),
+    code: state.code, syncLog: (state.syncLog || []).slice(0, 5), // personal app: code shown so any device can show the sync URL
   };
 }

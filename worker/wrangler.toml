@@ -15,3 +15,6 @@ APP_URL = "https://silvertibby.github.io/pet-hostage/"
 VAPID_SUBJECT = "https://silvertibby.github.io/pet-hostage/"
 VAPID_PUBLIC_KEY = "BL69g8c8U4IWKzzZgjuYcgILtPl6-bmLjv4QRY4lLnWTIPCLvyn4yzkqqmdXhFn8JZRrinEji2u9aiqSigYs6EQ"
 # VAPID_PRIVATE_JWK is a secret: npx wrangler secret put VAPID_PRIVATE_JWK
+
+[observability]
+enabled = true   # keep request logs so failed Shortcut calls can be debugged

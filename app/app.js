@@ -1,7 +1,7 @@
 import { drawScene, raccoon, blit, VIEW_W, VIEW_H } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.1.0';
+const VERSION = 'v0.1.1';
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
 const APP_URL = 'https://silvertibby.github.io/pet-hostage/';
 const SHORTCUT_NAME = 'Pet Hostage Sync';
@@ -17,7 +17,7 @@ const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platfor
 $('#ver').textContent = VERSION;
 
 let code = localStorage.getItem('ph.code') || '';
-let state = null, tab = 'home', anim = null, lastFetch = 0;
+let state = null, tab = 'home', anim = null, lastFetch = 0, unclaimed = false;
 
 // Pick up a code from the URL (?c=CODE or #c=CODE), e.g. after Add to Home Screen.
 {
@@ -34,6 +34,11 @@ function rememberInUrl() {
   $('#manifest').href = 'data:application/manifest+json,' + encodeURIComponent(JSON.stringify(m));
 }
 
+// The server is the source of truth for the code (single-user app); keep a local copy but never delete it.
+function adoptCode(s) {
+  if (s && s.code && s.code !== code) { code = s.code; localStorage.setItem('ph.code', code); rememberInUrl(); }
+  return s;
+}
 function toast(msg, ms = 2600) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, ms); }
 const fmt = n => Number(n || 0).toLocaleString('en-US');
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -42,7 +47,7 @@ function ago(ms) { const m = Math.round((Date.now() - ms) / 60000); if (m < 1) r
 
 async function api(path, body) {
   const opt = body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, ...body }) } : {};
-  const r = await fetch(WORKER + path + (body ? '' : (path.includes('?') ? '&' : '?') + 'code=' + encodeURIComponent(code)), opt);
+  const r = await fetch(WORKER + path + (body || !code ? '' : (path.includes('?') ? '&' : '?') + 'code=' + encodeURIComponent(code)), opt);
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { const e = new Error(j.error || ('HTTP ' + r.status)); e.status = r.status; e.body = j; throw e; }
   return j;
@@ -130,9 +135,17 @@ function renderHome() {
   });
 }
 
+function syncLogHtml(s) {
+  const log = (s.syncLog || []);
+  if (!log.length) return `<span class="dim">Nothing has reached The Raccoon yet. Run the "${SHORTCUT_NAME}" shortcut once by hand, then tap "I ran it, check steps" below.</span>`;
+  const line = e => `${e.ok ? '✅' : '❌'} ${timePT(e.at)} · ${ago(e.at)} · ${e.ok ? (e.dry ? 'dry run, ' : '') + fmt(e.steps) + ' steps' : esc(e.reason || 'failed')}${e.raw != null && !e.ok ? ` <span class="dim">(got "${esc(e.raw)}")</span>` : ''}${e.codeNote ? ` <span class="dim">· ${esc(e.codeNote)}</span>` : ''}`;
+  return `<div>${line(log[0])}</div>` + (log.length > 1 ? `<div class="dim" style="margin-top:6px">Earlier:<br>${log.slice(1).map(line).join('<br>')}</div>` : '');
+}
 function syncUrl() { return `${WORKER}/sync?code=${code}&steps=`; }
 function renderSync() {
   view.innerHTML = `
+    <h2>LAST SYNC ATTEMPT</h2>
+    <div class="card" id="synclog">${syncLogHtml(state)}</div>
     <h2>SET UP STEP SYNC</h2>
     <p class="dim">Your iPhone counts steps into Apple Health (Garmin steps land there too). A Shortcut sends today's total to The Raccoon. Build it once, then automate it.</p>
     <div class="card">
@@ -168,6 +181,7 @@ function renderSync() {
   }));
   $('#refresh').addEventListener('click', async () => {
     await refresh(true);
+    $('#synclog').innerHTML = syncLogHtml(state);
     $('#synctest').textContent = state.lastSync ? `Last sync ${timePT(state.lastSync)} (${ago(state.lastSync)}): ${fmt(state.lastSteps)} steps.` : 'Nothing received yet.';
   });
 }
@@ -202,8 +216,7 @@ function renderSettings() {
     <div class="card">${s.graveyard.length ? s.graveyard.map(g => `<div class="grave"><span>🪦</span><span><b>${esc(g.name)}</b> <span class="dim">${esc(g.born)} → ${esc(g.died)} · best streak ${g.bestStreak}${g.released ? ' · released' : ''}</span></span></div>`).join('') : '<span class="dim">Empty. For now.</span>'}</div>
     <h2>THIS DEVICE</h2>
     <div class="card">
-      <p class="dim">Sync code <span class="code">${esc(code)}</span>. To use another device, open <span class="code">${APP_URL}?c=${esc(code)}</span> there.</p>
-      <button class="btn small ghost" id="forget">Forget code on this device</button>
+      <p class="dim">Sync code <span class="code">${esc(code)}</span>. Your bunny lives on the server, so any device that opens <span class="code">${APP_URL}</span> shows him.</p>
     </div>
     <p class="dim">${VERSION}</p>
   `;
@@ -216,7 +229,6 @@ function renderSettings() {
     try { await api('/test-nudge', {}); $('#pushmsg').textContent = 'Sent. It should pop up in a few seconds.'; }
     catch (e) { $('#pushmsg').textContent = 'Push failed: ' + (e.body?.status ? 'push service said ' + e.body.status + ' ' : '') + (e.body?.detail || e.message); }
   });
-  $('#forget').addEventListener('click', () => { if (confirm('Forget the sync code on this device? (The pet stays on the server.)')) { localStorage.removeItem('ph.code'); location.href = APP_URL; } });
 }
 
 function b64uToBytes(s) { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; return Uint8Array.from(atob(s), c => c.charCodeAt(0)); }
@@ -238,32 +250,26 @@ async function enablePush() {
   } catch (e) { msg.textContent = 'Could not enable: ' + e.message; }
 }
 
-function renderWelcome(already) {
+function renderWelcome() {
   const notHome = isIOS && !isStandalone();
   view.innerHTML = `<div class="welcome">
     <canvas id="scene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas>
     <p>A raccoon in a fedora has taken a bunny hostage.</p>
     <p class="dim">The ransom: <b>10,000 steps a day</b>. Miss a day and things get worse. Miss three in a row and, well.</p>
     ${notHome ? `<p class="hint">Tip: tap Share → <b>Add to Home Screen</b> first. The home-screen app is the one that can get notifications.</p>` : ''}
-    ${already ? `<div class="card" style="text-align:left"><p>This bunny already belongs to someone (you, on another device?). Paste your sync code:</p>
-      <input type="text" id="codein" placeholder="SYNC CODE" autocapitalize="characters"><p><button class="btn acc" id="usecode">Use code</button></p></div>`
-      : `<p><button class="btn acc" id="claim">Accept the terms</button></p>`}
+    <p><button class="btn acc" id="claim">Accept the terms</button></p>
   </div>`;
   state = { mood: 'scared', pet: { peril: 0 } };
   startScene($('#scene'));
   $('#claim')?.addEventListener('click', async () => {
     try { const r = await api('/claim', {}); code = r.code; localStorage.setItem('ph.code', code); state = r.state; rememberInUrl(); go('sync'); toast('Deal. Now set up step sync.'); }
-    catch (e) { if (e.status === 409) renderWelcome(true); else toast('Could not reach The Raccoon: ' + e.message); }
-  });
-  $('#usecode')?.addEventListener('click', async () => {
-    code = $('#codein').value.trim().toUpperCase();
-    try { state = await api('/state'); localStorage.setItem('ph.code', code); rememberInUrl(); go('home'); } catch (e) { toast(e.status === 403 ? 'Wrong code' : e.message); }
+    catch (e) { if (e.status === 409) boot2(); else toast('Could not reach The Raccoon: ' + e.message); }
   });
 }
 
 function render() {
   stopAnim();
-  $('#tabs').hidden = !state || !code;
+  $('#tabs').hidden = !state;
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   if (tab === 'sync') renderSync(); else if (tab === 'settings') renderSettings(); else renderHome();
 }
@@ -271,14 +277,20 @@ function go(t) { tab = t; render(); window.scrollTo(0, 0); }
 document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => go(b.dataset.tab)));
 
 async function refresh(force) {
-  if (DEMO || !code) return;
+  if (DEMO) return;
   if (!force && Date.now() - lastFetch < 5000) return;
   lastFetch = Date.now();
-  try { state = await api('/state'); }
+  try { state = adoptCode(await api('/state')); }
   catch (e) {
-    if (e.status === 403 || e.status === 404) { localStorage.removeItem('ph.code'); code = ''; state = null; renderWelcome(e.status === 403); return; }
+    // Never forget the code. Only a server that has truly never been claimed shows the welcome screen.
+    if (e.status === 404 && e.body?.error === 'unclaimed') { state = null; unclaimed = true; return; }
     toast('Offline? ' + e.message);
   }
+}
+function renderOffline() {
+  $('#tabs').hidden = true;
+  view.innerHTML = `<div class="welcome"><p>Can't reach The Raccoon right now. Your bunny is safe on the server.</p><p><button class="btn acc" id="retry">Try again</button></p></div>`;
+  $('#retry').addEventListener('click', boot2);
 }
 
 function demoState(m) {
@@ -296,18 +308,19 @@ function demoState(m) {
   };
 }
 
+async function boot2() {
+  unclaimed = false;
+  await refresh(true);
+  if (state) { $('#tabs').hidden = false; render(); }
+  else if (unclaimed) renderWelcome();
+  else renderOffline();
+}
 async function boot() {
   if ('serviceWorker' in navigator && !DEMO) navigator.serviceWorker.register('sw.js').catch(() => {});
   if (DEMO) { code = 'DEMO123456'; state = demoState(DEMO); tab = qs.get('tab') || 'home'; render(); return; }
-  if (!code) {
-    let claimed = true;
-    try { claimed = (await (await fetch(WORKER + '/status')).json()).claimed; } catch {}
-    renderWelcome(claimed); return;
-  }
   rememberInUrl();
-  await refresh(true);
-  if (state) render();
-  setInterval(() => { if (document.visibilityState === 'visible' && tab === 'home') refresh().then(() => state && tab === 'home' && render()); }, REFRESH_MS);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && code) refresh(true).then(() => state && (tab === 'home') && render()); });
+  await boot2();
+  setInterval(() => { if (state && document.visibilityState === 'visible' && tab === 'home') refresh().then(() => state && tab === 'home' && render()); }, REFRESH_MS);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && state) refresh(true).then(() => state && (tab === 'home') && render()); });
 }
 boot();

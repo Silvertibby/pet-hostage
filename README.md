@@ -12,7 +12,7 @@ Walk 10,000 steps a day or the bunny gets it. A tiny personal step game: cute 8/
 4. The cron sends Web Push nudges at 12, 3, 6, 9 PM PT if you're behind pace, plus a morning report at 8 AM.
 
 ## Worker endpoints
-`POST /claim`, `GET /state?code=`, `GET|POST /sync?code=&steps=`, `POST /settings`, `POST /subscribe`, `POST /test-nudge`, `POST /adopt`, `GET /vapid`, `GET /status`.
+`POST /claim`, `GET /state` (no code needed), `GET|POST /sync?code=&steps=` (code optional; mismatches are accepted and logged; `&dry=1` validates without storing, `&test=1` tags the log entry), `POST /sync-log/clear-test`, `POST /settings`, `POST /subscribe`, `POST /test-nudge`, `POST /adopt`, `GET /vapid`, `GET /status`.
 
 ## Deploy
 ```

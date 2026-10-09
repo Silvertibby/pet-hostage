@@ -60,7 +60,9 @@ async function reportEvents(env, st, events) {
   else if (!last.grace) await push(env, st, '📮 Ransom missed', note('missed', v), 'ph-report');
 }
 
-async function authed(req, env, url) {
+// Single-user personal app: the code is NOT required (cheating is irrelevant and a lost code
+// used to make the pet look "gone"). A code that is sent is still accepted, so existing Shortcut URLs keep working.
+async function readBody(req) {
   let body = {};
   if (req.method === 'POST') {
     const ct = req.headers.get('content-type') || '';
@@ -70,12 +72,15 @@ async function authed(req, env, url) {
       else { const t = await req.text(); try { body = JSON.parse(t); } catch { body = { raw: t }; } }
     } catch { body = {}; }
   }
-  const code = (url.searchParams.get('code') || body.code || '').toString().trim().toUpperCase();
-  const st = await load(env);
-  if (!st) return { err: json({ error: 'unclaimed' }, 404) };
-  if (!code || code !== st.code) return { err: json({ error: 'bad code' }, 403) };
-  return { st, body };
+  return body;
 }
+
+const SYNC_LOG_MAX = 10;
+function logSync(st, entry) {
+  st.syncLog = [{ at: Date.now(), ...entry }, ...(st.syncLog || [])].slice(0, SYNC_LOG_MAX);
+  console.log('sync', JSON.stringify(entry));
+}
+const clip = v => v == null ? null : String(v).slice(0, 80);
 
 export default {
   async fetch(req, env) {
@@ -93,21 +98,37 @@ export default {
       return json({ code: st.code, state: view(st) });
     }
 
-    const a = await authed(req, env, url);
-    if (a.err) return a.err;
-    const { st, body } = a;
+    const body = await readBody(req);
+    const st = await load(env);
+    if (!st) { if (path === '/sync') console.log('sync', 'unclaimed'); return json({ error: 'unclaimed' }, 404); }
+    const code = (url.searchParams.get('code') || body.code || '').toString().trim().toUpperCase();
     const events = settle(st, today);
     if (events.length) st.pendingReport = [...(st.pendingReport || []), ...events]; // pushed at the morning report
 
     if (path === '/state') { if (events.length) await save(env, st); return json(view(st)); }
 
     if (path === '/sync') {
-      const steps = parseSteps(url.searchParams.get('steps') ?? body.steps ?? body.raw);
-      if (!Number.isFinite(steps) || steps < 0 || steps > 300000) { if (events.length) await save(env, st); return json({ error: 'steps missing or weird', got: url.searchParams.get('steps') ?? body.steps ?? null }, 400); }
+      const raw = url.searchParams.get('steps') ?? body.steps ?? body.raw ?? null;
+      const test = url.searchParams.has('test') || !!body.test || undefined; // test entries can be cleared later
+      const dry = url.searchParams.has('dry') || !!body.dry || undefined;     // validate + log only, never stores steps
+      const codeNote = !code ? 'no code' : code === st.code ? undefined : 'code mismatch (accepted)';
+      const steps = parseSteps(raw);
+      if (!Number.isFinite(steps) || steps < 0 || steps > 300000) {
+        const reason = raw == null || raw === '' ? 'steps missing (is the Statistics Result variable after steps= ?)' : 'steps not a number: ' + clip(raw);
+        logSync(st, { ok: false, reason, raw: clip(raw), method: req.method, codeNote, test, dry });
+        await save(env, st);
+        return json({ error: 'steps missing or weird', reason, got: clip(raw) }, 400);
+      }
       const date = /^\d{4}-\d{2}-\d{2}$/.test(body.date || url.searchParams.get('date') || '') ? (body.date || url.searchParams.get('date')) : today;
+      if (dry) {
+        logSync(st, { ok: true, dry, test, steps, raw: clip(raw), date, method: req.method, codeNote, reason: 'dry run, nothing stored' });
+        await save(env, st);
+        return json({ ok: true, dry: true, steps, date });
+      }
       const before = st.days[date] || 0;
       st.days[date] = steps; // Health's daily total; latest wins
       st.lastSync = Date.now(); st.lastSteps = steps;
+      logSync(st, { ok: true, steps, raw: clip(raw), date, method: req.method, codeNote, test });
       if (date === today && st.pet.alive && before < st.goal && steps >= st.goal) {
         st.sent[today] = [...(st.sent[today] || []), 'paid'];
         await push(env, st, '🥕 Ransom paid!', note('paid', vars(st)), 'ph-paid');
@@ -131,6 +152,11 @@ export default {
       if (!s || !s.endpoint || !s.keys || !s.keys.p256dh || !s.keys.auth) return json({ error: 'bad subscription' }, 400);
       st.sub = { endpoint: s.endpoint, keys: { p256dh: s.keys.p256dh, auth: s.keys.auth } };
       await save(env, st); return json({ ok: true });
+    }
+    if (path === '/sync-log/clear-test') {
+      const n = (st.syncLog || []).length;
+      st.syncLog = (st.syncLog || []).filter(e => !e.test);
+      await save(env, st); return json({ ok: true, removed: n - st.syncLog.length });
     }
     if (path === '/unsubscribe') { st.sub = null; await save(env, st); return json({ ok: true }); }
     if (path === '/test-nudge') {
