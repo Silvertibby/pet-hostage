@@ -1,0 +1,16 @@
+<!doctype html><meta charset=utf-8><body><pre id=out></pre>
+<script type=module>
+import { bunny, blit } from '../app/art.js';
+const out = [];
+for (const [size, grid] of [[180, 42], [192, 42], [512, 42]]) {
+  const c = document.createElement('canvas'); c.width = grid; c.height = grid; const x = c.getContext('2d');
+  x.fillStyle = '#2c2340'; x.fillRect(0, 0, grid, grid);
+  for (let y = 0; y < grid; y += 4) for (let i = (y / 4) % 2 ? -3 : 0; i < grid; i += 8) { x.fillStyle = '#352a4b'; x.fillRect(i, y, 7, 3); }
+  const g = bunny('happy', 1);
+  blit(x, g, Math.round((grid - g.w) / 2), Math.round((grid - g.h) / 2) + 3);
+  const big = document.createElement('canvas'); big.width = big.height = size; const bx = big.getContext('2d');
+  bx.imageSmoothingEnabled = false; bx.drawImage(c, 0, 0, size, size);
+  out.push(size + ' ' + big.toDataURL('image/png'));
+}
+document.getElementById('out').textContent = out.join('\n');
+</script>

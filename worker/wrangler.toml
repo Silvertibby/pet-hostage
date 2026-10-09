@@ -1,0 +1,17 @@
+# Pet Hostage backend: one Worker + one KV namespace + an hourly cron for kidnapper nudges.
+name = "pet-hostage"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+kv_namespaces = [
+  { binding = "PH", id = "f7bfe5cb41274d349aac0ad09866a306" }
+]
+
+[triggers]
+crons = ["0 * * * *"]   # hourly (UTC); the worker checks the America/Vancouver hour itself
+
+[vars]
+APP_URL = "https://silvertibby.github.io/pet-hostage/"
+VAPID_SUBJECT = "https://silvertibby.github.io/pet-hostage/"
+VAPID_PUBLIC_KEY = "BL69g8c8U4IWKzzZgjuYcgILtPl6-bmLjv4QRY4lLnWTIPCLvyn4yzkqqmdXhFn8JZRrinEji2u9aiqSigYs6EQ"
+# VAPID_PRIVATE_JWK is a secret: npx wrangler secret put VAPID_PRIVATE_JWK
