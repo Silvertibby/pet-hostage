@@ -1,7 +1,8 @@
-import { drawScene, raccoon, blit, VIEW_W, VIEW_H } from './art.js';
+import { drawScene, drawDeath, drawShelfPet, raccoon, blit, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.1.1';
+const VERSION = 'v0.2.0';
+const GOAL = 10000;
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
 const APP_URL = 'https://silvertibby.github.io/pet-hostage/';
 const SHORTCUT_NAME = 'Pet Hostage Sync';
@@ -17,7 +18,7 @@ const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platfor
 $('#ver').textContent = VERSION;
 
 let code = localStorage.getItem('ph.code') || '';
-let state = null, tab = 'home', anim = null, lastFetch = 0, unclaimed = false;
+let state = null, tab = 'home', anim = null, lastFetch = 0, unclaimed = false, deathPlaying = false;
 
 // Pick up a code from the URL (?c=CODE or #c=CODE), e.g. after Add to Home Screen.
 {
@@ -55,20 +56,33 @@ async function api(path, body) {
 
 // ---- kidnapper notes on the home screen ----
 function seeded(seed) { let h = 2166136261; for (const ch of seed) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return ((h >>> 0) % 10000) / 10000; }; }
+const DEATH_TEXT = { pop: 'had its head pop clean off', anvil: 'was flattened by an anvil', catapult: 'was launched off a catapult', zap: 'got zapped by a very small lightning bolt' };
+const PATCH_TEXT = { pop: 'stitches', anvil: 'bandages', catapult: 'an eye patch', zap: 'band-aids' };
 function homeNote(s) {
-  const name = s.pet.name, left = Math.max(0, s.goal - s.todaySteps), h = s.hour;
-  const r = seeded(s.today + s.mood + Math.floor(Date.now() / 3.6e6));
-  const pick = a => a[Math.floor(r() * a.length)].replace(/\{name\}/g, name).replace(/\{left\}/g, fmt(left)).replace(/\{goal\}/g, fmt(s.goal)).replace(/\{steps\}/g, fmt(s.todaySteps));
-  if (s.mood === 'ghost') return pick(['{name} is a little ghost now. Still adorable. Somehow worse.', 'You stopped paying. I kept my word. Adopt another?', 'Boo. That was {name}. He says hi from the other side.']);
-  if (!s.lastSync) return pick(['I have your bunny. Set up step sync so I can see your payments.', 'No payments received. Because you have not set up step sync. Do it.']);
-  if (left === 0) return pick(['Ransom paid. {name} lives. {name} is doing a happy little binky.', '{goal} steps. Fine. FINE. {name} gets a carrot.', 'Paid in full. {name} nibbled the cage bars to celebrate. I am replacing them.']);
-  if (s.pet.peril >= 2) return pick(['One more missed day and {name} becomes stew. {left} steps.', '{name} is dangling over the pot, being very brave. {left} steps. Save the bunny.']);
-  if (s.pet.peril === 1) return pick(['{name} is tied to a chair. Pay {left} steps and he moves back to the cage.', 'You missed a day. The chair is the warning. The pot is next. {left} steps.']);
-  if (h < 11) return pick(['Good morning. {name} has been up since 5 AM doing zoomies. {left} steps today.', 'New day, new ransom: {goal} steps.']);
-  if (h < 17) return pick(['{steps} so far. {left} to go. {name} is fine. For now.', 'Tick tock. {left} steps. The pot is in the closet, just saying.']);
-  if (h < 21) return pick(['Evening. {left} steps or the stove comes on.', 'Dinner time. Rabbit is ALSO dinner. {left} steps.']);
-  return pick(['LAST CALL. {left} steps before midnight.', 'Pace the hallway. {left} steps. MOVE.']);
+  const h = s.hostage, left = Math.max(0, s.goal - s.todaySteps), hr = s.hour;
+  const r = seeded(s.today + s.mood + h.rung + Math.floor(Date.now() / 3.6e6));
+  const pick = a => a[Math.floor(r() * a.length)].replace(/\{name\}/g, h.name).replace(/\{left\}/g, fmt(left)).replace(/\{goal\}/g, fmt(s.goal)).replace(/\{steps\}/g, fmt(s.todaySteps))
+    .replace(/\{day\}/g, h.day).replace(/\{need\}/g, h.need).replace(/\{species\}/g, speciesLabel(h.species));
+  const ld = s.lastDeath;
+  if (ld && ld.date === addDay(s.today, -1)) { // died last night
+    const t = `${ld.name} ${DEATH_TEXT[ld.type] || 'met a cartoon end'}. `;
+    return ld.rekidnap.same ? t + pick(['I stitched him back together. Mostly the right way round. Day 1 of {need}. Again.', 'Good news: he is fixed. Bad news: back in the cage. {need} days.'])
+      : t + pick([`So I took ${ld.rekidnap.name} back off your shelf. {need} days. Same as before.`, `Anyway. ${ld.rekidnap.name} is back in my cage. {need} days, like last time.`]);
+  }
+  const lr = (s.shelf || []).find(p => p.rescuedOn === addDay(s.today, -1));
+  if (lr && h.streak === 0) return pick([`FINE. ${lr.name} walks free. But I have acquired {name}. {need} days in a row this time.`, `${lr.name} is on your shelf. Meet my new guest, {name}. Ransom: {need} days.`]);
+  if (!s.lastSync) return pick(['I have your {species}. Set up step sync so I can see your payments.', 'No payments received. Because you have not set up step sync. Do it.']);
+  if (left === 0) return h.day >= h.need ? pick(['Final payment received. {name} walks free at midnight. I hate this.', 'That is {need} of {need}. {name} is packing a tiny suitcase.'])
+    : pick(['Ransom paid. Day {day} of {need} banked. {name} did a happy wiggle.', '{goal} steps. Fine. FINE. {name} lives. Day {day} of {need}.']);
+  if (h.deaths > 0 && hr < 15) return pick([`{name} has ${h.deaths === 1 ? 'some ' + PATCH_TEXT[h.injuries[0]] : h.deaths + ' sets of patch-ups'} now. Let's not add more. {left} steps.`, 'Remember last time? {name} does. {left} steps.']);
+  if (hr < 11) return pick(['Good morning. {name} has been up since 5 AM doing zoomies. {left} steps today.', 'New day, new ransom: {goal} steps. Day {day} of {need}.']);
+  if (hr < 17) return pick(['{steps} so far. {left} to go. {name} is fine. For now.', 'Tick tock. {left} steps. I just bought an anvil. Unrelated.']);
+  if (hr < 21) return pick(['Evening. {left} steps or the catapult gets a test pilot.', 'Dinner time. {left} steps. Miss today and {name} goes POP.']);
+  return pick(['LAST CALL. {left} steps before midnight or the {species} gets it.', 'Pace the hallway. {left} steps. MOVE.']);
 }
+function addDay(d, n) { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); }
+const speciesLabel = sp => (SPECIES[sp] && SPECIES[sp].label) || sp;
+const fmtDate = d => d ? new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : '';
 function cutout(text) {
   const r = seeded(text);
   const fonts = ["Georgia, serif", "Impact, Haettenschweiler, 'Arial Narrow', sans-serif", "'Courier New', Courier, monospace", "'Arial Black', Arial, sans-serif", "'Times New Roman', Times, serif", "'Trebuchet MS', Futura, sans-serif", "'Press Start 2P', monospace"];
@@ -87,42 +101,36 @@ function startScene(canvas) {
   const t0 = performance.now();
   const loop = now => {
     if (!state || !canvas.isConnected) return;
-    drawScene(ctx, { mood: state.mood, peril: state.pet.peril }, (now - t0) / 1000);
+    const h = state.hostage || {};
+    drawScene(ctx, { mood: state.mood, species: h.species, injuries: h.injuries }, (now - t0) / 1000);
     anim = requestAnimationFrame(loop);
   };
   anim = requestAnimationFrame(loop);
 }
-function noteAvatar(canvas) {
-  const ctx = canvas.getContext('2d');
-  const g = raccoon(0, -1);
-  blit(ctx, g, 0, 0);
-}
+function noteAvatar(canvas) { blit(canvas.getContext('2d'), raccoon(0, -1), 0, 0); }
 
 function renderHome() {
-  const s = state, pet = s.pet;
+  const s = state, h = s.hostage;
   const prog = Math.min(1, s.todaySteps / s.goal);
   const filled = Math.floor(prog * BAR_SEGMENTS);
-  const captiveDays = Math.round((new Date(s.today) - new Date(pet.born)) / 864e5) + 1;
-  const pips = Array.from({ length: s.deathAt }, (_, i) => `<span class="pip ${i < pet.peril ? 'on' : ''}">💀</span>`).join('');
+  const pips = Array.from({ length: h.need }, (_, i) => `<span class="dpip ${i < h.streak ? 'on' : i === h.streak ? (h.todayMet ? 'on today' : 'today') : ''}"></span>`).join('');
   const maxSteps = Math.max(s.goal * 1.3, ...s.days.map(d => d.steps || 0));
   const chart = s.days.map(d => {
-    const cls = d.steps == null ? (d.date < pet.born || d.date === s.today ? '' : 'none') : (d.steps >= s.goal ? 'met' : d.date === s.today ? '' : 'miss');
+    const cls = d.steps == null ? (d.date < s.started || d.date === s.today ? '' : 'none') : (d.steps >= s.goal ? 'met' : d.date === s.today ? '' : 'miss');
     return `<div class="${cls} ${d.date === s.today ? 'today' : ''}" style="height:${Math.round(100 * (d.steps || 0) / maxSteps)}%" title="${d.date}: ${d.steps ?? 'no data'}"></div>`;
   }).join('');
   view.innerHTML = `
-    <div class="status"><span class="name">${esc(pet.name)}</span><span class="pips" title="Missed days">${pips}</span></div>
+    <div class="status"><span class="name">${esc(h.name)}</span><span class="rung">Rung ${h.rung + 1} · ${esc(speciesLabel(h.species))}</span></div>
     <canvas id="scene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas>
-    <div class="status"><span class="dim">${pet.alive ? 'Captivity day ' + captiveDays : 'Died ' + esc(pet.died || '')}</span><span class="stage">${esc(s.perilLabel)}</span></div>
-    ${pet.alive ? `
+    <div class="quest"><div class="qhead"><b>Day ${h.day} of ${h.need}</b><span class="dim">${h.todayMet ? (h.day >= h.need ? 'rescue at midnight!' : 'today banked ✓') : `${h.need - h.streak} to go`}</span></div>
+      <div class="dpips">${pips}</div>
+      ${h.deaths ? `<div class="dim small">Patched up after ${h.deaths} death${h.deaths > 1 ? 's' : ''}. Miss one day and it happens again.</div>` : `<div class="dim small">10,000 steps a day, ${h.need} days in a row, to rescue ${esc(h.name)}. Miss one and, well.</div>`}</div>
     <div class="steps"><b>${fmt(s.todaySteps)}</b><span>/ ${fmt(s.goal)} steps today</span></div>
     <div class="bar ${prog >= 1 ? 'done' : ''}">${Array.from({ length: BAR_SEGMENTS }, (_, i) => `<i class="${i < filled ? 'f' : ''}"></i>`).join('')}</div>
     <div class="sync">${s.lastSync ? `<span>Last sync ${timePT(s.lastSync)} · ${ago(s.lastSync)}</span>` : `<span class="hint">No steps synced yet</span>`}
-      ${s.lastSync ? `<button class="btn small ghost" id="syncnow">Sync now</button>` : `<button class="btn small acc" id="gosetup">Set up step sync</button>`}</div>` : `
-    <div class="card"><p>${esc(pet.name)} missed ${s.deathAt} ransoms in a row and is now a very cheerful ghost.</p>
-      <label>Name your next hostage</label><input type="text" id="newname" maxlength="24" placeholder="Chompsky II">
-      <p><button class="btn acc" id="adopt">Adopt a new bunny</button></p></div>`}
+      ${s.lastSync ? `<button class="btn small ghost" id="syncnow">Sync now</button>` : `<button class="btn small acc" id="gosetup">Set up step sync</button>`}</div>
     <div class="note"><canvas class="px" id="rac" width="30" height="28"></canvas><div class="from">From: The Raccoon</div><div class="cut">${cutout(homeNote(s))}</div></div>
-    <div class="legend"><span>🔥 Streak ${pet.streak} · best ${pet.bestStreak}</span><span>${pet.metDays} paid · ${pet.missedDays} missed</span></div>
+    <div class="legend"><span>🏆 ${s.shelf.length} on the shelf</span><span>${s.stats.metDays} paid · ${s.stats.missedDays} missed</span></div>
     <h2>LAST 14 DAYS</h2>
     <div class="chart">${chart}</div>
     <div class="legend"><span>${s.days[0].date.slice(5)}</span><span>today</span></div>
@@ -130,8 +138,82 @@ function renderHome() {
   startScene($('#scene')); noteAvatar($('#rac'));
   $('#gosetup')?.addEventListener('click', () => go('sync'));
   $('#syncnow')?.addEventListener('click', () => { location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(SHORTCUT_NAME); });
-  $('#adopt')?.addEventListener('click', async () => {
-    try { state = await api('/adopt', { name: $('#newname').value.trim() || undefined }); toast('A new bunny has been "acquired".'); render(); } catch (e) { toast('Adopt failed: ' + e.message); }
+}
+
+// ---- the rescued shelf + the ladder ----
+function petCard(p, extra) {
+  return `<div class="pcard ${p.locked ? 'locked' : ''} ${p.status || ''}"><canvas class="px shelfpet" width="40" height="42" data-i="${shelfPets.length}"></canvas>
+    <div class="pname">${p.locked ? '???' : esc(p.name)}</div><div class="dim small">${extra}</div></div>`;
+}
+let shelfPets = [];
+function animateShelf() {
+  const cs = [...view.querySelectorAll('canvas.shelfpet')];
+  const t0 = performance.now();
+  const loop = now => {
+    if (!cs.length || !cs[0].isConnected) return;
+    const t = (now - t0) / 1000;
+    cs.forEach(c => drawShelfPet(c.getContext('2d'), shelfPets[+c.dataset.i], t));
+    anim = requestAnimationFrame(loop);
+  };
+  anim = requestAnimationFrame(loop);
+}
+const scars = p => p.deaths ? `<br>patched up ×${p.deaths}` : '';
+function renderShelf() {
+  const s = state; shelfPets = [];
+  const reveal = DEMO === 'lineup';
+  const cards = arr => arr.map(x => { const html = petCard(x.p, x.extra); shelfPets.push(x.p); return html; }).join('');
+  const shelf = s.shelf.map(p => ({ p, extra: `rescued ${fmtDate(p.rescuedOn)}${scars(p)}` }));
+  const ladder = s.ladder.map(l => {
+    const p = { ...l, locked: !reveal && l.status === 'locked' && !l.known, injuries: l.injuries || [] };
+    const tag = l.status === 'rescued' ? '✅ rescued' : l.status === 'hostage' ? '🔒 hostage' : p.locked ? '' : speciesLabel(l.species);
+    return { p, extra: `${l.need} days${tag ? ' · ' + tag : ''}` };
+  });
+  view.innerHTML = `
+    <h2>RESCUED SHELF</h2>
+    <div class="shelf">${shelf.length ? `<div class="pgrid">${cards(shelf)}</div><div class="plank"></div>` : `<div class="card dim">Empty. Rescue ${esc(s.hostage.name)} (${s.hostage.need} days of 10,000 in a row) to put someone here.</div>`}</div>
+    <p class="dim small">Miss a day and the current hostage dies. Then The Raccoon takes the last pet on this shelf back, and you rescue it again with its original day count.</p>
+    <h2>THE LADDER</h2>
+    <div class="pgrid ladder">${cards(ladder)}</div>
+    <h2>OBITUARIES</h2>
+    <div class="card">${(s.deathLog || []).length ? s.deathLog.map(d => `<div class="grave"><span>🪦</span><span><b>${esc(d.name)}</b> <span class="dim">${fmtDate(d.date)} · ${esc(DEATH_TEXT[d.type] || '')}. ${d.rekidnap.same ? 'Stitched back up.' : esc(d.rekidnap.name) + ' re-kidnapped.'}</span></span></div>`).join('') : '<span class="dim">Nobody has died. Yet.</span>'}</div>
+  `;
+  animateShelf();
+}
+
+// ---- death replay: plays once, the next time the app opens after a death ----
+function seenDeathId() { return Math.max(state?.deathSeen || 0, +(localStorage.getItem('ph.deathSeen') || 0)); }
+function maybePlayDeath() {
+  const d = state && state.lastDeath;
+  if (!d || deathPlaying || DEMO) return;
+  if (d.id > seenDeathId()) playDeath(d);
+}
+function playDeath(d, freezeAt) {
+  deathPlaying = true;
+  const ov = $('#overlay'); ov.hidden = false;
+  const p = (state.ladder || []).find(x => x.rung === d.rung) || {};
+  const injBefore = (p.injuries || []).slice(0, Math.max(0, (d.deaths || 1) - 1)); // as it looked before this death
+  const re = d.rekidnap;
+  const msg = `${d.name} ${DEATH_TEXT[d.type] || 'met a cartoon end'}. ` + (re.same ? `I stitched him back together. ${re.need} days in a row. Again.` : `So I took ${re.name} back off your shelf. ${re.need} days. Same as before.`);
+  ov.innerHTML = `<div class="ovbox"><h2>☠ ${fmtDate(d.date)}: YOU MISSED A DAY</h2><canvas id="dscene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas>
+    <div class="note" id="dnote" style="visibility:hidden"><canvas class="px" id="drac" width="30" height="28"></canvas><div class="from">From: The Raccoon</div><div class="cut">${cutout(msg)}</div></div>
+    <div class="row" style="justify-content:space-between"><button class="btn ghost small" id="dreplay">Replay</button><button class="btn acc" id="dok" style="visibility:hidden">${re.same ? 'Try again' : 'Rescue ' + esc(re.name)}</button></div></div>`;
+  noteAvatar($('#drac'));
+  const ctx = $('#dscene').getContext('2d');
+  let t0 = performance.now(), raf;
+  const show = () => { $('#dnote').style.visibility = 'visible'; $('#dok').style.visibility = 'visible'; };
+  const loop = now => {
+    const t = freezeAt != null ? freezeAt : (now - t0) / 1000;
+    drawDeath(ctx, { species: d.species, injuries: injBefore, type: d.type }, Math.min(t, DEATH_LEN + 30));
+    if (t > DEATH_LEN - 1.2 || freezeAt >= DEATH_LEN - 1.2) show();
+    if (freezeAt == null && $('#dscene')) raf = requestAnimationFrame(loop);
+  };
+  raf = requestAnimationFrame(loop);
+  $('#dreplay').addEventListener('click', () => { t0 = performance.now(); });
+  $('#dok').addEventListener('click', () => {
+    cancelAnimationFrame(raf); ov.hidden = true; ov.innerHTML = ''; deathPlaying = false;
+    localStorage.setItem('ph.deathSeen', String(d.id)); if (state) state.deathSeen = d.id;
+    if (!DEMO) api('/seen-death', { id: d.id }).catch(() => {});
+    render();
   });
 }
 
@@ -196,7 +278,7 @@ function renderSettings() {
   view.innerHTML = `
     <h2>NOTIFICATIONS</h2>
     <div class="card">
-      <p>The Raccoon sends "encouragement" around noon, 3, 6 and 9 PM if you're behind, a note when you pay, and a morning report on yesterday.</p>
+      <p>The Raccoon sends "encouragement" around noon, 3, 6 and 9 PM if you're behind, a note when you pay, and a morning report on yesterday (rescues, deaths, re-kidnappings).</p>
       <p class="dim">Status: ${s.push ? 'subscribed ✅' : 'off'} · permission: ${perm}</p>
       ${pushHint ? `<p class="hint">${pushHint}</p>` : ''}
       <div class="row">
@@ -207,21 +289,18 @@ function renderSettings() {
     </div>
     <h2>RANSOM</h2>
     <div class="card">
-      <label for="goal">Daily step goal</label><input type="number" id="goal" min="500" max="100000" step="500" value="${s.goal}">
-      <label for="pname">Hostage name</label><input type="text" id="pname" maxlength="24" value="${esc(s.pet.name)}">
+      <label for="pname">Current hostage's name</label><input type="text" id="pname" maxlength="24" value="${esc(s.hostage.name)}">
       <p><button class="btn" id="save">Save</button></p>
-      <p class="dim">Rules: pay the goal each day (midnight Pacific). Miss one and the bunny moves closer to the pot. Pay again and he moves back one step. ${s.deathAt} misses in a row and he's a ghost. Adoption day only counts if you pay.</p>
+      <p class="dim">Rules: the ransom is always <b>10,000 steps a day</b>, judged at midnight Pacific. Each pet on the ladder needs a streak to rescue: 3 days for the bunny, then 5, 7, 9... Rescued pets go on the shelf and The Raccoon grabs the next animal. Miss a single day and the current hostage meets a cartoon end, then The Raccoon takes your last rescued pet back, and you rescue it again with its original day count. Pets that died come back patched up.</p>
     </div>
-    <h2>GRAVEYARD</h2>
-    <div class="card">${s.graveyard.length ? s.graveyard.map(g => `<div class="grave"><span>🪦</span><span><b>${esc(g.name)}</b> <span class="dim">${esc(g.born)} → ${esc(g.died)} · best streak ${g.bestStreak}${g.released ? ' · released' : ''}</span></span></div>`).join('') : '<span class="dim">Empty. For now.</span>'}</div>
     <h2>THIS DEVICE</h2>
     <div class="card">
-      <p class="dim">Sync code <span class="code">${esc(code)}</span>. Your bunny lives on the server, so any device that opens <span class="code">${APP_URL}</span> shows him.</p>
+      <p class="dim">Sync code <span class="code">${esc(code)}</span>. Your hostages live on the server, so any device that opens <span class="code">${APP_URL}</span> shows him.</p>
     </div>
     <p class="dim">${VERSION}</p>
   `;
   $('#save').addEventListener('click', async () => {
-    try { state = await api('/settings', { goal: +$('#goal').value, name: $('#pname').value }); toast('Saved. The Raccoon has updated his demands.'); } catch (e) { toast('Save failed: ' + e.message); }
+    try { state = await api('/settings', { name: $('#pname').value }); toast('Saved. The Raccoon has updated his notes.'); } catch (e) { toast('Save failed: ' + e.message); }
   });
   $('#pushon').addEventListener('click', enablePush);
   $('#pushtest').addEventListener('click', async () => {
@@ -255,11 +334,11 @@ function renderWelcome() {
   view.innerHTML = `<div class="welcome">
     <canvas id="scene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas>
     <p>A raccoon in a fedora has taken a bunny hostage.</p>
-    <p class="dim">The ransom: <b>10,000 steps a day</b>. Miss a day and things get worse. Miss three in a row and, well.</p>
+    <p class="dim">The ransom: <b>10,000 steps a day</b>, 3 days in a row. Then he grabs someone else. Miss a single day and, well.</p>
     ${notHome ? `<p class="hint">Tip: tap Share → <b>Add to Home Screen</b> first. The home-screen app is the one that can get notifications.</p>` : ''}
     <p><button class="btn acc" id="claim">Accept the terms</button></p>
   </div>`;
-  state = { mood: 'scared', pet: { peril: 0 } };
+  state = { mood: 'scared', hostage: { species: 'bunny', injuries: [] } };
   startScene($('#scene'));
   $('#claim')?.addEventListener('click', async () => {
     try { const r = await api('/claim', {}); code = r.code; localStorage.setItem('ph.code', code); state = r.state; rememberInUrl(); go('sync'); toast('Deal. Now set up step sync.'); }
@@ -271,7 +350,8 @@ function render() {
   stopAnim();
   $('#tabs').hidden = !state;
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
-  if (tab === 'sync') renderSync(); else if (tab === 'settings') renderSettings(); else renderHome();
+  if (tab === 'sync') renderSync(); else if (tab === 'settings') renderSettings(); else if (tab === 'shelf') renderShelf(); else renderHome();
+  maybePlayDeath();
 }
 function go(t) { tab = t; render(); window.scrollTo(0, 0); }
 document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => go(b.dataset.tab)));
@@ -289,21 +369,32 @@ async function refresh(force) {
 }
 function renderOffline() {
   $('#tabs').hidden = true;
-  view.innerHTML = `<div class="welcome"><p>Can't reach The Raccoon right now. Your bunny is safe on the server.</p><p><button class="btn acc" id="retry">Try again</button></p></div>`;
+  view.innerHTML = `<div class="welcome"><p>Can't reach The Raccoon right now. Your pets are safe on the server.</p><p><button class="btn acc" id="retry">Try again</button></p></div>`;
   $('#retry').addEventListener('click', boot2);
 }
 
 function demoState(m) {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Vancouver' });
-  const day = n => { const d = new Date(today + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
-  const hist = [11200, 10400, 8300, 12900, 10100, 6400, 10800, 13100, 9100, 10050, 7800, 11900, 6900];
-  const peril = { happy: 0, worried: 0, scared: 1, peril: 2, ghost: 3, nosync: 0 }[m] ?? 0;
-  const todaySteps = { happy: 10342, worried: 3120, scared: 4410, peril: 6120, ghost: 0, nosync: 0 }[m] ?? 0;
+  const day = n => addDay(today, n);
+  const hist = [11200, 10400, 8300, 12900, 10100, 10400, 10800, 13100, 9100, 10050, 11800, 11900, 10900];
+  const sp = ['bunny', 'hamster', 'squirrel', 'hedgehog', 'kitten', 'duckling', 'piglet', 'panda'], nm = ['Chompsky', 'Nugget', 'Acorn', 'Prickles', 'Mittens', 'Puddles', 'Truffle', 'Bao'];
+  const need = r => 3 + 2 * r;
+  let rung = 2, streak = 2, inj = { 0: ['pop'], 1: [], 2: ['catapult'] }, todaySteps = 6120, hour = 18, mood = 'worried', lastDeath = null;
+  if (m === 'happy') { todaySteps = 10342; mood = 'happy'; hour = 20; }
+  if (m === 'stitched') { rung = 0; streak = 1; inj = { 0: ['pop', 'anvil', 'catapult', 'zap'] }; todaySteps = 10120; mood = 'happy'; hour = 20; }
+  if (m === 'nosync') { rung = 0; streak = 0; inj = {}; todaySteps = 0; hour = 10; mood = 'happy'; }
+  if (m === 'death' || m === 'rekidnap') { rung = 1; streak = 0; inj = { 0: ['pop'], 1: [], 2: ['catapult', qs.get('type') || 'pop'] }; todaySteps = 840; hour = 9; mood = 'happy';
+    lastDeath = { id: 3, date: day(-1), rung: 2, name: 'Acorn', species: 'squirrel', type: qs.get('type') || 'pop', deaths: 2, rekidnap: { rung: 1, name: 'Nugget', species: 'hamster', need: 5, same: false } }; }
+  const pet = r => ({ rung: r, name: nm[r], species: sp[r], need: need(r), deaths: (inj[r] || []).length, injuries: inj[r] || [], rescuedOn: r < rung ? day(-30 + r * 9) : null, rescues: 1 });
+  const shelf = Array.from({ length: rung }, (_, r) => pet(r));
+  const hostage = { ...pet(rung), streak, since: day(-streak), todayMet: todaySteps >= GOAL, day: streak + 1 };
+  const top = Math.max(rung, m === 'death' ? 2 : rung) + 1;
+  const ladder = Array.from({ length: 8 }, (_, r) => ({ rung: r, need: need(r), species: sp[r], name: nm[r], known: r <= top - 1 || m === 'lineup', status: r < rung ? 'rescued' : r === rung ? 'hostage' : 'locked', deaths: (inj[r] || []).length, injuries: inj[r] || [] }));
   return {
-    today, hour: m === 'happy' ? 20 : 18, goal: 10000, todaySteps, lastSync: m === 'nosync' ? null : Date.now() - 23 * 60000, lastSteps: todaySteps,
-    pet: { name: 'Chompsky', born: day(-13), alive: m !== 'ghost', died: m === 'ghost' ? day(-1) : null, peril, streak: m === 'happy' ? 4 : 0, bestStreak: 6, metDays: 8, missedDays: 4 },
-    mood: m === 'nosync' ? 'happy' : m, perilLabel: ['Caged (oblivious)', 'Tied to a chair', 'Dangling over the stew pot', 'Gone'][peril], deathAt: 3,
-    graveyard: m === 'ghost' ? [] : [{ name: 'Nibbles', born: day(-40), died: day(-14), bestStreak: 5, metDays: 20 }], push: true,
+    v: 2, today, hour, goal: GOAL, todaySteps, lastSync: m === 'nosync' ? null : Date.now() - 23 * 60000, lastSteps: todaySteps, started: day(-40),
+    hostage, shelf, ladder, mood, lastDeath, deathSeen: 0,
+    deathLog: [lastDeath, { id: 2, date: day(-21), rung: 2, name: 'Acorn', species: 'squirrel', type: 'catapult', rekidnap: { name: 'Nugget', same: false } }, { id: 1, date: day(-33), rung: 0, name: 'Chompsky', species: 'bunny', type: 'pop', rekidnap: { name: 'Chompsky', same: true } }].filter(Boolean),
+    stats: { metDays: 27, missedDays: 3, rescues: 4 }, push: true,
     days: Array.from({ length: 14 }, (_, i) => ({ date: day(i - 13), steps: i === 13 ? (todaySteps || null) : (m === 'nosync' ? null : hist[i]) })),
   };
 }
@@ -317,10 +408,14 @@ async function boot2() {
 }
 async function boot() {
   if ('serviceWorker' in navigator && !DEMO) navigator.serviceWorker.register('sw.js').catch(() => {});
-  if (DEMO) { code = 'DEMO123456'; state = demoState(DEMO); tab = qs.get('tab') || 'home'; render(); return; }
+  if (DEMO) {
+    code = 'DEMO123456'; state = demoState(DEMO); tab = qs.get('tab') || (DEMO === 'lineup' ? 'shelf' : 'home'); render();
+    if (DEMO === 'death') playDeath(state.lastDeath, qs.has('f') ? +qs.get('f') : undefined);
+    return;
+  }
   rememberInUrl();
   await boot2();
-  setInterval(() => { if (state && document.visibilityState === 'visible' && tab === 'home') refresh().then(() => state && tab === 'home' && render()); }, REFRESH_MS);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && state) refresh(true).then(() => state && (tab === 'home') && render()); });
+  setInterval(() => { if (state && document.visibilityState === 'visible' && tab === 'home') refresh().then(() => state && tab === 'home' && !deathPlaying && render()); }, REFRESH_MS);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && state) refresh(true).then(() => state && !deathPlaying && (tab === 'home' ? render() : maybePlayDeath())); });
 }
 boot();

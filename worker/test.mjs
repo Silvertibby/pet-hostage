@@ -1,6 +1,6 @@
 // Local checks: Web Push encryption round-trip, VAPID JWT signature, rules.
 import { encryptPayload, vapidJwt, b64u } from './src/push.js';
-import { settle, newState, addDays, mood } from './src/game.js';
+import { settle, newState, addDays, mood, migrate, view, needFor, animalFor, ANIMALS } from './src/game.js';
 import assert from 'node:assert';
 const subtle = crypto.subtle;
 // Fake browser subscription
@@ -42,16 +42,57 @@ const [h, c, s] = jwt.split('.');
 assert.ok(await subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, vk.publicKey, b64u.dec(s), te.encode(h + '.' + c)));
 assert.equal(JSON.parse(new TextDecoder().decode(b64u.dec(c))).aud, 'https://web.push.apple.com');
 console.log('✓ VAPID JWT');
-// Rules
-const st = newState('X', '2026-10-01');
-st.days['2026-10-01'] = 50; // adoption day miss = grace
-st.days['2026-10-02'] = 12000;
-st.days['2026-10-03'] = 9000;
-st.days['2026-10-04'] = 10000;
-let ev = settle(st, '2026-10-05');
-assert.deepEqual(ev.map(e => e.peril), [0, 0, 1, 0]); assert.equal(st.pet.streak, 1); assert.ok(st.pet.alive);
-ev = settle(st, '2026-10-08'); // 5,6,7 missed (no data)
-assert.equal(st.pet.alive, false); assert.equal(st.pet.died, '2026-10-07');
-assert.equal(mood(st, { date: '2026-10-08', hour: 9 }), 'ghost');
+// ---- Ladder sim (v0.2 rules) ----
+const D0 = '2026-10-09';
+function sim(pattern, start = D0) { // pattern: string of 'Y' (10k) / 'n' (missed) / '-' (no sync) per day from start
+  const st = newState('SIM', start); const evs = [];
+  [...pattern].forEach((c, i) => { const d = addDays(start, i); if (c === 'Y') st.days[d] = 10000 + i; else if (c === 'n') st.days[d] = 9999; });
+  evs.push(...settle(st, addDays(start, pattern.length)));
+  return { st, evs, deaths: evs.filter(e => e.kind === 'death'), rescues: evs.filter(e => e.kind === 'rescue') };
+}
+assert.deepEqual([0, 1, 2, 3, 4].map(needFor), [3, 5, 7, 9, 11]);
+assert.equal(new Set(ANIMALS.map(a => a.species)).size, ANIMALS.length); assert.ok(ANIMALS.length >= 6);
+assert.equal(animalFor(0).name, 'Chompsky'); assert.equal(animalFor(8).name, 'Chompsky II');
+// start day is grace: missing it can't kill; hitting it counts as day 1
+{ const { st, deaths } = sim('n'); assert.equal(deaths.length, 0); assert.equal(st.hostage.streak, 0); }
+{ const { st } = sim('Y'); assert.equal(st.hostage.streak, 1); }
+// rescue the bunny in 3, the hamster in 5
+{ const { st, rescues } = sim('YYY');
+  assert.equal(rescues.length, 1); assert.equal(st.pets[0].rescuedOn, addDays(D0, 2)); assert.equal(st.hostage.rung, 1); assert.equal(st.hostage.since, addDays(D0, 3));
+  const v = view(st, Date.parse(addDays(D0, 3) + 'T20:00:00Z'));
+  assert.equal(v.shelf.length, 1); assert.equal(v.shelf[0].name, 'Chompsky'); assert.equal(v.hostage.name, 'Nugget'); assert.equal(v.hostage.need, 5); assert.equal(v.hostage.day, 1); }
+{ const { st, rescues } = sim('YYY' + 'YYYY'); assert.equal(rescues.length, 1); assert.equal(st.hostage.rung, 1); assert.equal(st.hostage.streak, 4); }
+{ const { st, rescues } = sim('YYY' + 'YYYYY' + 'YYYYYYY'); assert.equal(rescues.length, 3); assert.equal(st.hostage.rung, 3); assert.equal(st.pets[3].species, 'hedgehog'); }
+// death: hamster dies on a miss, the bunny is re-kidnapped off the shelf and needs its ORIGINAL 3 days
+{ const { st, deaths } = sim('YYY' + 'YY' + 'n');
+  assert.equal(deaths.length, 1); const d = deaths[0];
+  assert.equal(d.name, 'Nugget'); assert.equal(d.rekidnap.name, 'Chompsky'); assert.equal(d.rekidnap.need, 3); assert.equal(d.rekidnap.same, false);
+  assert.equal(st.hostage.rung, 0); assert.equal(st.hostage.streak, 0); assert.equal(st.pets[0].rescuedOn, null);
+  assert.equal(st.pets[1].deaths, 1); assert.deepEqual(st.pets[1].injuries, ['anvil']); assert.equal(st.pets[0].deaths, 0);
+  assert.equal(st.lastDeath.id, 1);
+  const v = view(st); assert.equal(v.shelf.length, 0); assert.equal(v.hostage.need, 3);
+  // re-rescue bunny with 3 days -> stitched Nugget is back for 5 days
+  const st2 = st; for (let i = 0; i < 3; i++) st2.days[addDays(D0, 6 + i)] = 12000;
+  const ev2 = settle(st2, addDays(D0, 9));
+  assert.equal(ev2.filter(e => e.kind === 'rescue').length, 1); assert.equal(st2.hostage.rung, 1); assert.equal(st2.pets[1].deaths, 1);
+  assert.equal(view(st2).hostage.injuries.length, 1); }
+// rung 1 (bunny) death: it's just the bunny again, with stitches; injuries accumulate
+{ const { st, deaths } = sim('Y-' + 'Yn' + 'n' + 'YYn');
+  assert.equal(deaths.length, 4); assert.ok(deaths.every(d => d.rung === 0 && d.rekidnap.same && d.rekidnap.rung === 0));
+  assert.equal(st.hostage.rung, 0); assert.equal(st.pets[0].deaths, 4);
+  assert.deepEqual(st.pets[0].injuries, ['pop', 'anvil', 'catapult', 'zap']); assert.equal(st.deathCount, 4); }
+// long climb then a gap of no syncs: each missed day kills the current hostage and steps the ladder down one
+{ const { st, deaths } = sim('YYY' + 'YYYYY' + 'YYYYYYY' + '--');
+  assert.equal(deaths.length, 2); assert.deepEqual(deaths.map(d => d.name), ['Prickles', 'Acorn']); assert.equal(st.hostage.rung, 1);
+  assert.deepEqual(view(st).shelf.map(p => p.name), ['Chompsky']); }
+// migration from Ben's v0.1 state shape
+{ const old = { v: 1, code: '3YS267ZCSA', goal: 10000, pet: { name: 'Chompsky', species: 'bunny', born: D0, alive: true, peril: 0, streak: 0, settledThrough: '2026-10-08' }, days: { [D0]: 613 }, lastSync: 1, lastSteps: 613, graveyard: [], sub: null, sent: { [D0]: ['n12'] }, events: [], syncLog: [{ at: 1, ok: true, steps: 613 }] };
+  const st = migrate(old, D0);
+  assert.equal(st.v, 2); assert.equal(st.code, '3YS267ZCSA'); assert.equal(st.days[D0], 613); assert.equal(st.syncLog.length, 1); assert.deepEqual(st.sent, old.sent);
+  assert.equal(st.hostage.rung, 0); assert.equal(st.hostage.streak, 0); assert.equal(st.pets[0].deaths, 0); assert.equal(st.hostage.settledThrough, '2026-10-08');
+  assert.equal(migrate(st, D0), st);
+  assert.equal(settle(st, D0).length, 0);
+  st.days[D0] = 10500; settle(st, addDays(D0, 1)); assert.equal(st.hostage.streak, 1); }
+assert.equal(mood(newState('x', D0), { date: D0, hour: 22 }), 'scared');
 assert.equal(addDays('2026-11-01', 1), '2026-11-02'); // DST weekend safe
-console.log('✓ rules');
+console.log('✓ ladder sim (rescue, death, re-kidnap, original day count, injuries, rung 1 death, gaps, migration)');

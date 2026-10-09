@@ -62,3 +62,26 @@ label { display:block; margin: 10px 0 4px; color: var(--dim); }
 .welcome p { font-size: 22px; }
 #toast { position: fixed; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--paper); color:#111; border: 3px solid #000; padding: 8px 12px; font-size: 19px; z-index: 9; max-width: 90vw; }
 .hint { font-size: 17px; color: #ffd84a; }
+.status .rung { color: var(--dim); font-size: 18px; }
+.small { font-size: 16px; }
+.quest { margin: 10px 0 2px; }
+.qhead { display:flex; justify-content:space-between; align-items:baseline; }
+.qhead b { font-family:'Press Start 2P', monospace; font-size: 13px; font-weight: normal; color: #ffd84a; }
+.dpips { display:flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 4px; }
+.dpip { width: 22px; height: 14px; border: 2px solid #000; background: #2f2742; }
+.dpip.on { background: var(--good); }
+.dpip.today { outline: 2px solid var(--ink); outline-offset: 1px; }
+.dpip.today:not(.on) { animation: pulse 1.2s steps(2) infinite; }
+@keyframes pulse { 50% { background: #5a4a70; } }
+.pgrid { display:grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.pcard { background: var(--panel); border: 2px solid #000; border-radius: 4px; padding: 6px 4px 8px; text-align:center; }
+.pcard canvas { width: 80px; height: 84px; margin: 0 auto; }
+.pcard .pname { font-family:'Press Start 2P', monospace; font-size: 9px; margin-top: 4px; }
+.pcard.locked { opacity: .7; }
+.pcard.hostage { border-color: var(--acc); }
+.shelf .pcard { background: transparent; border: 0; padding-bottom: 0; }
+.plank { height: 12px; margin-top: -4px; background: linear-gradient(#a0683a 0 4px, #7a4a2a 4px 9px, #4e2e1a 9px); border: 2px solid #000; border-radius: 2px; }
+#overlay { position: fixed; inset: 0; background: rgba(10,6,16,.94); z-index: 8; display:flex; align-items:center; justify-content:center; padding: 14px; }
+.ovbox { width: 100%; max-width: 460px; }
+.ovbox h2 { color: var(--bad); text-align:center; }
+#dscene { width: 100%; aspect-ratio: 100/88; border: 3px solid #000; box-shadow: 0 0 0 2px #5a2a3a; border-radius: 4px; background:#000; }

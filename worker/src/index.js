@@ -1,4 +1,4 @@
-import { RULES, localParts, newState, newPet, settle, view } from './game.js';
+import { RULES, localParts, newState, migrate, settle, view, petAt, needFor, DEATH_TEXT } from './game.js';
 import { note } from './messages.js';
 import { sendPush } from './push.js';
 
@@ -16,7 +16,13 @@ const cors = {
 const json = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'Content-Type': 'application/json', ...cors } });
 const text = (t, s = 200) => new Response(t, { status: s, headers: { 'Content-Type': 'text/plain; charset=utf-8', ...cors } });
 
-const load = async env => { const s = await env.PH.get(KEY); return s ? JSON.parse(s) : null; };
+// Old (v0.1) states are migrated on first read, keeping code, steps, sync log and push subscription.
+const load = async env => {
+  const s = await env.PH.get(KEY); if (!s) return null;
+  const st = JSON.parse(s);
+  if (st.v !== 2) { const m = migrate(st, localParts().date); await env.PH.put(KEY, JSON.stringify(m)); return m; }
+  return st;
+};
 const save = (env, st) => env.PH.put(KEY, JSON.stringify(st));
 
 function makeCode() {
@@ -29,9 +35,11 @@ function parseSteps(v) {
   const m = String(v).replace(/[,\s\u00a0\u202f]/g, '').match(/\d+(\.\d+)?/);
   return m ? Math.round(parseFloat(m[0])) : NaN;
 }
+const n = x => Number(x).toLocaleString('en-US');
 const vars = st => {
   const t = localParts().date; const steps = st.days[t] || 0;
-  return { name: st.pet.name, steps: steps.toLocaleString('en-US'), goal: st.goal.toLocaleString('en-US'), left: Math.max(0, st.goal - steps).toLocaleString('en-US'), peril: st.pet.peril, death: RULES.DEATH_AT };
+  const h = st.hostage, p = petAt(st, h.rung), need = needFor(h.rung);
+  return { name: p.name, species: p.species, steps: n(steps), goal: n(RULES.GOAL), left: n(Math.max(0, RULES.GOAL - steps)), day: h.streak + 1, need, streak: h.streak, togo: need - h.streak };
 };
 
 async function push(env, st, title, body, tag) {
@@ -50,14 +58,19 @@ async function push(env, st, title, body, tag) {
   }
 }
 
-// Report on newly settled days (only the latest one, to avoid spam after a gap).
+// Morning report on newly settled days: one push, the most dramatic thing that happened (death > rescue > paid day).
 async function reportEvents(env, st, events) {
   if (!events.length) return;
-  const last = events[events.length - 1];
   const v = vars(st);
-  if (last.died) await push(env, st, '☠ RIP ' + st.pet.name, note('died', v), 'ph-report');
-  else if (last.met) await push(env, st, '🥕 Ransom paid', note('met', v), 'ph-report');
-  else if (!last.grace) await push(env, st, '📮 Ransom missed', note('missed', v), 'ph-report');
+  const death = events.filter(e => e.kind === 'death').pop(), rescue = events.filter(e => e.kind === 'rescue').pop(), day = events.filter(e => e.kind === 'day' && e.met).pop();
+  if (death) {
+    const many = events.filter(e => e.kind === 'death').length;
+    await push(env, st, '☠ RIP ' + death.name + (many > 1 ? ` (+${many - 1} more)` : ''), note(death.rekidnap.same ? 'diedSame' : 'died', { ...v, dead: death.name, how: DEATH_TEXT[death.type], re: death.rekidnap.name, need: death.rekidnap.need }), 'ph-report');
+  } else if (rescue) {
+    await push(env, st, '🎉 ' + rescue.name + ' rescued!', note('rescued', { ...v, dead: rescue.name, name: rescue.next.name, need: rescue.next.need }), 'ph-report');
+  } else if (day) {
+    await push(env, st, '🥕 Ransom paid', note('met', v), 'ph-report');
+  }
 }
 
 // Single-user personal app: the code is NOT required (cheating is irrelevant and a lost code
@@ -129,22 +142,25 @@ export default {
       st.days[date] = steps; // Health's daily total; latest wins
       st.lastSync = Date.now(); st.lastSteps = steps;
       logSync(st, { ok: true, steps, raw: clip(raw), date, method: req.method, codeNote, test });
-      if (date === today && st.pet.alive && before < st.goal && steps >= st.goal) {
+      const v = vars(st);
+      if (date === today && before < RULES.GOAL && steps >= RULES.GOAL && !(st.sent[today] || []).includes('paid')) {
         st.sent[today] = [...(st.sent[today] || []), 'paid'];
-        await push(env, st, '🥕 Ransom paid!', note('paid', vars(st)), 'ph-paid');
+        const last = v.day >= v.need;
+        await push(env, st, last ? '🗝 Final payment!' : '🥕 Ransom paid!', note(last ? 'paidLast' : 'paid', v), 'ph-paid');
       }
       await save(env, st);
-      const left = Math.max(0, st.goal - steps);
-      if (url.searchParams.has('plain') || req.method === 'GET') return text(st.pet.alive ? (left ? `Got ${steps.toLocaleString('en-US')} steps. ${left.toLocaleString('en-US')} to go or ${st.pet.name} gets it.` : `Got ${steps.toLocaleString('en-US')} steps. Ransom paid. ${st.pet.name} lives.`) : `Got ${steps.toLocaleString('en-US')} steps. ${st.pet.name} is a ghost though.`);
+      const left = Math.max(0, RULES.GOAL - steps);
+      if (url.searchParams.has('plain') || req.method === 'GET') return text(left
+        ? `Got ${n(steps)} steps. ${n(left)} to go or ${v.name} gets it. (Day ${v.day} of ${v.need})`
+        : `Got ${n(steps)} steps. Ransom paid. Day ${v.day} of ${v.need} for ${v.name}.${v.day >= v.need ? ' Rescue at midnight!' : ''}`);
       return json({ ok: true, steps, state: view(st) });
     }
 
     if (req.method !== 'POST') return json({ error: 'not found' }, 404);
 
     if (path === '/settings') {
-      const g = parseInt(body.goal, 10);
-      if (Number.isFinite(g) && g >= 500 && g <= 100000) st.goal = g;
-      if (typeof body.name === 'string' && body.name.trim()) st.pet.name = body.name.trim().slice(0, 24);
+      // The goal is always 10,000 (ignored if sent). Only the current hostage's name can change.
+      if (typeof body.name === 'string' && body.name.trim()) petAt(st, st.hostage.rung).name = body.name.trim().slice(0, 24);
       await save(env, st); return json(view(st));
     }
     if (path === '/subscribe') {
@@ -163,12 +179,10 @@ export default {
       const r = await push(env, st, '🦝 The Raccoon', note('test', vars(st)), 'ph-test');
       await save(env, st); return json({ ok: r.ok, status: r.status, detail: r.text || undefined }, r.ok ? 200 : 502);
     }
-    if (path === '/adopt') {
-      if (st.pet.alive && !body.force) return json({ error: 'pet still alive' }, 409);
-      const old = st.pet;
-      st.graveyard = [{ name: old.name, species: old.species, born: old.born, died: old.died || today, bestStreak: old.bestStreak, metDays: old.metDays, released: old.alive || undefined }, ...st.graveyard].slice(0, RULES.GRAVEYARD_MAX);
-      st.pet = newPet(body.name, today);
-      await save(env, st); return json(view(st));
+    if (path === '/seen-death') { // the app played the death animation; don't replay it on other devices
+      const id = parseInt(body.id, 10);
+      if (Number.isFinite(id) && id > (st.deathSeen || 0) && id <= st.deathCount) st.deathSeen = id;
+      await save(env, st); return json({ ok: true, deathSeen: st.deathSeen });
     }
     return json({ error: 'not found' }, 404);
   },
@@ -184,9 +198,9 @@ export default {
       await reportEvents(env, st, st.pendingReport); st.pendingReport = null;
     }
     const slot = NUDGE_SLOTS[np.hour];
-    if (slot != null && st.pet.alive && !sent.includes('n' + np.hour)) {
+    if (slot != null && !sent.includes('n' + np.hour)) {
       const steps = st.days[np.date] || 0;
-      if (steps < st.goal * slot) {
+      if (steps < RULES.GOAL * slot) {
         await push(env, st, '🦝 ' + (np.hour >= 21 ? 'FINAL NOTICE' : 'A note from The Raccoon'), note('nudge', vars(st), np.hour), 'ph-nudge');
         st.sent[np.date] = [...sent, 'n' + np.hour];
       }

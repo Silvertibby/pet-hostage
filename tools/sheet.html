@@ -1,0 +1,11 @@
+<!doctype html><meta charset="utf-8"><title>Pet Hostage sprite sheet</title>
+<style>body{background:#2c2340;margin:0;padding:8px;color:#fff;font:14px monospace} canvas{image-rendering:pixelated;display:block}</style>
+<canvas id="c"></canvas>
+<script type="module">
+import { critter, blit, SPECIES_ORDER } from '../app/art.js';
+const rows = [['happy',[]],['worried',[]],['scared',[]],['happy',['pop']],['happy',['pop','anvil','catapult','zap']],['happy',['pop','anvil','catapult','zap','pop','anvil','catapult','zap']],['dead',[]],['char',[]],['ghost',[]]];
+const c = document.getElementById('c'), S = +(new URLSearchParams(location.search).get('s') || 4);
+c.width = SPECIES_ORDER.length * 40 * S; c.height = rows.length * 40 * S; c.style.width = c.width + 'px';
+const ctx = c.getContext('2d'); ctx.scale(S, S);
+rows.forEach(([m, inj], j) => SPECIES_ORDER.forEach((sp, i) => blit(ctx, critter(sp, m, 0.5, inj), i * 40 + 2, j * 40 + 1)));
+</script>
