@@ -1,4 +1,5 @@
 :root { --bg:#1b1626; --panel:#2a2238; --ink:#f4eee0; --dim:#a99fbd; --acc:#ff6fa8; --good:#6fe07a; --bad:#ff5a5a; --paper:#f3ead2; }
+[hidden] { display: none !important; }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin:0; background:var(--bg); color:var(--ink); font-family: 'VT323', ui-monospace, Menlo, monospace; font-size: 21px; line-height: 1.15; }
 body { padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); overscroll-behavior: none; }
