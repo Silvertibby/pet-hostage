@@ -53,8 +53,8 @@ function sim(pattern, start = D0) { // pattern: string of 'Y' (10k) / 'n' (misse
 assert.deepEqual([0, 1, 2, 3, 4].map(needFor), [3, 5, 7, 9, 11]);
 assert.equal(new Set(ANIMALS.map(a => a.species)).size, ANIMALS.length); assert.ok(ANIMALS.length >= 6);
 assert.equal(animalFor(0).name, 'Chompsky'); assert.equal(animalFor(8).name, 'Chompsky II');
-// start day is grace: missing it can't kill; hitting it counts as day 1
-{ const { st, deaths } = sim('n'); assert.equal(deaths.length, 0); assert.equal(st.hostage.streak, 0); }
+// no free start day: missing it kills the bunny (rung 1 -> bunny again, patched up); hitting it counts as day 1
+{ const { st, deaths } = sim('n'); assert.equal(deaths.length, 1); assert.equal(deaths[0].date, D0); assert.ok(deaths[0].rekidnap.same); assert.equal(st.hostage.rung, 0); assert.deepEqual(st.pets[0].injuries, ['pop']); }
 { const { st } = sim('Y'); assert.equal(st.hostage.streak, 1); }
 // rescue the bunny in 3, the hamster in 5
 { const { st, rescues } = sim('YYY');

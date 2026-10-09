@@ -63,7 +63,7 @@ export function newState(code, today) {
 }
 
 // v0.1 -> v0.2: keep code, steps, sync log, push sub, sent nudges. The bunny becomes rung 1, streak 0, no deaths.
-// The start day counts toward day 1 if it reaches 10k, and can't kill anyone if it doesn't (same as v0.1's adoption day).
+// The start day counts like any other: 10k = day 1, under 10k = the bunny dies (and comes back patched up).
 export function migrate(old, today) {
   if (old && old.v === 2) return old;
   const st = newState(old.code, today);
@@ -75,7 +75,7 @@ export function migrate(old, today) {
 }
 
 // Settle every finished day (< today). Returns events:
-// {kind:'day', date, steps, met, grace?, rung, name, streak, need}
+// {kind:'day', date, steps, met, rung, name, streak, need}
 // {kind:'rescue', date, rung, name, species, next:{rung,name,species,need}}
 // {kind:'death', date, steps, rung, name, species, type, deaths, rekidnap:{rung,name,species,need,same}}
 export function settle(st, today) {
@@ -94,9 +94,7 @@ export function settle(st, today) {
         const n = petAt(st, r + 1);
         events.push({ kind: 'rescue', date: d, rung: r, name: p.name, species: p.species, next: { rung: r + 1, name: n.name, species: n.species, need: needFor(r + 1) } });
       }
-    } else if (d === st.started) {
-      events.push({ kind: 'day', date: d, steps, met, grace: true, rung: r, name: p.name, streak: st.hostage.streak, need });
-    } else {
+    } else { // every day counts, including the first (no free starting day)
       const type = deathTypeFor(r, p.deaths);
       p.deaths++; p.injuries.push(type); st.stats.missedDays++;
       const back = Math.max(0, r - 1);

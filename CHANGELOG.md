@@ -5,6 +5,7 @@
 - A Rescued shelf where saved pets hang out, plus the ladder and an obituaries list.
 - Missing a single day now ends badly, in cartoon fashion, and costs you a pet from your shelf. Pets who come back show it.
 - Home shows "Day X of N" toward the next rescue. Notifications and the morning report follow the new rules.
+- Every day counts, starting today. No free first day.
 - Your sync code, Shortcut URL, today's steps and sync history carry over unchanged.
 
 ## v0.1.1 (2026-10-09)
