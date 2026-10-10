@@ -2,6 +2,8 @@
 
 ## v0.4.0 (2026-10-10)
 - All-new look for every pet: big heads, bigger sparkly eyes, rosy cheeks. Same pets, much harder to let down.
+- Lots more things for your pet and The Raccoon to say, in taps and notifications, and every animal now has lines of its own.
+- Cleaner home screen: a bigger scene, one step readout, and the ransom note, history and rules tucked into tap-to-open sections.
 
 ## v0.3.3 (2026-10-09)
 - Tap your hostage to hear it beg (it hops), or tap The Raccoon for some discouragement. Lines change with the animal and with how your day is going.

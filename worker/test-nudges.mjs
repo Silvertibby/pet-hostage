@@ -1,7 +1,7 @@
 // Twice-daily nudge schedule + voices.
 import assert from 'node:assert';
 import worker, { planNudge, NUDGES2 } from './src/index.js';
-import { PLEAD, TAUNT, nudgeText, DISH, ITEM } from './src/messages.js';
+import { PLEAD, TAUNT, PLEAD_SP, TAUNT_SP, nudgeText, DISH, ITEM } from './src/messages.js';
 import { newState, ANIMALS, petAt } from './src/game.js';
 const D = '2026-10-10', np = (h, m) => ({ date: D, hour: h, minute: m });
 const st = newState('ABCDEFGHJK', D); st.days[D] = 3800;
@@ -22,11 +22,13 @@ const order = new Set(); for (let d = 1; d <= 20; d++) { const s2 = newState('AB
 assert.equal(order.size, 2);
 // every line renders for every animal with no leftover {placeholders}
 let n = 0;
-for (const an of ANIMALS) for (const voice of ['pet', 'raccoon']) for (const slot of ['afternoon', 'evening']) for (const line of (voice === 'pet' ? PLEAD : TAUNT)[slot]) {
+for (const an of ANIMALS) for (const voice of ['pet', 'raccoon']) for (const slot of ['afternoon', 'evening']) for (const line of [...(voice === 'pet' ? PLEAD : TAUNT)[slot], ...(voice === 'pet' ? PLEAD_SP : TAUNT_SP)[an.species]]) {
   const out = line.replace(/\{(\w+)\}/g, (_, k) => ({ name: an.name, animal: an.species, left: '1,234', steps: '8,766', dish: DISH[an.species], item: ITEM[an.species], day: 2, need: 3 })[k] ?? `{${k}}`);
   assert.ok(!/\{\w+\}/.test(out), out); n++;
 }
-assert.ok(PLEAD.afternoon.length + PLEAD.evening.length >= 20 && TAUNT.afternoon.length + TAUNT.evening.length >= 20);
+assert.ok(PLEAD.afternoon.length + PLEAD.evening.length >= 60 && TAUNT.afternoon.length + TAUNT.evening.length >= 60);
+for (const an of ANIMALS) assert.ok(PLEAD_SP[an.species].length >= 4 && TAUNT_SP[an.species].length >= 4, an.species);
+assert.ok(nudgeText('pet', 'evening', { species: 'panda', name: 'Bao', left: '1' }).length > 0);
 // cron (fake KV + clock): two players, one under, one banked; only the one under gets the nudge recorded
 const log = console.log; console.log = () => {};
 class KV { constructor() { this.m = new Map(); } async get(k) { return this.m.get(k) ?? null; } async put(k, v) { this.m.set(k, v); } async delete(k) { this.m.delete(k); }
