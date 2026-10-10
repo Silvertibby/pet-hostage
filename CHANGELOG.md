@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.4.0 (2026-10-10)
+- All-new look for every pet: big heads, bigger sparkly eyes, rosy cheeks. Same pets, much harder to let down.
+
 ## v0.3.3 (2026-10-09)
 - Tap your hostage to hear it beg (it hops), or tap The Raccoon for some discouragement. Lines change with the animal and with how your day is going.
 - Notifications now come twice a day, around 1 PM and 7:30 PM, only if you're under 10,000: one from your hostage, one from The Raccoon. If notifications are off, the home screen shows a big button to turn them on.

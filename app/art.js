@@ -44,9 +44,9 @@ function ear(g, cx, baseY, len, lean, col, inner, shade) {
 }
 
 // ---- the critters ----
-// One shared cute body (big round head, big shiny eyes, round body, blush, little mischievous grin),
-// with per-species ears, tails, faces and palettes. Chompsky the bunny is the original v0.1 sprite.
-const FIX = { t: '#ffffff', b: '#3a2340', B: '#6b4a8a', s: '#8fd8ff', y: '#ffe27a', o: '#ff9a2a',
+// v0.4 "chibi" set (after Mimi, Ben's pick): giant round head, tiny body, huge sparkly eyes,
+// rosy cheeks and a little w-mouth. Every pet shares the body; species add ears, tails, markings, palette.
+const FIX = { t: '#ffffff', s: '#7fcfff', S: '#c4ecff', y: '#ffe27a', o: '#ff9a2a',
   x: '#4a2236', X: '#c4405e', v: '#f6efdc', V: '#d9c9a6', a: '#f2bd86', A: '#d1925c', z: '#1d1622', Z: '#3a3040' };
 function tri(g, x1, y1, x2, y2, x3, y3, c) {
   const minX = Math.floor(Math.min(x1, x2, x3)), maxX = Math.ceil(Math.max(x1, x2, x3)), minY = Math.floor(Math.min(y1, y2, y3)), maxY = Math.ceil(Math.max(y1, y2, y3));
@@ -57,87 +57,99 @@ function tri(g, x1, y1, x2, y2, x3, y3, c) {
   }
 }
 function line(g, x0, y0, x1, y1, c) { const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) || 1; for (let i = 0; i <= n; i++) set(g, x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n, c); }
-const inHead = (x, y) => { const dx = (x + 0.5 - 18) / 11.6, dy = (y + 0.5 - 20.5) / 9.4; return dx * dx + dy * dy <= 1; };
 const pointyEar = (g, x, baseY, h, half, lean, col, inner, tip) => {
   tri(g, x - half, baseY, x + half, baseY, x + lean, baseY - h, col);
   if (inner) tri(g, x - half + 1.6, baseY - 0.5, x + half - 1.6, baseY - 0.5, x + lean * 0.8, baseY - h + 2.6, inner);
   if (tip) { set(g, x + lean, baseY - h - 1, tip); set(g, x + lean - 1, baseY - h, tip); set(g, x + lean + 1, baseY - h - 1.5, tip); }
 };
+// Layout of the 36x38 chibi sprite (mirror axis between pixels 17 and 18).
+const CX = 18, HY = 18, HRX = 13, HRY = 10.5, M = x => 35 - x, MC = c => 36 - c;
+const inHead = (x, y) => { const dx = (x + 0.5 - CX) / HRX, dy = (y + 0.5 - HY) / HRY; return dx * dx + dy * dy <= 1; };
+const stampL = (g, l) => { for (let i = 0; i < l.a.length; i++) if (l.a[i]) g.a[i] = l.a[i]; };
+function layer(g, draw, oc) { const l = grid(g.w, g.h); draw(l); if (oc) outline(l, oc); stampL(g, l); return l; }
+function stroke(g, pts, r0, r1, col) { // tapering thick polyline
+  const L = []; let tot = 0;
+  for (let i = 0; i < pts.length - 1; i++) { const l = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]); L.push(l); tot += l; }
+  let acc = 0;
+  for (let i = 0; i < pts.length - 1; i++) { const [x0, y0] = pts[i], [x1, y1] = pts[i + 1], n = Math.ceil(L[i] * 3);
+    for (let k = 0; k <= n; k++) { const f = (acc + L[i] * k / n) / tot; ell(g, x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n, r0 + (r1 - r0) * f, r0 + (r1 - r0) * f, col); }
+    acc += L[i]; }
+}
+function pat(g, x, y, rows, map = {}) { rows.forEach((r, j) => { for (let i = 0; i < r.length; i++) { const c = r[i]; if (c !== '.') set(g, x + i, y + j, map[c] || c); } }); }
+const both = (g, x, y, c) => { set(g, x, y, c); set(g, M(x), y, c); };
 
+// shared soft eye colours (species may override): e outline/pupil, i iris, I iris light, j sparkle-light
+const EYE = { e: '#2e1d45', i: '#5a48a6', I: '#9a86ea', j: '#d6ccff' };
 export const SPECIES = {
-  bunny: { label: 'bunny', pal: { k: '#5a3f66', w: '#fffaf4', g: '#f3e3ea', G: '#e2cbd8', p: '#ffc1d8', P: '#ff8fb8', r: '#ff7a96', R: '#c44a6a' },
-    ears(g, t, m, droop) {
-      ear(g, 13, 12, droop ? 8 : 10, droop ? -1.1 : -0.25 + Math.sin(t * 2.2) * 0.05, 'w', 'p', 'g');
-      ear(g, 23, 12, droop ? 8 : 10, droop ? 1.1 : m === 'worried' ? 0.9 : 0.3 + Math.sin(t * 2.2 + 1) * 0.06, 'w', 'p', 'g');
+  bunny: { label: 'bunny', pal: { k: '#9a6b8f', w: '#ffffff', g: '#f1dfee', p: '#ffc4da', P: '#ff7fae', q: '#ffb0c8', m: '#7a3552', n: '#ff8fa8' },
+    ears(l, t, dr, sway) {
+      for (const s of [-1, 1]) { const b = CX + s * 5.5, w = Math.sin(t * 2.2 + (s > 0 ? 1 : 0)) * 0.25;
+        stroke(l, [[b, HY - 5], [b + s * (1.4 + dr * 2) + sway + w, HY - 11 + dr * 2], [b + s * (2.6 + dr * 5) + sway * 1.5 + w * 2, HY - 15 + dr * 4]], 3.3, 2.5, 'w');
+        stroke(l, [[b + s * 0.6, HY - 8], [b + s * (1.7 + dr * 2) + sway + w, HY - 11 + dr * 2], [b + s * (2.6 + dr * 4.6) + sway * 1.5 + w * 2, HY - 13.6 + dr * 4]], 1.5, 1.1, 'p'); }
     },
-    tail(g) { ell(g, 25.5, 32.5, 2, 2, 'w'); }, mouth: 'buck' },
-  hamster: { label: 'hamster', pal: { k: '#7a4a3a', w: '#ffd49a', g: '#f3bd7c', G: '#e2a564', p: '#ffb3c6', P: '#ff8fa8', r: '#ff8a9a', R: '#c4506a', c: '#fff4e2' },
-    ears(g, t, m, droop) { const dy = droop ? 2 : 0; ell(g, 9.5, 12.5 + dy, 3.4, 3.2, 'w', { shade: 'g', sd: 0.8 }); ell(g, 26.5, 12.5 + dy, 3.4, 3.2, 'w', { shade: 'g', sd: 0.8 }); ell(g, 9.5, 12.8 + dy, 1.8, 1.7, 'p'); ell(g, 26.5, 12.8 + dy, 1.8, 1.7, 'p'); },
-    head(g) { ell(g, 9, 24.5, 4.6, 3.8, 'c'); ell(g, 27, 24.5, 4.6, 3.8, 'c'); ell(g, 18, 26, 4.2, 2.6, 'c'); for (let y = 12; y < 18; y++) set(g, 18, y, 'G'); set(g, 17, 12, 'G'); set(g, 19, 12, 'G'); },
-    belly: 'c', mouth: 'buck' },
-  squirrel: { label: 'squirrel', pal: { k: '#6a3a2a', w: '#eea066', g: '#d9874e', G: '#bf6c3c', p: '#ffc1a8', P: '#7a3a2a', r: '#ff8a7a', R: '#b84a4a', c: '#fff0dc' },
-    back(g, t) { const sw = Math.sin(t * 2.4) * 0.6; ell(g, 29 + sw, 25, 5.4, 9.5, 'w', { shade: 'g', sd: 1.2 }); ell(g, 27.5 + sw, 15.5, 4.6, 3.8, 'w', { shade: 'g', sd: 1 }); ell(g, 29.5 + sw, 26, 2.2, 6, 'G'); },
-    ears(g, t, m, droop) { const l = droop ? -2 : 0; pointyEar(g, 10, 14, 8, 3.4, -1 + l, 'w', 'p', 'G'); pointyEar(g, 26, 14, 8, 3.4, 1 - l, 'w', 'p', 'G'); },
-    head(g) { ell(g, 18, 26, 5, 3, 'c'); ell(g, 18, 15.5, 2.6, 1.6, 'G'); },
-    belly: 'c', mouth: 'buck' },
-  hedgehog: { label: 'hedgehog', pal: { k: '#4e3428', w: '#f8e6cc', g: '#ecd2b0', G: '#d9b98e', p: '#ffb7c4', P: '#3e2a22', r: '#ff8a9a', R: '#b84a5a', e: '#a8784e', E: '#80563a', c: '#fff6e8' },
-    back(g, t) {
-      ell(g, 18, 20, 12.6, 10.4, 'e', { shade: 'E', sd: 1.6 });
-      for (let i = 0; i <= 12; i++) { const a = Math.PI * (0.92 + i * 1.16 / 12), w = 0.16; const R = 12, L = 16.8 + Math.sin(t * 3 + i) * 0.4;
-        tri(g, 18 + Math.cos(a - w) * R, 20 + Math.sin(a - w) * R * 0.85, 18 + Math.cos(a + w) * R, 20 + Math.sin(a + w) * R * 0.85, 18 + Math.cos(a) * L, 20 + Math.sin(a) * L * 0.85, i % 2 ? 'e' : 'E'); }
-      ell(g, 18, 31, 8.6, 6.4, 'e', { shade: 'E', sd: 1.4 });
-    },
-    ears(g) { ell(g, 9, 13, 2.4, 2.2, 'w'); ell(g, 27, 13, 2.4, 2.2, 'w'); ell(g, 9, 13.3, 1.2, 1.1, 'p'); ell(g, 27, 13.3, 1.2, 1.1, 'p'); },
-    head(g) { for (let y = 10; y < 17; y++) for (let x = 6; x < 31; x++) if (inHead(x, y) && y < 13.2 + Math.abs(x + 0.5 - 18) * 0.38 && !(Math.abs(x + 0.5 - 18) < 2.2 && y > 14)) set(g, x, y, (x + y) % 3 ? 'e' : 'E'); },
-    body: 'c', mouth: 'fang' },
-  kitten: { label: 'kitten', pal: { k: '#4e4462', w: '#d9d5e4', g: '#c2bdd2', G: '#a7a0bc', p: '#ffb7cf', P: '#ff8fb0', r: '#ff8aa6', R: '#c44a6a', d: '#8d85a8', c: '#fbf9ff' },
-    back(g, t) { const sw = Math.sin(t * 2) * 1.5; for (let i = 0; i < 9; i++) ell(g, 26 + i * 0.7 + Math.sin(i * 0.5) * 0.8, 33 - i * 1.6, 1.6, 1.6, i > 6 ? 'd' : 'w'); set(g, 31 + sw, 18, 'd'); },
-    ears(g, t, m, droop) { const l = droop ? -2.4 : 0; pointyEar(g, 10.5, 15, 9, 4.6, -2 + l, 'w', 'p'); pointyEar(g, 25.5, 15, 9, 4.6, 2 - l, 'w', 'p'); },
-    head(g) { ell(g, 18, 26, 5.6, 3.2, 'c'); for (const x of [16, 18, 20]) { set(g, x, 12, 'd'); set(g, x, 13, 'd'); } set(g, 18, 14, 'd');
-      for (const [x, y] of [[7, 19], [8, 19], [7, 21], [8, 21], [28, 19], [29, 19], [28, 21], [29, 21]]) set(g, x, y, 'd'); },
-    feet: 'c', mouth: 'cat' },
-  duckling: { label: 'duckling', pal: { k: '#86621e', w: '#ffe46e', g: '#f7cf4a', G: '#e8b632', p: '#ffb38a', P: '#ff9a2a', r: '#ff8a6a', R: '#c4502a', n: '#ffa236', N: '#d9701c' },
-    ears(g, t) { const w = Math.sin(t * 3) * 0.6; ell(g, 17 + w, 9.6, 1.6, 2.4, 'w'); ell(g, 19.4 + w, 10, 1.4, 2, 'w'); ell(g, 15.2 + w, 10.6, 1.2, 1.6, 'w'); },
+    head(g) { for (const [x, y] of [[17, 6], [18, 6], [19, 5], [16, 7]]) set(g, x, y, 'k'); set(g, 17, 7, 'w'); set(g, 18, 7, 'w'); } },
+  hamster: { label: 'hamster', pal: { k: '#a8705a', w: '#ffd8a8', g: '#f3bf8a', c: '#fff6ea', p: '#ffb3c6', P: '#ff8fa8', q: '#ffa0b4', m: '#7a3a2a', e: '#3a2018', i: '#7a4a2a', I: '#c08a5a', j: '#f4dcb8' },
+    ears(l, t, dr) { const dy = dr * 1.2; for (const c of [7.8, MC(7.8)]) { ell(l, c, 9.6 + dy, 3.4, 3.2, 'w'); ell(l, c, 9.9 + dy, 1.8, 1.7, 'p'); } },
+    head(g) { ell(g, 7.6, 23, 4.2, 3.4, 'c'); ell(g, MC(7.6), 23, 4.2, 3.4, 'c'); ell(g, CX, 23.4, 4.4, 2.8, 'c'); for (let y = 8; y < 13; y++) { set(g, 17, y, 'g'); set(g, 18, y, 'g'); } },
+    belly: 'c' },
+  squirrel: { label: 'squirrel', pal: { k: '#9a5a3e', w: '#f4ad78', g: '#e19463', G: '#c4774a', c: '#fff0dc', p: '#ffc4ae', P: '#8a4a3a', q: '#ff9ea0', m: '#6a3022', e: '#2e1a12', i: '#6a3a22', I: '#b0703e', j: '#ecc8a0', T: '#e99a62', U: '#ffd9b0' },
+    back(l, t) { const sw = Math.sin(t * 2.4) * 0.5; ell(l, 30.5 + sw, 28, 4.6, 7.5, 'T'); ell(l, 32 + sw, 17.5, 3.8, 6, 'T'); ell(l, 30.5 + sw, 11.5, 3.6, 3.4, 'T'); ell(l, 31.4 + sw, 23, 1.4, 5, 'U'); },
+    ears(l, t, dr) { const d = dr * 1.6; pointyEar(l, 9.5, 11, 9, 3.4, -1 - d, 'w', 'p', 'G'); pointyEar(l, MC(9.5), 11, 9, 3.4, 1 + d, 'w', 'p', 'G'); },
+    head(g) { ell(g, CX, 23.6, 5.2, 3, 'c'); ell(g, CX, 9.6, 2.2, 1.2, 'g'); },
+    belly: 'c' },
+  hedgehog: { label: 'hedgehog', pal: { k: '#7a5440', w: '#fbe8d0', g: '#efd4b2', h: '#b98a62', H: '#94684a', p: '#ffb7c4', P: '#4a3028', q: '#ffa6b4', m: '#6a3a2a', e: '#2a1a14', i: '#5a3a2a', I: '#9a6a4a', j: '#e8c8a8' },
+    back(l, t) { ell(l, CX, HY - 0.5, HRX + 1, HRY + 0.6, 'h');
+      for (let i = 0; i <= 12; i++) { const a = Math.PI * (0.95 + i * 1.1 / 12), w = 0.17, R = 12.5, L = 16.4 + Math.sin(t * 3 + i) * 0.35;
+        tri(l, CX + Math.cos(a - w) * R, HY + Math.sin(a - w) * R * 0.86, CX + Math.cos(a + w) * R, HY + Math.sin(a + w) * R * 0.86, CX + Math.cos(a) * L, HY + Math.sin(a) * L * 0.86, i % 2 ? 'h' : 'H'); } },
+    ears(l) { for (const c of [6.6, MC(6.6)]) { ell(l, c, 12, 2.4, 2.2, 'w'); ell(l, c, 12.3, 1.2, 1.1, 'p'); } },
+    head(g) { for (let y = 6; y < 16; y++) for (let x = 4; x < 32; x++) if (inHead(x, y) && y < 11.6 + Math.abs(x + 0.5 - CX) * 0.42 && !(Math.abs(x + 0.5 - CX) < 1.6 && y > 12)) set(g, x, y, (x + y) % 3 ? 'h' : 'H'); } },
+  kitten: { label: 'kitten', pal: { k: '#7a7096', w: '#e6e2f0', g: '#d0cae0', d: '#a59cc0', c: '#fbf9ff', p: '#ffb7cf', P: '#ff8fb0', q: '#ffa8c4', m: '#6a4060', e: '#1e2a3a', i: '#2f6a8a', I: '#5ab0d0', j: '#bdeeff' },
+    back(l, t) { const sw = Math.sin(t * 2) * 1; stroke(l, [[25, 34], [30, 32], [32.5 + sw, 26], [31.5 + sw, 21]], 1.7, 1.9, 'w'); ell(l, 31.5 + sw, 21, 1.9, 1.9, 'd'); },
+    ears(l, t, dr) { const d = dr * 2; pointyEar(l, 9.5, 12, 9.5, 4.4, -1.6 - d, 'w', 'p'); pointyEar(l, MC(9.5), 12, 9.5, 4.4, 1.6 + d, 'w', 'p'); },
+    head(g) { for (const x of [15, 17, 18, 20]) { set(g, x, 8, 'd'); set(g, x, 9, 'd'); } set(g, 17, 10, 'd'); set(g, 18, 10, 'd');
+      for (const [x, y] of [[5, 16], [6, 16], [5, 18], [6, 18]]) both(g, x, y, 'd'); ell(g, CX, 23.5, 4.6, 2.6, 'c'); },
+    belly: 'c', whiskers: true },
+  duckling: { label: 'duckling', pal: { k: '#b08a2a', w: '#ffea86', g: '#f7d458', p: '#fff3b8', n: '#ffa83e', N: '#e07a20', q: '#ffb08a', m: '#a85a1a', e: '#2a1e10', i: '#5a4020', I: '#9a7a40', j: '#ecdca8' },
+    ears(l, t) { const w = Math.sin(t * 3) * 0.5; ell(l, 17.5 + w, 6.4, 1.6, 2.6, 'w'); ell(l, 19.8 + w, 6.9, 1.3, 2.1, 'w'); ell(l, 15.4 + w, 7.4, 1.1, 1.6, 'w'); },
     feet: 'n', mouth: 'beak' },
-  piglet: { label: 'piglet', pal: { k: '#8a4a62', w: '#ffcadb', g: '#f7b1c7', G: '#eb98b2', p: '#ff9fbd', P: '#e07898', r: '#ff7a96', R: '#b8405e', n: '#ffadc6', N: '#d86a8e' },
-    tail(g, t) { const o = Math.sin(t * 6) > 0 ? 0 : 1; for (const [x, y] of [[26, 31], [27, 30], [28, 30 + o], [28, 31], [27, 32]]) set(g, x, y, 'P'); },
-    ears(g, t, m, droop) { const f = droop ? 2 : Math.sin(t * 2.2) * 0.5; tri(g, 7, 15, 13, 11, 6 - f, 7 + f, 'w'); tri(g, 29, 15, 23, 11, 30 + f, 7 + f, 'w'); tri(g, 8, 13.5, 11.5, 11.5, 7.4 - f, 9 + f, 'p'); tri(g, 28, 13.5, 24.5, 11.5, 28.6 + f, 9 + f, 'p'); },
+  piglet: { label: 'piglet', pal: { k: '#b0607e', w: '#ffd4e2', g: '#f7bacd', p: '#ff9fbd', n: '#ffb8cc', N: '#e07898', q: '#ff8fae', m: '#8a3050', e: '#3a1a2a', i: '#6a3050', I: '#b06a8a', j: '#f4c8dc' },
+    back(l, t) { const o = Math.sin(t * 6) > 0 ? 0 : 1; for (const [x, y] of [[26, 30], [27, 29], [28, 29 + o], [28, 30], [27, 31]]) set(l, x, y, 'N'); },
+    ears(l, t, dr) { const f = dr ? 2.4 : Math.sin(t * 2.2) * 0.4; tri(l, 5, 13, 12, 8.5, 4 - f, 4 + f, 'w'); tri(l, 31, 13, 24, 8.5, 32 + f, 4 + f, 'w'); tri(l, 6.4, 11.4, 10.4, 9.2, 5.4 - f, 6 + f, 'p'); tri(l, 29.6, 11.4, 25.6, 9.2, 30.6 + f, 6 + f, 'p'); },
     mouth: 'snout' },
-  panda: { label: 'panda cub', pal: { k: '#2a2632', w: '#fbfbf6', g: '#e8e8ef', G: '#d2d2dc', p: '#ffc1d8', P: '#2e2a36', r: '#ff7a96', R: '#b8405e', d: '#33303d', b: '#140f1a', B: '#3d2f52' },
-    ears(g, t, m, droop) { const dy = droop ? 2 : 0; ell(g, 8.5, 12.5 + dy, 3.6, 3.4, 'd'); ell(g, 27.5, 12.5 + dy, 3.6, 3.4, 'd'); },
-    face(g, E) { for (const ex of [E.lx, E.rx]) { const s = ex < 18 ? -1 : 1; for (let y = -5; y <= 5; y++) for (let x = -5; x <= 5; x++) { const rx = (x + 0.5 + s * 0.3 * (y + 0.5)) / 3.7, ry = (y + 0.5) / 4.4; if (rx * rx + ry * ry <= 1) set(g, ex + x, E.eyesY + 0.6 + y, 'd'); } } },
-    arms: 'd', feet: 'd', mouth: 'fang' },
+  panda: { label: 'panda cub', pal: { k: '#4a4658', w: '#ffffff', g: '#ecebf2', d: '#4a4658', D: '#36323f', p: '#ffc1d8', P: '#2e2a36', q: '#ffb0c8', m: '#3a2a40', e: '#140f1a', i: '#4a3a7a', I: '#8a7ab8', j: '#cfc4f0' },
+    ears(l, t, dr) { for (const c of [7.4, MC(7.4)]) ell(l, c, 9.6 + dr, 3.6, 3.4, 'd'); },
+    head(g) { for (const [ex, s] of [[11, -1], [24, 1]]) for (let y = -6; y <= 6; y++) for (let x = -6; x <= 6; x++) {
+      const rx = (x + 0.5 - s * 0.35 * (y + 0.5)) / 4.2, ry = (y + 0.5) / 4.8; if (rx * rx + ry * ry <= 1) set(g, ex + x, 20 + y, 'D'); } },
+    arms: 'd', feet: 'd', lightX: true },
 };
 export const SPECIES_ORDER = ['bunny', 'hamster', 'squirrel', 'hedgehog', 'kitten', 'duckling', 'piglet', 'panda'];
 
-function ghostPal(pal) {
-  const mix = (h, w) => { const n = parseInt(h.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255, t = [208, 236, 255];
-    return '#' + [r, g, b].map((v, i) => Math.round(v * (1 - w) + t[i] * w).toString(16).padStart(2, '0')).join(''); };
-  const o = {}; for (const k in pal) o[k] = mix(pal[k], k === 'b' || k === 'k' ? 0.45 : 0.62); return o;
-}
-const CHAR = { k: '#120e14', w: '#3a3440', g: '#2e2934', G: '#25212a', p: '#4a4250', P: '#18141c', c: '#433c4a', e: '#2a2530', E: '#1e1a22', d: '#1c1820', n: '#3a3036', N: '#2a2228', r: '#ff8a9a', R: '#6a2a3a' };
+function mixHex(h, to, w) { const n = parseInt(h.slice(1, 7), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+  return '#' + [r, g, b].map((v, i) => Math.round(v * (1 - w) + to[i] * w).toString(16).padStart(2, '0')).join(''); }
+function ghostPal(pal) { const o = {}; for (const k in pal) o[k] = mixHex(pal[k], [208, 236, 255], k === 'e' || k === 'k' ? 0.45 : 0.62); return o; }
+function charPal(pal) { const o = {}; for (const k in pal) o[k] = mixHex(pal[k], [24, 20, 30], k === 'k' ? 0.6 : 0.78); o.t = '#ffffff'; o.q = '#ff8a9a'; return o; }
 
 // Patch-ups after each death. k = how many times this pet already got this kind of death.
 const MARKS = {
   pop: [ // head came off: stitched neck, then more scars
-    (g, E) => { for (let x = 13; x <= 23; x++) set(g, x, 29, 'X'); for (let x = 13; x <= 23; x += 2) { set(g, x, 28, 'x'); set(g, x, 30, 'x'); } },
-    (g) => { for (let y = 15; y <= 21; y++) set(g, 7, y, 'X'); for (let y = 15; y <= 21; y += 2) { set(g, 6, y, 'x'); set(g, 8, y, 'x'); } },
-    (g) => { for (let x = 14; x <= 22; x++) set(g, x, 33, 'X'); for (let x = 14; x <= 22; x += 2) { set(g, x, 32, 'x'); set(g, x, 34, 'x'); } },
+    (g) => { for (let x = 11; x <= 24; x++) set(g, x, 27, 'X'); for (let x = 11; x <= 24; x += 2) { set(g, x, 26, 'x'); set(g, x, 28, 'x'); } },
+    (g) => { for (let y = 12; y <= 18; y++) set(g, 7, y, 'X'); for (let y = 12; y <= 18; y += 2) { set(g, 6, y, 'x'); set(g, 8, y, 'x'); } },
+    (g) => { for (let x = 14; x <= 21; x++) set(g, x, 32, 'X'); for (let x = 14; x <= 21; x += 2) { set(g, x, 31, 'x'); set(g, x, 33, 'x'); } },
   ],
-  anvil: [ // flattened: bandage wrap round the head (with a little bow), then the body
-    (g) => { for (let y = 12; y <= 14; y++) for (let x = 0; x < 36; x++) if (inHead(x, y)) set(g, x, y, y === 14 ? 'V' : 'v'); ell(g, 30.5, 11.5, 1.6, 1.4, 'v'); ell(g, 30.5, 15, 1.6, 1.4, 'v'); set(g, 29, 13, 'V'); },
-    (g) => { for (let y = 31; y <= 33; y++) for (let x = 11; x <= 25; x++) { const dx = (x + 0.5 - 18) / 7.2, dy = (y + 0.5 - 31) / 5.6; if (dx * dx + dy * dy <= 1) set(g, x, y, y === 33 ? 'V' : 'v'); } },
-    (g) => { ell(g, 13.5, 35.6, 2.4, 1.2, 'v'); set(g, 13, 35, 'V'); },
+  anvil: [ // flattened: bandage wrap round the head (with a little bow), then the body, then a foot
+    (g) => { for (let y = 10; y <= 12; y++) for (let x = 0; x < 36; x++) if (inHead(x, y)) set(g, x, y, y === 12 ? 'V' : 'v'); ell(g, 31, 9.6, 1.7, 1.4, 'v'); ell(g, 31, 13, 1.7, 1.4, 'v'); set(g, 30, 11, 'V'); },
+    (g) => { for (let y = 30; y <= 32; y++) for (let x = 10; x <= 25; x++) { const dx = (x + 0.5 - CX) / 7.4, dy = (y + 0.5 - 31.5) / 5.4; if (dx * dx + dy * dy <= 1) set(g, x, y, y === 32 ? 'V' : 'v'); } },
+    (g) => { ell(g, 12.8, 35.4, 2.6, 1.3, 'v'); set(g, 12, 35, 'V'); },
   ],
-  catapult: [ // launched: eye patch, then an arm cast, then a forehead plaster
-    (g, E) => { ell(g, E.rx, E.eyesY, 3, 3.4, 'z'); set(g, E.rx - 1, E.eyesY - 1, 'Z'); line(g, E.rx - 2, E.eyesY - 3, 8, 14, 'z'); line(g, E.rx + 2, E.eyesY - 3, 28, 14, 'z'); },
-    (g) => { ell(g, 11.5, 30.5, 1.8, 2.4, 'v'); set(g, 11, 30, 'V'); set(g, 12, 30, 'V'); },
-    (g) => { rect(g, 15, 11, 6, 2, 'a'); rect(g, 17, 11, 2, 2, 'A'); },
+  catapult: [ // launched: eye patch, then an arm sling, then a forehead plaster
+    (g, E) => { ell(g, E.rx, E.eyesY, 3.3, 3.9, 'z'); set(g, E.rx - 1, E.eyesY - 2, 'Z'); set(g, E.rx, E.eyesY - 2, 'Z'); line(g, E.rx - 2, E.eyesY - 3.5, 7, 11, 'z'); line(g, E.rx + 3, E.eyesY - 2, 31, 13, 'z'); },
+    (g) => { ell(g, 14.6, 30.4, 2.2, 2, 'v'); set(g, 14, 30, 'V'); set(g, 15, 30, 'V'); },
+    (g) => { rect(g, 14, 9, 8, 2, 'a'); rect(g, 17, 9, 2, 2, 'A'); },
   ],
   zap: [ // zapped: crossed band-aids on the cheek, then a frazzled tuft, then another plaster
-    (g, E) => { const cx = E.lx - 3, cy = 25; for (let i = -2; i <= 2; i++) { set(g, cx + i, cy + i, 'a'); set(g, cx + i, cy - i, 'a'); } set(g, cx, cy, 'A'); },
-    (g) => { for (const [x, y] of [[15, 10], [16, 9], [17, 10], [18, 8], [19, 10], [20, 9], [21, 10]]) set(g, x, y, 'z'); },
-    (g) => { rect(g, 24, 29, 5, 2, 'a'); rect(g, 26, 29, 1, 2, 'A'); },
+    (g) => { const cx = 7, cy = 19; for (let i = -2; i <= 2; i++) { set(g, cx + i, cy + i, 'a'); set(g, cx + i, cy - i, 'a'); } set(g, cx, cy, 'A'); },
+    (g) => { for (const [x, y] of [[14, 8], [15, 7], [16, 8], [17, 6], [18, 8], [19, 7], [20, 8], [21, 7]]) set(g, x, y, 'z'); },
+    (g) => { rect(g, 20, 31, 5, 2, 'a'); rect(g, 22, 31, 1, 2, 'A'); },
   ],
 };
 function drawInjuries(g, injuries, E) {
@@ -148,105 +160,77 @@ function drawInjuries(g, injuries, E) {
   }
 }
 
-// mood: happy | worried | scared | ghost | dead | char. injuries: ['pop','anvil',...]
+// eye patterns (5x7), always lit from the top-left
+const EYES = {
+  open: ['.eee.', 'ettee', 'ettee', 'eeiie', 'eiiIe', 'eiItI', '.IjI.'],
+  teary: ['.eee.', 'ettee', 'ettee', 'eeeie', 'esSse', 'SsssS', '.SSS.'],
+  squint: ['.....', '.....', '.eee.', 'e...e', '.....'],
+  blink: ['.....', '.....', '.....', 'eeeee', '.....'],
+  ghost: ['.....', '.....', '.....', 'e...e', '.eee.'],
+  x: ['.....', 'e...e', '.e.e.', '..e..', '.e.e.', 'e...e'],
+};
+
+// mood: happy | worried | scared | ghost | dead | char. injuries: ['pop','anvil',...]. opts.walk = phase (radians)
 export function critter(species, mood, t, injuries = [], opts = {}) {
   const sp = SPECIES[species] || SPECIES.bunny;
-  const g = grid(36, 38);
-  const ghost = mood === 'ghost', cx = 18;
-  const droop = mood === 'scared' || mood === 'dead' || mood === 'char';
-  if (sp.back && !ghost) sp.back(g, t, mood);
-  sp.ears(g, t, mood, droop);
+  const g = grid(36, 38), k = 'k';
+  const ghost = mood === 'ghost', dead = mood === 'dead' || mood === 'char';
+  const dr = mood === 'worried' ? 1 : mood === 'scared' || dead ? 1.5 : 0;
+  const walk = opts.walk != null, ph = opts.walk || 0, sway = walk ? Math.sin(ph) * 1 : 0;
+  if (sp.back && !ghost) layer(g, l => sp.back(l, t, mood), k);
+  layer(g, l => sp.ears(l, t, dr, sway), k);
+  const fL = walk ? Math.sin(ph) * 1.5 : 0, fR = -fL, feet = sp.feet || 'w';
   if (!ghost) {
-    const [brx, bry] = sp.bodyR || [7.2, 5.6];
-    ell(g, cx, 31, brx, bry, sp.body || 'w', { shade: 'g', sd: 1.4 });
-    // walk cycle: feet take turns lifting (opts.walk = phase in radians)
-    const wl = opts.walk != null ? Math.max(0, Math.sin(opts.walk)) * 1.6 : 0, wr = opts.walk != null ? Math.max(0, -Math.sin(opts.walk)) * 1.6 : 0;
-    ell(g, cx - 4.5, 35.6 - wl, 2.8, 1.5, sp.feet || 'w', { shade: sp.feet ? null : 'g', sd: 0.6 });
-    ell(g, cx + 4.5, 35.6 - wr, 2.8, 1.5, sp.feet || 'w', { shade: sp.feet ? null : 'g', sd: 0.6 });
-    if (sp.tail) sp.tail(g, t);
+    layer(g, l => { ell(l, 12.8 + fL, 35.2 - Math.max(0, fL), 3.3, 1.9, feet, { shade: sp.feet ? null : 'g', sd: 0.7 }); ell(l, 23.2 + fR, 35.2 - Math.max(0, fR), 3.3, 1.9, feet, { shade: sp.feet ? null : 'g', sd: 0.7 }); }, k);
+    layer(g, l => { ell(l, CX, 31.2, 7.6, 5.6, 'w', { shade: 'g', sd: 1.4 }); if (sp.belly) ell(l, CX, 32.2, 4, 3.2, sp.belly); }, k);
   } else {
-    for (let y = 0; y < 10; y++) {
-      const w = 7 - y * 0.5 + Math.sin(t * 4 + y * 0.9) * 0.7, x0 = cx + Math.sin(t * 2 + y * 0.6) * (y * 0.3);
-      for (let x = Math.floor(x0 - w); x <= x0 + w; x++) set(g, x, 27 + y, y > 6 && (x + y) % 3 === 0 ? null : 'w');
-    }
+    layer(g, l => { for (let y = 0; y < 10; y++) {
+      const w = 7 - y * 0.55 + Math.sin(t * 4 + y * 0.9) * 0.7, x0 = CX + Math.sin(t * 2 + y * 0.6) * (y * 0.3);
+      for (let x = Math.floor(x0 - w); x <= x0 + w; x++) set(l, x, 26 + y, y > 6 && (x + y) % 3 === 0 ? null : 'w'); } }, k);
   }
-  const armsUp = mood === 'happy' && Math.sin(t * 5) > 0.3;
-  ell(g, cx - 6.5, armsUp ? 26 : 30.5, 1.8, 2.4, sp.arms || 'w', { shade: sp.arms ? null : 'g', sd: 0.6 });
-  ell(g, cx + 6.5, armsUp ? 26 : 30.5, 1.8, 2.4, sp.arms || 'w', { shade: sp.arms ? null : 'g', sd: 0.6 });
-  const [hrx, hry] = sp.headR || [11.6, 9.4];
-  ell(g, cx, 20.5, hrx, hry, 'w', { shade: 'g', sd: 1.8 }); // big round head
-  if (sp.shade2 && !ghost) sp.shade2(g, t);
-  if (!ghost) ell(g, cx, 32, 3.8, 3, sp.belly || 'g');
+  layer(g, l => ell(l, CX, HY, HRX, HRY, 'w', { shade: 'g', sd: 1.3 }), k); // big round head
   if (sp.head) sp.head(g, t);
-  outline(g, 'k');
-
-  const E = { cx, eyesY: 20.5, lx: cx - 5, rx: cx + 5 };
-  if (sp.face) sp.face(g, E);
-  const blink = (t % 4.2) < 0.13;
-  const sparkle = (ex, ey, big) => {
-    const [erx, ery] = sp.eyeR || [2.7, 3.3];
-    ell(g, ex, ey, erx, ery, 'b'); ell(g, ex, ey + 1.2, sp.eyeR ? erx - 0.5 : 2.2, sp.eyeR ? ery * 0.5 : 1.6, 'B', { lower: true });
-    rect(g, ex - 1.6, ey - 2, 2, 2, 't'); set(g, ex + 1, ey + 1.5, 't');
-    if (big) set(g, ex - 0.6, ey + 2, 't');
-  };
-  const { eyesY, lx, rx } = E;
-  if (ghost) {
-    for (const ex of [lx, rx]) { set(g, ex - 1.5, eyesY, 'b'); set(g, ex - 0.5, eyesY + 1, 'b'); set(g, ex + 0.5, eyesY + 1, 'b'); set(g, ex + 1.5, eyesY, 'b'); }
-  } else if (mood === 'dead' || mood === 'char') { // cartoon X X eyes
-    for (const ex of [lx, rx]) for (let i = -1.5; i <= 1.5; i++) { set(g, ex + i, eyesY + i, mood === 'char' ? 't' : 'b'); set(g, ex + i, eyesY - i, mood === 'char' ? 't' : 'b'); }
-  } else if (blink) {
-    for (const ex of [lx, rx]) rect(g, ex - 1.5, eyesY + 0.5, 4, 1, 'b');
-  } else if (mood === 'happy' && Math.sin(t * 1.3) > 0.85) {
-    for (const ex of [lx, rx]) { set(g, ex - 1.5, eyesY + 1, 'b'); set(g, ex - 0.5, eyesY, 'b'); set(g, ex + 0.5, eyesY, 'b'); set(g, ex + 1.5, eyesY + 1, 'b'); }
+  // tiny paws: tucked on the tummy, raised in a little cheer when happy, clasped when pleading
+  if (!ghost) {
+    const cheer = mood === 'happy' && !walk && Math.sin(t * 5) > 0.3, plead = mood === 'worried';
+    const [px, py] = cheer ? [7.5, 26] : plead ? [16.2, 29.4] : [15, 30.4], arms = sp.arms || 'w';
+    layer(g, l => { ell(l, px, py, 1.7, 1.5, arms); ell(l, MC(px), py, 1.7, 1.5, arms); }, k);
+  }
+  const E = { cx: CX, eyesY: 20, lx: 11, rx: 24 };
+  // eyes
+  const blink = (t % 4.2) < 0.13 && !dead && !ghost;
+  let ep = mood === 'worried' || mood === 'scared' ? EYES.teary : EYES.open;
+  if (ghost) ep = EYES.ghost; else if (dead) ep = EYES.x; else if (blink) ep = EYES.blink; else if (mood === 'happy' && Math.sin(t * 1.3) > 0.85) ep = EYES.squint;
+  const emap = mood === 'char' || (dead && sp.lightX) ? { e: 't' } : {};
+  pat(g, 9, 17, ep, emap); pat(g, M(13), 17, ep, emap);
+  if (ep === EYES.open) both(g, 8, 18, 'e'); // lash flick
+  // blush
+  ell(g, 7.6, 23.6, 2.5, 1.3, 'q'); ell(g, MC(7.6), 23.6, 2.5, 1.3, 'q'); both(g, 7, 23, 't');
+  if (sp.whiskers) for (const [x, y] of [[3, 22], [4, 22], [3, 24], [4, 24]]) both(g, x, y, 'd');
+  // nose + mouth
+  const face = ghost ? 'calm' : dead ? 'dead' : mood;
+  if (sp.mouth === 'beak') {
+    const open = face === 'scared' || face === 'dead' ? 1.4 : face === 'worried' ? 0.6 : 0.9;
+    layer(g, l => { ell(l, CX, 22.6, 3.4, 1.5, 'n'); ell(l, CX, 23.8 + open * 0.3, 2.6, open, 'N'); }, 'N');
+    set(g, 17, 22, 't');
   } else {
-    sparkle(lx, eyesY, mood !== 'happy'); sparkle(rx, eyesY, mood !== 'happy');
+    let my = 22;
+    if (sp.mouth === 'snout') { layer(g, l => ell(l, CX, 22, 3, 1.9, 'n'), 'N'); set(g, 16, 22, 'N'); set(g, 19, 22, 'N'); my = 24.4; }
+    else { set(g, 17, 21, 'P'); set(g, 18, 21, 'P'); }
+    const y = Math.round(my) - 22;
+    if (face === 'happy' || face === 'calm') for (const [x, dy] of [[15, 1], [17, 1], [18, 1], [20, 1], [16, 2], [19, 2]]) set(g, x, 21 + y + dy, 'm');
+    else if (face === 'worried') { for (let x = 16; x <= 19; x++) { set(g, x, 23 + y, 'm'); set(g, x, 24 + y, 'n'); set(g, x, 25 + y, 'm'); } both(g, 15, 24 + y, 'm'); }
+    else if (face === 'scared') { const o = Math.sin(t * 16) > 0 ? 1 : 0; for (let x = 16; x <= 19; x++) { set(g, x, 23 + y, 'm'); set(g, x, 25 + y + o, 'm'); set(g, x, 24 + y, 'n'); if (o) set(g, x, 25 + y, 'n'); } both(g, 15, 24 + y, 'm'); if (o) both(g, 15, 25 + y, 'm'); }
+    else for (const [x, dy] of [[15, 2], [16, 1], [17, 2], [18, 2], [19, 1], [20, 2]]) set(g, x, 21 + y + dy, 'm'); // dead: wobbly line
   }
-  if (mood === 'worried' || mood === 'scared') {
-    for (let i = 0; i < 3; i++) { set(g, lx - 1 + i, eyesY - 4.5 - i * 0.4, 'k'); set(g, rx + 1 - i, eyesY - 4.5 - i * 0.4, 'k'); }
-  }
-  rect(g, lx - 4, 24, 3, 1.6, 'p'); rect(g, rx + 2, 24, 3, 1.6, 'p'); // blush
-  const sad = mood === 'worried' ? 'worried' : (mood === 'scared' || mood === 'dead' || mood === 'char') ? 'scared' : 'happy';
-  const mt = sp.mouth;
-  if (mt === 'beak') {
-    const open = sad === 'scared' ? 1.6 : sad === 'happy' ? 1 : 0.4;
-    ell(g, cx, 24.6, 4.6, 1.8, 'N'); ell(g, cx, 24.2, 4.2, 1.3, 'n');
-    if (open > 0.5) { ell(g, cx, 26 + open * 0.4, 3.2, open, 'N'); ell(g, cx, 25.8 + open * 0.4, 2.2, open * 0.6, 'R'); }
-    set(g, cx - 4.5, 23.6, 'N'); set(g, cx + 4.5, 23.6, 'N'); // smug upturned corners
-    set(g, cx - 1, 23.6, 'N'); set(g, cx + 1, 23.6, 'N');
-  } else if (mt === 'snout') {
-    ell(g, cx, 24.2, 3.6, 2.5, 'N'); ell(g, cx, 24, 3, 2, 'n'); rect(g, cx - 1.5, 23.5, 1, 1.5, 'N'); rect(g, cx + 0.5, 23.5, 1, 1.5, 'N');
-    if (sad === 'happy') { for (let x = -2; x <= 2; x++) set(g, cx + x, 27.4 - (Math.abs(x) === 2 ? 0.8 : 0), 'k'); set(g, cx + 1, 28, 't'); }
-    else if (sad === 'worried') for (let x = -2; x <= 2; x++) set(g, cx + x, 27.6, 'k');
-    else { ell(g, cx, 28, 1.6, 1.2, 'k'); }
-  } else {
-    rect(g, cx - 1, 23.5, 2, 1, 'P'); // tiny nose
-    if (sad === 'happy') {
-      if (mt === 'cat') { // little "w" grin with one fang
-        ell(g, cx, 25.4, 2.8, 2.2, 'k', { lower: true }); ell(g, cx, 25.4, 2, 1.5, 'R', { lower: true });
-        set(g, cx - 1.5, 25, 'k'); set(g, cx + 0.5, 25, 'k'); set(g, cx - 0.5, 24.5, 'k'); set(g, cx + 1.5, 25.6, 't'); set(g, cx - 0.5, 26.4, 'r');
-      } else {
-        ell(g, cx, 25, 3, 2.6, 'k', { lower: true }); ell(g, cx, 25, 2.1, 1.8, 'R', { lower: true });
-        set(g, cx - 1.5, 26.4, 'r'); set(g, cx - 0.5, 26.4, 'r');
-        if (mt === 'fang') { set(g, cx - 1.5, 25, 't'); set(g, cx + 1.5, 25, 't'); set(g, cx + 1.5, 25.8, 't'); }
-        else { rect(g, cx - 2, 25, 2, 1.5, 't'); rect(g, cx + 0.1, 25, 2, 1.5, 't'); }
-      }
-    } else if (sad === 'worried') {
-      for (let x = -2; x <= 2; x++) set(g, cx + x, 25.5 + (Math.abs(x) === 1 ? -0.6 : 0), 'k');
-      rect(g, cx - 1, 26, 2, 1, 't');
-    } else {
-      const open = Math.sin(t * 16) > 0 ? 1.7 : 1.2;
-      ell(g, cx, 26, 1.9, open + 0.6, 'k'); ell(g, cx, 26, 1.1, open - 0.2, 'R');
-      rect(g, cx - 1, 25, 2, 1, 't');
-    }
-  }
-  if (sp.after) sp.after(g, t, mood, E);
+  if (mood === 'worried' || mood === 'scared') { for (const [x, y] of [[9, 15], [10, 15], [11, 14], [12, 14]]) both(g, x, y, k); } // worried brows
   if (!ghost) drawInjuries(g, injuries, E);
-  if (mood === 'worried') { const d = (t * 6) % 5; set(g, cx + 11, 12 + d, 's'); set(g, cx + 11, 13 + d, 's'); set(g, cx + 12, 13 + d, 's'); }
-  if (mood === 'scared') { const d = Math.floor(t * 8) % 4; set(g, lx - 2, eyesY + 3 + d, 's'); set(g, rx + 2, eyesY + 3 + ((d + 2) % 4), 's'); }
-  if (ghost) for (let x = -5; x <= 5; x++) set(g, cx + x, 1 + (Math.abs(x) > 3 ? 1 : 0), 'y');
-  if (mood === 'char') for (const [x, y] of [[9, 6], [11, 4], [26, 5], [24, 3], [18, 7]]) set(g, x, y, 'Z'); // frizz
-  const pal = { ...FIX, c: '#fff6ea', d: '#555', e: '#888', E: '#666', n: '#fa3', N: '#c70', ...sp.pal };
-  g.pal = ghost ? ghostPal(pal) : mood === 'char' ? { ...pal, ...CHAR } : pal;
+  if (mood === 'worried') { const d = Math.floor(t * 5) % 4; for (let i = 0; i < 3; i++) both(g, 8, 23 + d + i, 's'); }
+  if (mood === 'scared') { const d = Math.floor(t * 8) % 4; for (let i = 0; i < 2; i++) { set(g, 8, 23 + d + i, 's'); set(g, M(8), 23 + ((d + 2) % 4) + i, 's'); } }
+  if (ghost) for (let x = -5; x <= 4; x++) set(g, CX + x, 1 + (x < -3 || x > 2 ? 1 : 0), 'y');
+  if (mood === 'char') for (const [x, y] of [[9, 4], [11, 2], [26, 3], [24, 1], [18, 5]]) set(g, x, y, 'Z'); // frizz
+  const pal = { ...FIX, ...EYE, n: '#ff8fa8', N: '#d86a8e', c: '#fff6ea', d: '#8a8098', ...sp.pal };
+  g.pal = ghost ? ghostPal(pal) : mood === 'char' ? charPal(pal) : pal;
   g.alpha = ghost ? 0.88 : 1;
   return g;
 }
