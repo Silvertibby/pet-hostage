@@ -157,7 +157,8 @@ export function critter(species, mood, t, injuries = [], opts = {}) {
   if (sp.back && !ghost) sp.back(g, t, mood);
   sp.ears(g, t, mood, droop);
   if (!ghost) {
-    ell(g, cx, 31, 7.2, 5.6, sp.body || 'w', { shade: sp.body === 'c' ? 'g' : 'g', sd: 1.4 });
+    const [brx, bry] = sp.bodyR || [7.2, 5.6];
+    ell(g, cx, 31, brx, bry, sp.body || 'w', { shade: 'g', sd: 1.4 });
     // walk cycle: feet take turns lifting (opts.walk = phase in radians)
     const wl = opts.walk != null ? Math.max(0, Math.sin(opts.walk)) * 1.6 : 0, wr = opts.walk != null ? Math.max(0, -Math.sin(opts.walk)) * 1.6 : 0;
     ell(g, cx - 4.5, 35.6 - wl, 2.8, 1.5, sp.feet || 'w', { shade: sp.feet ? null : 'g', sd: 0.6 });
@@ -172,7 +173,9 @@ export function critter(species, mood, t, injuries = [], opts = {}) {
   const armsUp = mood === 'happy' && Math.sin(t * 5) > 0.3;
   ell(g, cx - 6.5, armsUp ? 26 : 30.5, 1.8, 2.4, sp.arms || 'w', { shade: sp.arms ? null : 'g', sd: 0.6 });
   ell(g, cx + 6.5, armsUp ? 26 : 30.5, 1.8, 2.4, sp.arms || 'w', { shade: sp.arms ? null : 'g', sd: 0.6 });
-  ell(g, cx, 20.5, 11.6, 9.4, 'w', { shade: 'g', sd: 1.8 }); // big round head
+  const [hrx, hry] = sp.headR || [11.6, 9.4];
+  ell(g, cx, 20.5, hrx, hry, 'w', { shade: 'g', sd: 1.8 }); // big round head
+  if (sp.shade2 && !ghost) sp.shade2(g, t);
   if (!ghost) ell(g, cx, 32, 3.8, 3, sp.belly || 'g');
   if (sp.head) sp.head(g, t);
   outline(g, 'k');
@@ -181,7 +184,8 @@ export function critter(species, mood, t, injuries = [], opts = {}) {
   if (sp.face) sp.face(g, E);
   const blink = (t % 4.2) < 0.13;
   const sparkle = (ex, ey, big) => {
-    ell(g, ex, ey, 2.7, 3.3, 'b'); ell(g, ex, ey + 1.2, 2.2, 1.6, 'B', { lower: true });
+    const [erx, ery] = sp.eyeR || [2.7, 3.3];
+    ell(g, ex, ey, erx, ery, 'b'); ell(g, ex, ey + 1.2, sp.eyeR ? erx - 0.5 : 2.2, sp.eyeR ? ery * 0.5 : 1.6, 'B', { lower: true });
     rect(g, ex - 1.6, ey - 2, 2, 2, 't'); set(g, ex + 1, ey + 1.5, 't');
     if (big) set(g, ex - 0.6, ey + 2, 't');
   };
@@ -235,6 +239,7 @@ export function critter(species, mood, t, injuries = [], opts = {}) {
       rect(g, cx - 1, 25, 2, 1, 't');
     }
   }
+  if (sp.after) sp.after(g, t, mood, E);
   if (!ghost) drawInjuries(g, injuries, E);
   if (mood === 'worried') { const d = (t * 6) % 5; set(g, cx + 11, 12 + d, 's'); set(g, cx + 11, 13 + d, 's'); set(g, cx + 12, 13 + d, 's'); }
   if (mood === 'scared') { const d = Math.floor(t * 8) % 4; set(g, lx - 2, eyesY + 3 + d, 's'); set(g, rx + 2, eyesY + 3 + ((d + 2) % 4), 's'); }
@@ -489,3 +494,6 @@ export function drawShelfPet(ctx, p, t) {
   const hop = p.locked ? 0 : Math.abs(Math.sin(t * 3 + (p.rung || 0))) * 2;
   blit(ctx, g, 2, 3 - hop + 1);
 }
+
+// Drawing helpers for extra sprite sets (tools/).
+export const _draw = { grid, set, get, ell, rect, outline, ear, tri, line, pointyEar };

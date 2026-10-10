@@ -1,0 +1,36 @@
+<!doctype html><meta charset="utf-8"><title>Bunny options</title>
+<style>body{margin:0;background:#1b1626;color:#f4eee0;font-family:'Press Start 2P',monospace}canvas{display:block;image-rendering:pixelated}</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
+<canvas id="c"></canvas>
+<script type="module">
+import { critter, blit, drawScene } from '../app/art.js';
+import { OPTIONS } from './bunny-options.js';
+const q = new URLSearchParams(location.search), only = q.get('only'), S = 6;
+await document.fonts.load('12px "Press Start 2P"');
+const c = document.getElementById('c'), ctx = c.getContext('2d');
+if (only != null) { // big crop: happy, worried, freed walk frame
+  const o = OPTIONS[+only]; c.width = 3 * 40 * S; c.height = 40 * S + 70;
+  ctx.fillStyle = '#2c2340'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = '#ff6fa8'; ctx.font = '22px "Press Start 2P"'; ctx.fillText(`${only}. ${o.label}`, 16, 38);
+  ctx.fillStyle = '#a99fbd'; ctx.font = '12px "Press Start 2P"'; ctx.fillText('happy', 16, 64); ctx.fillText('worried', 40 * S + 16, 64); ctx.fillText('walking (freed)', 80 * S + 16, 64);
+  ctx.save(); ctx.translate(0, 70); ctx.scale(S, S);
+  blit(ctx, critter(o.key, 'happy', 0.4), 2, 1); blit(ctx, critter(o.key, 'worried', 0.9), 42, 1); blit(ctx, critter(o.key, 'happy', 0.4, [], { walk: 1.4 }), 82, 0);
+  ctx.restore();
+} else { // comparison sheet: one row per option
+  const rowH = 40 * 4 + 16, W = 720; c.width = W; c.height = OPTIONS.length * rowH + 60;
+  ctx.fillStyle = '#1b1626'; ctx.fillRect(0, 0, W, c.height);
+  ctx.fillStyle = '#ff6fa8'; ctx.font = '18px "Press Start 2P"'; ctx.fillText('PICK A BUNNY', 16, 38);
+  OPTIONS.forEach((o, i) => {
+    const y = 60 + i * rowH;
+    ctx.fillStyle = i ? '#2a2238' : '#221b2e'; ctx.fillRect(8, y, W - 16, rowH - 8);
+    ctx.fillStyle = i ? '#ffd84a' : '#a99fbd'; ctx.font = '16px "Press Start 2P"'; ctx.fillText(`${i}`, 20, y + 34);
+    ctx.font = '12px "Press Start 2P"'; ctx.fillText(o.label.toUpperCase(), 20, y + 60);
+    ctx.fillStyle = '#a99fbd'; ctx.font = '9px "Press Start 2P"';
+    ['happy', 'worried', 'walking'].forEach((l, j) => ctx.fillText(l, 150 + j * 180, y + rowH - 16));
+    ctx.save(); ctx.translate(140, y + 2); ctx.scale(4, 4);
+    blit(ctx, critter(o.key, 'happy', 0.4), 0, 0); blit(ctx, critter(o.key, 'worried', 0.9), 45, 0); blit(ctx, critter(o.key, 'happy', 0.4, [], { walk: 1.4 }), 90, -1);
+    ctx.restore();
+  });
+}
+document.title = 'ready';
+</script>
