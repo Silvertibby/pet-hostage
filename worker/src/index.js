@@ -2,7 +2,9 @@ import { RULES, localParts, newState, migrate, settle, view, petAt, needFor, DEA
 import { note } from './messages.js';
 import { sendPush } from './push.js';
 
-const KEY = 'state';
+// Multi-player: one KV key per player, "player:<CODE>". The old single-player key "state" is migrated once.
+const PKEY = c => 'player:' + c;
+const LEGACY = 'state';
 // Nudge slots (PT hour -> send if today's progress below this fraction). Morning report at REPORT_HOUR.
 const NUDGE_SLOTS = { 12: 0.3, 15: 0.5, 18: 0.75, 21: 1 };
 const REPORT_HOUR = 8;
@@ -16,14 +18,37 @@ const cors = {
 const json = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'Content-Type': 'application/json', ...cors } });
 const text = (t, s = 200) => new Response(t, { status: s, headers: { 'Content-Type': 'text/plain; charset=utf-8', ...cors } });
 
-// Old (v0.1) states are migrated on first read, keeping code, steps, sync log and push subscription.
-const load = async env => {
-  const s = await env.PH.get(KEY); if (!s) return null;
+const normCode = c => (c || '').toString().trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+// Old states (v0.1 shape) are upgraded on read, keeping code, steps, sync log and push subscription.
+const load = async (env, code) => {
+  if (!code) return null;
+  const s = await env.PH.get(PKEY(code)); if (!s) return null;
   const st = JSON.parse(s);
-  if (st.v !== 2) { const m = migrate(st, localParts().date); await env.PH.put(KEY, JSON.stringify(m)); return m; }
+  if (st.v !== 2) { const m = migrate(st, localParts().date); await env.PH.put(PKEY(code), JSON.stringify(m)); return m; }
   return st;
 };
-const save = (env, st) => env.PH.put(KEY, JSON.stringify(st));
+const save = (env, st) => env.PH.put(PKEY(st.code), JSON.stringify(st));
+// One-time move of the single-player "state" key to player:<its code>. A copy stays under legacy:state.
+let legacyChecked = false;
+export async function migrateLegacy(env) {
+  if (legacyChecked) return;
+  const s = await env.PH.get(LEGACY);
+  if (s) {
+    let st = JSON.parse(s);
+    if (st.v !== 2) st = migrate(st, localParts().date);
+    if (st.code && !(await env.PH.get(PKEY(st.code)))) await env.PH.put(PKEY(st.code), JSON.stringify(st));
+    await env.PH.put('legacy:state', s);
+    await env.PH.delete(LEGACY);
+    console.log('migrated legacy state to', PKEY(st.code));
+  }
+  legacyChecked = true;
+}
+export const _resetLegacyFlag = () => { legacyChecked = false; }; // tests
+async function allCodes(env) {
+  const codes = []; let cursor;
+  do { const r = await env.PH.list({ prefix: 'player:', cursor }); for (const k of r.keys) codes.push(k.name.slice(7)); cursor = r.list_complete ? null : r.cursor; } while (cursor);
+  return codes;
+}
 
 function makeCode() {
   const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -104,17 +129,29 @@ export default {
 
     if (path === '/') return text('Pet Hostage worker. The Raccoon is listening.');
     if (path === '/vapid') return json({ publicKey: env.VAPID_PUBLIC_KEY });
-    if (path === '/status') { const st = await load(env); return json({ claimed: !!st }); }
-    if (path === '/claim' && req.method === 'POST') {
-      if (await load(env)) return json({ error: 'already claimed' }, 409);
-      const st = newState(makeCode(), today); await save(env, st);
+    await migrateLegacy(env);
+    if (path === '/status') return json({ multiplayer: true });
+    if (path === '/claim' && req.method === 'POST') { // every fresh player gets their own code + ladder
+      let c; do { c = makeCode(); } while (await env.PH.get(PKEY(c)));
+      const st = newState(c, today); await save(env, st);
+      console.log('claim', c);
       return json({ code: st.code, state: view(st) });
     }
 
     const body = await readBody(req);
-    const st = await load(env);
-    if (!st) { if (path === '/sync') console.log('sync', 'unclaimed'); return json({ error: 'unclaimed' }, 404); }
-    const code = (url.searchParams.get('code') || body.code || '').toString().trim().toUpperCase();
+    const code = normCode(url.searchParams.get('code') || body.code);
+    const st = await load(env, code);
+    if (!st) {
+      // Codes separate players: never let a sync or read land in someone else's game.
+      const error = code ? 'unknown code' : 'code required';
+      if (path === '/sync') {
+        console.log('sync', JSON.stringify({ ok: false, error, code: code || null, steps: clip(url.searchParams.get('steps') ?? body.steps) }));
+        const msg = code ? `Unknown code ${code}. Nothing was saved. Open Pet Hostage → Step sync and copy your sync URL again.` : 'No code in the URL. Nothing was saved. Open Pet Hostage → Step sync and copy your sync URL.';
+        if (req.method === 'GET' || url.searchParams.has('plain')) return text(msg, code ? 404 : 400);
+        return json({ error, reason: msg }, code ? 404 : 400);
+      }
+      return json({ error }, code ? 404 : 400);
+    }
     const events = settle(st, today);
     if (events.length) st.pendingReport = [...(st.pendingReport || []), ...events]; // pushed at the morning report
 
@@ -124,7 +161,7 @@ export default {
       const raw = url.searchParams.get('steps') ?? body.steps ?? body.raw ?? null;
       const test = url.searchParams.has('test') || !!body.test || undefined; // test entries can be cleared later
       const dry = url.searchParams.has('dry') || !!body.dry || undefined;     // validate + log only, never stores steps
-      const codeNote = !code ? 'no code' : code === st.code ? undefined : 'code mismatch (accepted)';
+      const codeNote = undefined; // the code always matches now: it's how we found this player
       const steps = parseSteps(raw);
       if (!Number.isFinite(steps) || steps < 0 || steps > 300000) {
         const reason = raw == null || raw === '' ? 'steps missing (is the Statistics Result variable after steps= ?)' : 'steps not a number: ' + clip(raw);
@@ -188,7 +225,16 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    const st = await load(env);
+    await migrateLegacy(env);
+    for (const code of await allCodes(env)) {
+      try { await tickPlayer(env, code); } catch (e) { console.log('cron error', code, String(e)); }
+    }
+  },
+};
+
+// Hourly: settle finished days, morning report, nudges. One player at a time.
+async function tickPlayer(env, code) {
+    const st = await load(env, code);
     if (!st) return;
     const np = localParts();
     const events = settle(st, np.date);
@@ -207,5 +253,4 @@ export default {
     }
     for (const k of Object.keys(st.sent)) if (k < np.date) delete st.sent[k];
     await save(env, st);
-  },
-};
+}

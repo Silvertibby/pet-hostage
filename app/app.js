@@ -1,7 +1,7 @@
 import { drawScene, drawDeath, drawShelfPet, raccoon, blit, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.2.1';
+const VERSION = 'v0.3.0';
 const GOAL = 10000;
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
 const APP_URL = 'https://silvertibby.github.io/pet-hostage/';
@@ -18,7 +18,7 @@ const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platfor
 $('#ver').textContent = VERSION;
 
 let code = localStorage.getItem('ph.code') || '';
-let state = null, tab = 'home', anim = null, lastFetch = 0, unclaimed = false, deathPlaying = false, lastUpdated = 0, refreshing = false;
+let state = null, tab = 'home', anim = null, lastFetch = 0, unclaimed = false, welcome = false, deathPlaying = false, lastUpdated = 0, refreshing = false;
 
 // Pick up a code from the URL (?c=CODE or #c=CODE), e.g. after Add to Home Screen.
 {
@@ -178,9 +178,11 @@ function renderShelf() {
     <p class="dim small">Miss a day and the current hostage dies. Then The Raccoon takes the last pet on this shelf back, and you rescue it again with its original day count.</p>
     <h2>THE LADDER</h2>
     <div class="pgrid ladder">${cards(ladder)}</div>
+    <p><button class="btn small" id="share2">Share with a friend</button> <span class="dim small">They get their own ladder.</span></p>
     <h2>OBITUARIES</h2>
     <div class="card">${(s.deathLog || []).length ? s.deathLog.map(d => `<div class="grave"><span>🪦</span><span><b>${esc(d.name)}</b> <span class="dim">${fmtDate(d.date)} · ${esc(DEATH_TEXT[d.type] || '')}. ${d.rekidnap.same ? 'Stitched back up.' : esc(d.rekidnap.name) + ' re-kidnapped.'}</span></span></div>`).join('') : '<span class="dim">Nobody has died. Yet.</span>'}</div>
   `;
+  $('#share2').addEventListener('click', shareApp);
   animateShelf();
 }
 
@@ -297,9 +299,18 @@ function renderSettings() {
       <p><button class="btn" id="save">Save</button></p>
       <p class="dim">Rules: the ransom is always <b>10,000 steps a day</b>, judged at midnight Pacific. Each pet on the ladder needs a streak to rescue: 3 days for the bunny, then 5, 7, 9... Rescued pets go on the shelf and The Raccoon grabs the next animal. Miss a single day and the current hostage meets a cartoon end, then The Raccoon takes your last rescued pet back, and you rescue it again with its original day count. Pets that died come back patched up.</p>
     </div>
-    <h2>THIS DEVICE</h2>
+    <h2>PLAY WITH A FRIEND</h2>
     <div class="card">
-      <p class="dim">Sync code <span class="code">${esc(code)}</span>. Your hostages live on the server, so any device that opens <span class="code">${APP_URL}</span> shows him.</p>
+      <p class="dim">Send a friend the app link. They get their own raccoon, their own ladder and their own code. Your pets stay yours.</p>
+      <p><button class="btn acc" id="share">Share with a friend</button></p>
+    </div>
+    <h2>YOUR CODE</h2>
+    <div class="card">
+      <div class="row" style="justify-content:space-between"><span class="big-code">${esc(code)}</span><button class="btn small" id="copycode">Copy</button></div>
+      <p class="dim">Keep this somewhere safe. If the home-screen app is ever deleted or forgets you, open the app, tap <b>Restore with code</b>, and type it in. Your Shortcut uses it too.</p>
+      <label for="rcode">Restore a different code on this device</label>
+      <div class="row"><input type="text" id="rcode" maxlength="20" placeholder="e.g. 3YS267ZCSA" autocapitalize="characters" autocomplete="off" style="flex:1;width:auto"><button class="btn" id="rgo">Restore</button></div>
+      <div id="rmsg" class="dim" style="margin-top:6px"></div>
     </div>
     <p class="dim">${VERSION}</p>
   `;
@@ -307,6 +318,9 @@ function renderSettings() {
     try { state = await api('/settings', { name: $('#pname').value }); toast('Saved. The Raccoon has updated his notes.'); } catch (e) { toast('Save failed: ' + e.message); }
   });
   $('#pushon').addEventListener('click', enablePush);
+  $('#share').addEventListener('click', shareApp);
+  $('#copycode').addEventListener('click', async () => { try { await navigator.clipboard.writeText(code); toast('Code copied'); } catch { toast('Copy failed, long-press to select'); } });
+  $('#rgo').addEventListener('click', () => restoreCode($('#rcode').value, $('#rmsg')));
   $('#pushtest').addEventListener('click', async () => {
     $('#pushmsg').textContent = 'Sending…';
     try { await api('/test-nudge', {}); $('#pushmsg').textContent = 'Sent. It should pop up in a few seconds.'; }
@@ -333,21 +347,60 @@ async function enablePush() {
   } catch (e) { msg.textContent = 'Could not enable: ' + e.message; }
 }
 
-function renderWelcome() {
+// ---- multi-player helpers ----
+async function shareApp() {
+  const data = { title: 'Pet Hostage', text: 'A raccoon in a fedora took a bunny hostage. The ransom is 10,000 steps a day. Get your own hostage:', url: APP_URL };
+  try { if (navigator.share) { await navigator.share(data); return; } } catch (e) { if (e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(APP_URL); toast('Link copied. Send it to a friend!'); } catch { toast(APP_URL, 6000); }
+}
+function setCode(c) {
+  if (code && code !== c) { const old = JSON.parse(localStorage.getItem('ph.oldCodes') || '[]'); if (!old.includes(code)) localStorage.setItem('ph.oldCodes', JSON.stringify([code, ...old].slice(0, 5))); }
+  code = c; localStorage.setItem('ph.code', c); rememberInUrl();
+}
+async function restoreCode(raw, msgEl) {
+  const c = String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (c.length < 6) { msgEl.textContent = 'That code looks too short.'; return; }
+  msgEl.textContent = 'Checking…';
+  try {
+    const r = await fetch(WORKER + '/state?code=' + encodeURIComponent(c) + '&_=' + Date.now(), { cache: 'no-store' });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 404) { msgEl.textContent = `No game found for ${c}. Check the letters (it's on the Step sync tab and in your Shortcut's URL).`; return; }
+    if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    setCode(c); state = j; lastUpdated = Date.now(); welcome = false; unclaimed = false;
+    toast(`Welcome back. ${j.hostage.name} missed you.`); go('home');
+  } catch (e) { msgEl.textContent = 'Could not reach The Raccoon: ' + e.message; }
+}
+
+function renderWelcome(lostCode) {
   const notHome = isIOS && !isStandalone();
+  welcome = true; $('#tabs').hidden = true;
   view.innerHTML = `<div class="welcome">
     <canvas id="scene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas>
+    ${lostCode ? `<p class="hint">This device remembers code <b>${esc(lostCode)}</b>, but The Raccoon has no game under it. Try restoring with your code below.</p>` : ''}
     <p>A raccoon in a fedora has taken a bunny hostage.</p>
     <p class="dim">The ransom: <b>10,000 steps a day</b>, 3 days in a row. Then he grabs someone else. Miss a single day and, well.</p>
     ${notHome ? `<p class="hint">Tip: tap Share → <b>Add to Home Screen</b> first. The home-screen app is the one that can get notifications.</p>` : ''}
     <p><button class="btn acc" id="claim">Accept the terms</button></p>
+    <p><button class="btn ghost small" id="showrestore">Already playing? Restore with code</button></p>
+    <div class="card" id="restorebox" ${lostCode ? '' : 'hidden'} style="text-align:left">
+      <label for="rcode">Your code (Step sync tab, or the code= part of your Shortcut's URL)</label>
+      <div class="row"><input type="text" id="rcode" maxlength="20" placeholder="e.g. 3YS267ZCSA" autocapitalize="characters" autocomplete="off" value="${esc(lostCode || '')}" style="flex:1;width:auto"><button class="btn acc" id="rgo">Restore</button></div>
+      <div id="rmsg" class="dim" style="margin-top:6px"></div>
+    </div>
   </div>`;
-  state = { mood: 'scared', hostage: { species: 'bunny', injuries: [] } };
-  startScene($('#scene'));
-  $('#claim')?.addEventListener('click', async () => {
-    try { const r = await api('/claim', {}); code = r.code; localStorage.setItem('ph.code', code); state = r.state; rememberInUrl(); go('sync'); toast('Deal. Now set up step sync.'); }
-    catch (e) { if (e.status === 409) boot2(); else toast('Could not reach The Raccoon: ' + e.message); }
+  welcomeScene();
+  $('#showrestore').addEventListener('click', () => { $('#restorebox').hidden = false; $('#rcode').focus(); });
+  $('#rgo').addEventListener('click', () => restoreCode($('#rcode').value, $('#rmsg')));
+  $('#claim').addEventListener('click', async () => {
+    try { const r = await api('/claim', {}); setCode(r.code); state = r.state; lastUpdated = Date.now(); welcome = false; unclaimed = false; go('sync'); toast('Deal. Now set up step sync.'); }
+    catch (e) { toast('Could not reach The Raccoon: ' + e.message); }
   });
+}
+function welcomeScene() {
+  stopAnim();
+  const c = $('#scene'), ctx = c.getContext('2d'), t0 = performance.now();
+  const loop = now => { if (!c.isConnected || !welcome) return; drawScene(ctx, { mood: 'scared', species: 'bunny', injuries: [] }, (now - t0) / 1000); anim = requestAnimationFrame(loop); };
+  anim = requestAnimationFrame(loop);
 }
 
 function render() {
@@ -362,12 +415,14 @@ document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click
 
 async function refresh(force) {
   if (DEMO) return;
+  if (!code) { state = null; unclaimed = true; return false; } // fresh device: welcome screen
   if (!force && Date.now() - lastFetch < 5000) return;
   lastFetch = Date.now();
   try { state = adoptCode(await api('/state')); lastUpdated = Date.now(); return true; }
   catch (e) {
-    // Never forget the code. Only a server that has truly never been claimed shows the welcome screen.
-    if (e.status === 404 && e.body?.error === 'unclaimed') { state = null; unclaimed = true; return false; }
+    // Never forget the code, even if the server doesn't know it: the welcome screen offers to restore it.
+    if (e.status === 404 && e.body?.error === 'unknown code') { state = null; unclaimed = true; return false; }
+    if (e.status === 400 && e.body?.error === 'code required') { state = null; unclaimed = true; return false; }
     toast('Offline? ' + e.message); return false;
   }
 }
@@ -386,7 +441,7 @@ function spinner(on, text) {
 }
 function hideSpinner() { const p = $('#ptr'); p.classList.remove('show', 'spin'); p.style.transform = ''; }
 async function doRefresh(why) {
-  if (DEMO || refreshing) return;
+  if (DEMO || refreshing || welcome || !code) return;
   refreshing = true;
   const before = state ? state.todaySteps : null, beforeSync = state ? state.lastSync : null;
   spinner(true, 'Checking with The Raccoon…');
@@ -396,7 +451,7 @@ async function doRefresh(why) {
   await new Promise(r => setTimeout(r, Math.max(0, 500 - (Date.now() - t0)))); // let the spinner be seen
   refreshing = false; hideSpinner();
   if (pullQueued) { pullQueued = false; return doRefresh('pull'); }
-  if (!state) { if (unclaimed) renderWelcome(); return; }
+  if (!state) { if (unclaimed) renderWelcome(code || null); return; }
   if (!deathPlaying) {
     if (tab === 'home' || tab === 'shelf') { const y = window.scrollY; render(); window.scrollTo(0, y); }
     else { if ($('#synclog')) $('#synclog').innerHTML = syncLogHtml(state); maybePlayDeath(); }
@@ -475,8 +530,8 @@ function demoState(m) {
 async function boot2() {
   unclaimed = false;
   await refresh(true);
-  if (state) { $('#tabs').hidden = false; render(); }
-  else if (unclaimed) renderWelcome();
+  if (state) { welcome = false; $('#tabs').hidden = false; render(); }
+  else if (unclaimed) renderWelcome(code || null);
   else renderOffline();
 }
 async function boot() {
@@ -484,6 +539,7 @@ async function boot() {
   if ('serviceWorker' in navigator && !DEMO) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => { swReg = r; r.update().catch(() => {}); }).catch(() => {});
   if (DEMO && qs.has('spin')) setTimeout(() => spinner(true, 'Checking with The Raccoon…'), 50);
   if (DEMO) {
+    if (DEMO === 'welcome' || DEMO === 'lost') { renderWelcome(DEMO === 'lost' ? 'K7PQ2MXW9A' : null); return; }
     code = 'DEMO123456'; state = demoState(DEMO); tab = qs.get('tab') || (DEMO === 'lineup' ? 'shelf' : 'home'); render();
     if (DEMO === 'death') playDeath(state.lastDeath, qs.has('f') ? +qs.get('f') : undefined);
     return;

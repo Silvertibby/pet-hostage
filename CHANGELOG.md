@@ -1,5 +1,10 @@
 # Pet Hostage changelog
 
+## v0.3.0 (2026-10-09)
+- Multiplayer: share the app with a friend (Settings or Shelf → Share with a friend) and they get their own raccoon, ladder, shelf and code.
+- Restore with code: if the home-screen app ever forgets you, type your code to get your pets back.
+- Syncs with a code the game doesn't know are now turned away (nothing saved) instead of being counted. Your existing Shortcut keeps working unchanged.
+
 ## v0.2.1 (2026-10-09)
 - Pull down on any screen to refresh (The Raccoon spins while it checks), plus a Refresh button and an "Updated just now" line on the home screen.
 - Coming back from Shortcuts after Sync now refreshes right away, then twice more over the next few seconds so the new steps show up.
