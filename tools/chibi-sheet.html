@@ -1,0 +1,17 @@
+<!doctype html><meta charset="utf-8"><title>chibi sheet</title>
+<style>body{margin:0;background:#1b1626}canvas{display:block;image-rendering:pixelated}</style>
+<canvas id="c"></canvas>
+<script type="module">
+import { critter, blit, SPECIES_ORDER, pxText } from '../app/art.js?v=1';
+const q = new URLSearchParams(location.search), S = +(q.get('s') || 5);
+const cols = [['happy', 0.5, []], ['worried', 0.3, []], ['walk', 0.5, []], ['scared', 0.2, []], ['dead', 0.5, []], ['ghost', 0.5, []], ['char', 0.5, []], ['happy', 0.5, ['pop', 'anvil']], ['happy', 0.5, ['catapult', 'zap', 'pop']]];
+const c = document.getElementById('c'), ctx = c.getContext('2d');
+c.width = (cols.length * 40 + 4) * S; c.height = (SPECIES_ORDER.length * 40 + 12) * S;
+ctx.fillStyle = '#2c2340'; ctx.fillRect(0, 0, c.width, c.height); ctx.scale(S, S);
+ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#a99fbd'; ctx.font = `bold ${3 * S}px monospace`; cols.forEach(([m], j) => ctx.fillText(j === 7 ? 'injured x2' : j === 8 ? 'injured x3' : m, (j * 40 + 4) * S, 8 * S)); ctx.restore();
+SPECIES_ORDER.forEach((sp, i) => cols.forEach(([m, t, inj], j) => {
+  const g = m === 'walk' ? critter(sp, 'happy', t, inj, { walk: 1.3 }) : critter(sp, m, t, inj);
+  blit(ctx, g, j * 40 + 2, i * 40 + 11);
+}));
+const pre = document.createElement('pre'); pre.textContent = c.toDataURL('image/png'); document.body.appendChild(pre);
+</script>

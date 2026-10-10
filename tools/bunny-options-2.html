@@ -1,0 +1,32 @@
+<!doctype html><meta charset="utf-8"><title>Bunny options 2</title>
+<style>body{margin:0;background:#1b1626}canvas{display:block;image-rendering:pixelated}</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
+<canvas id="c"></canvas>
+<script type="module">
+import { blit } from '../app/art.js';
+const { LANKY, lanky } = await import('./bunny-options-2.js?v=' + Date.now());
+const q = new URLSearchParams(location.search), only = q.get('only');
+await document.fonts.load('12px "Press Start 2P"');
+const c = document.getElementById('c'), ctx = c.getContext('2d');
+const poses = o => [lanky(o, 'happy', 0), lanky(o, 'worried', 0.3), lanky(o, 'happy', 0, { walk: 1.3 })];
+if (only != null) {
+  const o = LANKY[+only - 1], S = 7; c.width = 3 * 34 * S + 20; c.height = 50 * S + 80;
+  ctx.fillStyle = '#2c2340'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = '#ff6fa8'; ctx.font = '22px "Press Start 2P"'; ctx.fillText(`${only}. ${o.label}`, 16, 38);
+  ctx.fillStyle = '#a99fbd'; ctx.font = '12px "Press Start 2P"'; ['happy', 'worried', 'walking'].forEach((l, j) => ctx.fillText(l, 20 + j * 34 * S, 66));
+  ctx.save(); ctx.translate(10, 76); ctx.scale(S, S); poses(o).forEach((g, j) => blit(ctx, g, j * 34, 0)); ctx.restore();
+} else {
+  const S = 4, rowH = 50 * S + 24, W = 720; c.width = W; c.height = LANKY.length * rowH + 60;
+  ctx.fillStyle = '#1b1626'; ctx.fillRect(0, 0, W, c.height);
+  ctx.fillStyle = '#ff6fa8'; ctx.font = '18px "Press Start 2P"'; ctx.fillText('PICK A BUNNY (ROUND 2)', 16, 38);
+  LANKY.forEach((o, i) => {
+    const y = 60 + i * rowH;
+    ctx.fillStyle = '#2a2238'; ctx.fillRect(8, y, W - 16, rowH - 8);
+    ctx.fillStyle = '#ffd84a'; ctx.font = '18px "Press Start 2P"'; ctx.fillText(`${i + 1}`, 22, y + 38);
+    ctx.font = '11px "Press Start 2P"'; ctx.fillText(o.label.toUpperCase(), 22, y + 66);
+    ctx.fillStyle = '#a99fbd'; ctx.font = '9px "Press Start 2P"'; ['happy', 'worried', 'walking'].forEach((l, j) => ctx.fillText(l, 170 + j * 180, y + rowH - 16));
+    ctx.save(); ctx.translate(150, y + 2); ctx.scale(S, S); poses(o).forEach((g, j) => blit(ctx, g, j * 45, 0)); ctx.restore();
+  });
+}
+document.title = 'ready';
+</script>
