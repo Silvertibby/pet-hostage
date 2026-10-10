@@ -289,7 +289,7 @@ export function planNudge(st, np) {
   const n = NUDGES2[idx];
   const voice = (dayCoin(st.code, np.date) + idx) % 2 === 0 ? 'pet' : 'raccoon'; // one of each per day
   const h = st.hostage, p = petAt(st, h.rung), need = needFor(h.rung);
-  const v = { name: p.name, animal: p.species === 'panda' ? 'panda cub' : p.species, steps: steps.toLocaleString('en-US'), left: (RULES.GOAL - steps).toLocaleString('en-US'),
+  const v = { name: p.name, species: p.species, animal: p.species === 'panda' ? 'panda cub' : p.species, steps: steps.toLocaleString('en-US'), left: (RULES.GOAL - steps).toLocaleString('en-US'),
     dish: DISH[p.species] || 'stew', item: ITEM[p.species] || 'a hat', day: h.streak + 1, need };
   return { id: n.id, voice, title: voice === 'pet' ? `${PET_EMOJI[p.species] || '🐾'} ${p.name}` : '🦝 The Raccoon', body: nudgeText(voice, n.slot, v) };
 }

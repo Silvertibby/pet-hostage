@@ -251,6 +251,7 @@ export function raccoon(t, look = 0, annoyed = false) {
   rect(g, 10 + sh, 15, 1, 2, 'b'); rect(g, 20 + sh, 15, 1, 2, 'b');
   for (let i = 0; i < 4; i++) { set(g, 8 + i, 12 + i * 0.35, 'k'); set(g, 23 - i, 12 + i * 0.35, 'k'); } // angry brows
   if (annoyed) { rect(g, 9, 15, 3, 1, 'd'); rect(g, 19, 15, 3, 1, 'd'); } // half-lidded, unimpressed
+  if ((t + 1.1) % 3.7 < 0.14) { rect(g, 9, 15, 3, 2, 'd'); rect(g, 19, 15, 3, 2, 'd'); } // blink
   rect(g, 14, 19, 3, 2, 'b');
   for (let x = 13; x <= 19; x++) set(g, x, 23 - (x > 16 ? (x - 16) * 0.4 : 0), 'k'); // smirk
   // fedora
@@ -316,6 +317,9 @@ function room(ctx, t, dark) {
   for (let y = 0; y < 20; y++) px(ctx, 64 + sw * (y / 20), y, 1, 1, '#111');
   ctx.save(); ctx.globalAlpha = dark ? 0.05 : 0.09; ctx.fillStyle = '#ffe9a0';
   ctx.beginPath(); ctx.moveTo(64 + sw, 22); ctx.lineTo(18 + sw * 3, 112); ctx.lineTo(110 + sw * 3, 112); ctx.closePath(); ctx.fill(); ctx.restore();
+  if (!dark) for (let i = 0; i < 9; i++) { // dust motes drifting in the lamp light
+    const f = ((t * (0.03 + i * 0.004) + i * 0.137) % 1), y = 30 + f * 70, x = 64 + sw * 2 + Math.sin(t * 0.7 + i * 2.1) * (6 + f * 30);
+    ctx.save(); ctx.globalAlpha = 0.35 * Math.sin(Math.PI * f); px(ctx, x, y, 1, 1, '#fff3c4'); ctx.restore(); }
   px(ctx, 62 + sw, 20, 5, 4, dark ? '#776a3a' : '#ffe27a'); px(ctx, 63 + sw, 24, 3, 1, dark ? '#776a3a' : '#ffd84a'); px(ctx, 63 + sw, 19, 3, 1, '#666');
 }
 function cage(ctx, x, y, w, h, open = 0) {
