@@ -1,12 +1,14 @@
 // Pet Hostage service worker: push notifications + network-first offline cache.
-const CACHE = 'ph-v0.2.0';
+const CACHE = 'ph-v0.2.1';
 const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'art.js', 'icons/icon-192.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).catch(() => {})); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
-  if (e.request.method !== 'GET' || u.origin !== location.origin) return;
-  e.respondWith(fetch(e.request).then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return r; })
+  // Worker API (workers.dev) and anything cross-origin: network-only, never cached.
+  if (e.request.method !== 'GET' || u.origin !== location.origin || u.hostname.endsWith('workers.dev')) return;
+  if (u.pathname.endsWith('/sw.js')) return;
+  e.respondWith(fetch(e.request, { cache: 'no-cache' }).then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return r; })
     .catch(() => caches.match(e.request, { ignoreSearch: true }).then(r => r || caches.match('index.html'))));
 });
 self.addEventListener('push', e => {

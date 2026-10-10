@@ -1,5 +1,10 @@
 # Pet Hostage changelog
 
+## v0.2.1 (2026-10-09)
+- Pull down on any screen to refresh (The Raccoon spins while it checks), plus a Refresh button and an "Updated just now" line on the home screen.
+- Coming back from Shortcuts after Sync now refreshes right away, then twice more over the next few seconds so the new steps show up.
+- Step data is never cached, and the app picks up its own updates faster.
+
 ## v0.2.0 (2026-10-09)
 - New rules: the ransom is always 10,000 steps a day, and it's now a rescue ladder. Each rescue takes a longer streak, and each rung is a different (very cute) animal.
 - A Rescued shelf where saved pets hang out, plus the ladder and an obituaries list.

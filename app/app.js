@@ -1,7 +1,7 @@
 import { drawScene, drawDeath, drawShelfPet, raccoon, blit, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.2.0';
+const VERSION = 'v0.2.1';
 const GOAL = 10000;
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
 const APP_URL = 'https://silvertibby.github.io/pet-hostage/';
@@ -18,7 +18,7 @@ const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platfor
 $('#ver').textContent = VERSION;
 
 let code = localStorage.getItem('ph.code') || '';
-let state = null, tab = 'home', anim = null, lastFetch = 0, unclaimed = false, deathPlaying = false;
+let state = null, tab = 'home', anim = null, lastFetch = 0, unclaimed = false, deathPlaying = false, lastUpdated = 0, refreshing = false;
 
 // Pick up a code from the URL (?c=CODE or #c=CODE), e.g. after Add to Home Screen.
 {
@@ -47,8 +47,10 @@ function timePT(ms) { return new Date(ms).toLocaleTimeString('en-US', { timeZone
 function ago(ms) { const m = Math.round((Date.now() - ms) / 60000); if (m < 1) return 'just now'; if (m < 60) return m + ' min ago'; const h = Math.round(m / 60); if (h < 24) return h + 'h ago'; return Math.round(h / 24) + 'd ago'; }
 
 async function api(path, body) {
-  const opt = body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, ...body }) } : {};
-  const r = await fetch(WORKER + path + (body || !code ? '' : (path.includes('?') ? '&' : '?') + 'code=' + encodeURIComponent(code)), opt);
+  // Never cached: no-store + a cache-busting query on every GET.
+  const opt = body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, ...body }), cache: 'no-store' } : { cache: 'no-store' };
+  const q = body ? '' : (code ? 'code=' + encodeURIComponent(code) + '&' : '') + '_=' + Date.now();
+  const r = await fetch(WORKER + path + (q ? (path.includes('?') ? '&' : '?') + q : ''), opt);
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { const e = new Error(j.error || ('HTTP ' + r.status)); e.status = r.status; e.body = j; throw e; }
   return j;
@@ -129,6 +131,7 @@ function renderHome() {
     <div class="bar ${prog >= 1 ? 'done' : ''}">${Array.from({ length: BAR_SEGMENTS }, (_, i) => `<i class="${i < filled ? 'f' : ''}"></i>`).join('')}</div>
     <div class="sync">${s.lastSync ? `<span>Last sync ${timePT(s.lastSync)} · ${ago(s.lastSync)}</span>` : `<span class="hint">No steps synced yet</span>`}
       ${s.lastSync ? `<button class="btn small ghost" id="syncnow">Sync now</button>` : `<button class="btn small acc" id="gosetup">Set up step sync</button>`}</div>
+    <div class="sync"><span id="upd" class="upd">${updLabel()}</span><button class="btn small ghost" id="refreshbtn">↻ Refresh</button></div>
     <div class="note"><canvas class="px" id="rac" width="30" height="28"></canvas><div class="from">From: The Raccoon</div><div class="cut">${cutout(homeNote(s))}</div></div>
     <div class="legend"><span>🏆 ${s.shelf.length} on the shelf</span><span>${s.stats.metDays} paid · ${s.stats.missedDays} missed</span></div>
     <h2>LAST 14 DAYS</h2>
@@ -137,6 +140,7 @@ function renderHome() {
   `;
   startScene($('#scene')); noteAvatar($('#rac'));
   $('#gosetup')?.addEventListener('click', () => go('sync'));
+  $('#refreshbtn')?.addEventListener('click', () => doRefresh('button'));
   $('#syncnow')?.addEventListener('click', () => { location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(SHORTCUT_NAME); });
 }
 
@@ -360,13 +364,82 @@ async function refresh(force) {
   if (DEMO) return;
   if (!force && Date.now() - lastFetch < 5000) return;
   lastFetch = Date.now();
-  try { state = adoptCode(await api('/state')); }
+  try { state = adoptCode(await api('/state')); lastUpdated = Date.now(); return true; }
   catch (e) {
     // Never forget the code. Only a server that has truly never been claimed shows the welcome screen.
-    if (e.status === 404 && e.body?.error === 'unclaimed') { state = null; unclaimed = true; return; }
-    toast('Offline? ' + e.message);
+    if (e.status === 404 && e.body?.error === 'unclaimed') { state = null; unclaimed = true; return false; }
+    toast('Offline? ' + e.message); return false;
   }
 }
+// ---- refreshing: button, pull-to-refresh, and on return from Shortcuts ----
+function updLabel() {
+  if (DEMO) return 'Updated just now';
+  if (!lastUpdated) return '';
+  const sec = Math.round((Date.now() - lastUpdated) / 1000);
+  return 'Updated ' + (sec < 10 ? 'just now' : sec < 60 ? sec + 's ago' : Math.round(sec / 60) + ' min ago');
+}
+setInterval(() => { const u = $('#upd'); if (u && !refreshing) u.textContent = updLabel(); }, 5000);
+function spinner(on, text) {
+  const p = $('#ptr'); if (!p) return;
+  p.classList.toggle('spin', !!on); if (text != null) $('#ptrtext').textContent = text;
+  if (on) { p.style.transform = 'translateY(0)'; p.classList.add('show'); }
+}
+function hideSpinner() { const p = $('#ptr'); p.classList.remove('show', 'spin'); p.style.transform = ''; }
+async function doRefresh(why) {
+  if (DEMO || refreshing) return;
+  refreshing = true;
+  const before = state ? state.todaySteps : null, beforeSync = state ? state.lastSync : null;
+  spinner(true, 'Checking with The Raccoon…');
+  const u = $('#upd'); if (u) u.textContent = 'Updating…';
+  const t0 = Date.now();
+  const ok = await refresh(true);
+  await new Promise(r => setTimeout(r, Math.max(0, 500 - (Date.now() - t0)))); // let the spinner be seen
+  refreshing = false; hideSpinner();
+  if (pullQueued) { pullQueued = false; return doRefresh('pull'); }
+  if (!state) { if (unclaimed) renderWelcome(); return; }
+  if (!deathPlaying) {
+    if (tab === 'home' || tab === 'shelf') { const y = window.scrollY; render(); window.scrollTo(0, y); }
+    else { if ($('#synclog')) $('#synclog').innerHTML = syncLogHtml(state); maybePlayDeath(); }
+  }
+  const u2 = $('#upd'); if (u2) { u2.textContent = ok ? 'Updated just now' : 'Could not reach The Raccoon'; u2.classList.add('flash'); setTimeout(() => u2.classList.remove('flash'), 1200); }
+  if (ok && state.lastSync !== beforeSync && before != null) toast(state.todaySteps > before ? `+${fmt(state.todaySteps - before)} steps synced` : 'Sync received');
+  else if (ok && why !== 'auto') toast('Updated just now', 1400);
+}
+let returnTimers = [], swReg = null, pullQueued = false;
+function onReturn() { // back from Shortcuts after "Sync now": refresh now, then again to catch the sync landing
+  if (!state || DEMO || document.visibilityState !== 'visible') return;
+  returnTimers.forEach(clearTimeout);
+  swReg?.update().catch(() => {}); // pick up a new app shell too
+  doRefresh('auto');
+  returnTimers = [3000, 8000].map(ms => setTimeout(() => doRefresh('auto'), ms));
+}
+let lastReturn = 0;
+const onReturnOnce = () => { if (Date.now() - lastReturn < 1500) return; lastReturn = Date.now(); onReturn(); };
+function setupPull() {
+  const p = $('#ptr'), TRIG = 70;
+  let y0 = null, dy = 0, pulling = false;
+  const atTop = () => (window.scrollY || document.documentElement.scrollTop) <= 0;
+  document.addEventListener('touchstart', e => {
+    if (!state || $('#overlay') && !$('#overlay').hidden || e.touches.length !== 1 || !atTop()) { y0 = null; return; }
+    y0 = e.touches[0].clientY; dy = 0; pulling = false;
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    if (y0 == null) return;
+    dy = e.touches[0].clientY - y0;
+    if (dy <= 0 || !atTop()) { if (pulling) { pulling = false; hideSpinner(); } return; }
+    pulling = true; e.preventDefault();
+    const d = Math.min(110, dy * 0.55);
+    p.classList.add('show'); p.style.transform = `translateY(${d - 70}px)`;
+    $('#ptrrac').style.transform = `rotate(${Math.round(dy * 2 / 45) * 45}deg)`; // chunky pixel rotation
+    $('#ptrtext').textContent = dy * 0.55 > TRIG ? 'Let go to bother The Raccoon' : 'Pull to refresh';
+  }, { passive: false });
+  document.addEventListener('touchend', () => {
+    if (y0 == null) return; y0 = null;
+    if (pulling && dy * 0.55 > TRIG) { $('#ptrrac').style.transform = ''; if (refreshing) { pullQueued = true; spinner(true, 'Checking with The Raccoon…'); } else doRefresh('pull'); } else if (!refreshing) hideSpinner();
+    pulling = false;
+  });
+}
+
 function renderOffline() {
   $('#tabs').hidden = true;
   view.innerHTML = `<div class="welcome"><p>Can't reach The Raccoon right now. Your pets are safe on the server.</p><p><button class="btn acc" id="retry">Try again</button></p></div>`;
@@ -407,7 +480,9 @@ async function boot2() {
   else renderOffline();
 }
 async function boot() {
-  if ('serviceWorker' in navigator && !DEMO) navigator.serviceWorker.register('sw.js').catch(() => {});
+  blit($('#ptrrac').getContext('2d'), raccoon(0, -1), 0, 0);
+  if ('serviceWorker' in navigator && !DEMO) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => { swReg = r; r.update().catch(() => {}); }).catch(() => {});
+  if (DEMO && qs.has('spin')) setTimeout(() => spinner(true, 'Checking with The Raccoon…'), 50);
   if (DEMO) {
     code = 'DEMO123456'; state = demoState(DEMO); tab = qs.get('tab') || (DEMO === 'lineup' ? 'shelf' : 'home'); render();
     if (DEMO === 'death') playDeath(state.lastDeath, qs.has('f') ? +qs.get('f') : undefined);
@@ -415,7 +490,9 @@ async function boot() {
   }
   rememberInUrl();
   await boot2();
-  setInterval(() => { if (state && document.visibilityState === 'visible' && tab === 'home') refresh().then(() => state && tab === 'home' && !deathPlaying && render()); }, REFRESH_MS);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && state) refresh(true).then(() => state && !deathPlaying && (tab === 'home' ? render() : maybePlayDeath())); });
+  setupPull();
+  setInterval(() => { if (state && document.visibilityState === 'visible' && tab === 'home' && !refreshing) doRefresh('auto'); }, REFRESH_MS);
+  document.addEventListener('visibilitychange', onReturnOnce);
+  window.addEventListener('pageshow', e => { if (e.persisted) onReturnOnce(); });
 }
 boot();
