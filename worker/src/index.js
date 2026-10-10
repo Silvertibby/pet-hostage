@@ -1,12 +1,14 @@
 import { RULES, localParts, newState, migrate, settle, view, petAt, needFor, DEATH_TEXT } from './game.js';
-import { note } from './messages.js';
+import { note, nudgeText, DISH, ITEM, PET_EMOJI } from './messages.js';
 import { sendPush } from './push.js';
 
 // Multi-player: one KV key per player, "player:<CODE>". The old single-player key "state" is migrated once.
 const PKEY = c => 'player:' + c;
 const LEGACY = 'state';
-// Nudge slots (PT hour -> send if today's progress below this fraction). Morning report at REPORT_HOUR.
-const NUDGE_SLOTS = { 12: 0.3, 15: 0.5, 18: 0.75, 21: 1 };
+// Twice-daily nudges (PT minutes after midnight), only while today is under 10k. Two voices: the hostage
+// pleading and The Raccoon taunting; one of each per day, order picked per player per day. Morning report at REPORT_HOUR.
+export const NUDGES2 = [{ id: 'n1300', at: 13 * 60, slot: 'afternoon' }, { id: 'n1930', at: 19 * 60 + 30, slot: 'evening' }];
+const NUDGE_WINDOW = 90; // minutes: a missed cron tick still sends, a stale one doesn't
 const REPORT_HOUR = 8;
 
 const cors = {
@@ -267,14 +269,27 @@ async function tickPlayer(env, code) {
     if (np.hour >= REPORT_HOUR && st.pendingReport && st.pendingReport.length) {
       await reportEvents(env, st, st.pendingReport); st.pendingReport = null;
     }
-    const slot = NUDGE_SLOTS[np.hour];
-    if (slot != null && !sent.includes('n' + np.hour)) {
-      const steps = st.days[np.date] || 0;
-      if (steps < RULES.GOAL * slot) {
-        await push(env, st, '🦝 ' + (np.hour >= 21 ? 'FINAL NOTICE' : 'A note from The Raccoon'), note('nudge', vars(st), np.hour), 'ph-nudge');
-        st.sent[np.date] = [...sent, 'n' + np.hour];
-      }
+    const nn = planNudge(st, np);
+    if (nn) {
+      await push(env, st, nn.title, nn.body, 'ph-nudge');
+      st.sent[np.date] = [...(st.sent[np.date] || []), nn.id];
     }
     for (const k of Object.keys(st.sent)) if (k < np.date) delete st.sent[k];
     await save(env, st);
+}
+
+// Which nudge (if any) is due now for this player. Pure, so the tests can drive it.
+function dayCoin(code, date) { let h = 2166136261; for (const ch of code + date) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return (h >>> 0) % 2; }
+export function planNudge(st, np) {
+  const steps = st.days[np.date] || 0;
+  if (steps >= RULES.GOAL) return null; // banked: no nagging
+  const mins = np.hour * 60 + np.minute, sent = st.sent[np.date] || [];
+  const idx = NUDGES2.findIndex(n => mins >= n.at && mins < n.at + NUDGE_WINDOW && !sent.includes(n.id));
+  if (idx < 0) return null;
+  const n = NUDGES2[idx];
+  const voice = (dayCoin(st.code, np.date) + idx) % 2 === 0 ? 'pet' : 'raccoon'; // one of each per day
+  const h = st.hostage, p = petAt(st, h.rung), need = needFor(h.rung);
+  const v = { name: p.name, animal: p.species === 'panda' ? 'panda cub' : p.species, steps: steps.toLocaleString('en-US'), left: (RULES.GOAL - steps).toLocaleString('en-US'),
+    dish: DISH[p.species] || 'stew', item: ITEM[p.species] || 'a hat', day: h.streak + 1, need };
+  return { id: n.id, voice, title: voice === 'pet' ? `${PET_EMOJI[p.species] || '🐾'} ${p.name}` : '🦝 The Raccoon', body: nudgeText(voice, n.slot, v) };
 }

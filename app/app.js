@@ -1,7 +1,7 @@
-import { drawScene, drawDeath, drawShelfPet, raccoon, blit, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
+import { drawScene, drawDeath, drawShelfPet, raccoon, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.3.1';
+const VERSION = 'v0.3.3';
 const GOAL = 10000;
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
 const APP_URL = 'https://silvertibby.github.io/pet-hostage/';
@@ -98,17 +98,89 @@ function cutout(text) {
 
 // ---- screens ----
 function stopAnim() { if (anim) cancelAnimationFrame(anim); anim = null; }
+let sceneT = 0, sceneReact = null;
+const sceneSt = () => { const h = state.hostage || {}; return { mood: state.mood, species: h.species, injuries: h.injuries, freed: !!h.todayMet, react: sceneReact }; };
 function startScene(canvas) {
   const ctx = canvas.getContext('2d');
-  const t0 = performance.now();
+  const t0 = performance.now(); sceneReact = null;
   const loop = now => {
     if (!state || !canvas.isConnected) return;
-    const h = state.hostage || {};
-    drawScene(ctx, { mood: state.mood, species: h.species, injuries: h.injuries }, (now - t0) / 1000);
+    sceneT = qs.has('t') ? +qs.get('t') + (sceneReact ? (now - t0) / 1000 : 0) : (now - t0) / 1000;
+    drawScene(ctx, sceneSt(), sceneT);
     anim = requestAnimationFrame(loop);
   };
   anim = requestAnimationFrame(loop);
+  attachTaps(canvas, () => ({ st: sceneSt(), t: sceneT, mode: state.hostage.todayMet ? 'banked' : 'behind' }), who => { sceneReact = { who, at: sceneT }; });
 }
+
+// ---- tap the pet / the raccoon: speech bubbles ----
+const DISH = { bunny: 'bunny soup', hamster: 'hamster kebab', squirrel: 'squirrel pot pie', hedgehog: 'hedgehog crisps', kitten: 'kitten casserole', duckling: "duck à l'orange", piglet: 'bacon', panda: 'panda dumplings' };
+const ITEM = { bunny: 'a hat', hamster: 'a keychain', squirrel: 'a scarf', hedgehog: 'a hairbrush', kitten: 'a pair of mittens', duckling: 'a pillow', piglet: 'a football', panda: 'a rug' };
+const LINES = {
+  pet: {
+    behind: ["{name} needs {left} more steps or I'm {item}.", "Please walk. I'm too cute to be {dish}.", '{left} steps! You can do it! (Please do it.)',
+      'I can hear him sharpening something. {left} more, please?', "Day {day} of {need}. Don't make me a {animal} ghost.", "Fun fact: {animal}s can't do your steps. I tried.",
+      "If you love me, you'll take the stairs.", "I made you a playlist. It's called 'Walk Or I Die'.", 'Only {left} steps between me and {dish}. No pressure!',
+      'The raccoon measured me for a pot today.', 'Walk to the fridge. Walk back. Do that like 400 times.', 'I believe in you! Mostly! {left} steps!',
+      'Every step is a tiny hug for {name}.', "He keeps saying 'yum'. Why does he keep saying 'yum'?"],
+    banked: ['FREEDOM! Well. Chain-dom. Thank you!!', 'Look at me go! Day {day} of {need} banked!', "You did it! I'm doing laps to celebrate.",
+      "10,000 steps! I love you! Don't stop tomorrow.", "I'm exercising too! Solidarity!", 'The raccoon is SO mad. Hee hee.',
+      "{togo} more days and I'm on the shelf for good!", "I'm not {dish} today!", 'ZOOMIES! Chained zoomies!',
+      "Chain's a bit heavy but I'm FREE-ish!", 'Tomorrow too, okay? Pinky promise?', 'Best. Human. Ever.'],
+    ghost: ['Wooooo. You missed ONE day.', "I'm fine. I'm see-through, but fine.", 'Tell {re} to keep an eye on you.', 'Being a ghost is chilly. Walk more next time.',
+      'I forgive you. Mostly.', "Boo. That's ghost for 'step count'.", 'I can walk through walls now. You should try walking at all.'],
+  },
+  raccoon: {
+    behind: ["You won't make it.", "I wonder how {name}'ll taste.", '{Dish} tonight!', 'Tick tock, couch potato.', '{left} steps? HA.',
+      "I've already preheated the oven.", 'Sit down. Relax. Have a snack. I insist.', "Nobody needs {left} steps. That's absurd.",
+      'Your couch misses you. Go back to it.', "I've got the salt. I've got the pepper. I've got {name}.", '{name} and I are going to have SUCH a nice dinner.',
+      "Walking is overrated. Ask me, I'm a raccoon.", 'Mmm. {Dish}. My grandma\'s recipe.', 'Is that a step counter or a rounding error?'],
+    banked: ['Hmph. Lucky day.', 'Ten thousand. Fine. FINE.', "Don't get used to it.", 'I was so hungry, too.', 'Enjoy the chain, {name}.',
+      "Tomorrow, the pot's back on.", 'Who even walks that much?', "I'm putting the {dish} recipe away. For now.", 'Ugh. Your legs are annoying.',
+      'Streak, schmeak.', '{togo} more days in a row? I dare you.', 'Go sit down. I can wait.'],
+    ghost: ['Told you.', 'Mmm. {Dish}.', "One day. That's all it took.", 'Next!', 'I kept the ears. Kidding. Mostly.', "Should've walked.", "Don't worry, {re} is next."],
+  },
+};
+const lastLine = {};
+function pickLine(who, mode, v) {
+  const pool = LINES[who][mode], key = who + mode;
+  let i; do { i = Math.floor(Math.random() * pool.length); } while (pool.length > 1 && i === lastLine[key]);
+  lastLine[key] = i;
+  return pool[i].replace(/\{(\w+)\}/g, (_, k) => k === 'Dish' ? (v.dish[0].toUpperCase() + v.dish.slice(1)) : (v[k] ?? ''));
+}
+function lineVars(extra = {}) {
+  const h = state.hostage || {}, sp = extra.species || h.species || 'bunny';
+  return { name: extra.name || h.name, animal: speciesLabel(sp), dish: DISH[sp] || 'stew', item: ITEM[sp] || 'a hat', left: fmt(Math.max(0, GOAL - (state.todaySteps || 0))),
+    day: h.day, need: h.need, togo: Math.max(0, (h.need || 0) - (h.streak || 0) - (h.todayMet ? 1 : 0)), re: extra.re || '' };
+}
+function attachTaps(canvas, getCtx, onReact, extra) {
+  const wrap = canvas.parentElement; let bubble = wrap.querySelector('.bubble'), hideT;
+  if (!bubble) { bubble = document.createElement('div'); bubble.className = 'bubble'; bubble.hidden = true; wrap.appendChild(bubble); }
+  canvas.addEventListener('click', e => {
+    const r = canvas.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * VIEW_W, y = (e.clientY - r.top) / r.height * VIEW_H;
+    const c = getCtx(), hb = hitBoxes(c.st, c.t), inb = b => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+    const who = inb(hb.raccoon) ? 'raccoon' : inb(hb.pet) ? 'pet' : null;
+    if (!who) return;
+    showBubble(canvas, bubble, hb[who], who, pickLine(who, c.mode, lineVars(extra && extra())));
+    clearTimeout(hideT); hideT = setTimeout(() => { bubble.hidden = true; }, 3800);
+    onReact && onReact(who);
+  });
+}
+function showBubble(canvas, bubble, box, who, text) {
+  const sx = canvas.clientWidth / VIEW_W, sy = canvas.clientHeight / VIEW_H;
+  bubble.textContent = text; bubble.className = 'bubble ' + who; bubble.hidden = false;
+  const bw = Math.min(canvas.clientWidth * 0.72, 250); bubble.style.width = bw + 'px';
+  const cx = (box.x + box.w / 2) * sx, left = Math.max(6, Math.min(canvas.clientWidth - bw - 6, cx - bw / 2));
+  bubble.style.left = (canvas.offsetLeft + left) + 'px';
+  bubble.style.setProperty('--tail', Math.max(14, Math.min(bw - 14, cx - left)) + 'px');
+  const top = Math.max(4, box.y * sy - bubble.offsetHeight - 4);
+  bubble.style.top = (canvas.offsetTop + top) + 'px';
+}
+window.__tap = (who) => { // demo/screenshot helper: tap the centre of the pet or raccoon
+  const c = (!$('#overlay').hidden && $('#dscene')) || $('#scene'); if (!c) return; const s = c.id === 'scene' ? sceneSt() : { mode: 'death' };
+  const hb = hitBoxes(s, sceneT)[who], r = c.getBoundingClientRect();
+  c.dispatchEvent(new MouseEvent('click', { clientX: r.left + (hb.x + hb.w / 2) / VIEW_W * r.width, clientY: r.top + (hb.y + hb.h / 2) / VIEW_H * r.height, bubbles: true }));
+};
 function noteAvatar(canvas) { blit(canvas.getContext('2d'), raccoon(0, -1), 0, 0); }
 
 function renderHome() {
@@ -123,7 +195,8 @@ function renderHome() {
   }).join('');
   view.innerHTML = `
     <div class="status"><span class="name">${esc(h.name)}</span><span class="rung">Rung ${h.rung + 1} · ${esc(speciesLabel(h.species))}</span></div>
-    <canvas id="scene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas>
+    ${s.push ? '' : pushBanner(h)}
+    <div class="scenewrap"><canvas id="scene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas></div>
     <div class="quest"><div class="qhead"><b>Day ${h.day} of ${h.need}</b><span class="dim">${h.todayMet ? (h.day >= h.need ? 'rescue at midnight!' : 'today banked ✓') : `${h.need - h.streak} to go`}</span></div>
       <div class="dpips">${pips}</div>
       ${h.deaths ? `<div class="dim small">Patched up after ${h.deaths} death${h.deaths > 1 ? 's' : ''}. Miss one day and it happens again.</div>` : `<div class="dim small">10,000 steps a day, ${h.need} days in a row, to rescue ${esc(h.name)}. Miss one and, well.</div>`}</div>
@@ -141,7 +214,19 @@ function renderHome() {
   startScene($('#scene')); noteAvatar($('#rac'));
   $('#gosetup')?.addEventListener('click', () => go('sync'));
   $('#refreshbtn')?.addEventListener('click', () => doRefresh('button'));
+  $('#pushbanner-on')?.addEventListener('click', e => enablePush(e, $('#pushbanner-msg'))); // permission prompt must come straight from this tap
   $('#syncnow')?.addEventListener('click', () => { location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(SHORTCUT_NAME); });
+}
+
+// Notifications are off: a big banner so the hostage can beg (and the raccoon can taunt) twice a day.
+function pushBanner(h) {
+  const notHome = isIOS && !isStandalone();
+  const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  return `<div class="pushbanner"><div class="pbt">🔔 Turn on notifications</div>
+    <div class="small">So ${esc(h.name)} can beg you for steps around 1 PM and 7:30 PM (and The Raccoon can taunt you). Only on days you're under 10,000.</div>
+    ${notHome ? `<div class="hint small">Open Pet Hostage from your Home Screen icon first, then tap the button.</div>` : !supported && !DEMO ? `<div class="hint small">This browser can't do notifications.</div>` : ''}
+    <p style="margin:8px 0 0"><button class="btn acc" id="pushbanner-on" ${notHome || (!supported && !DEMO) ? 'disabled' : ''}>Enable notifications</button></p>
+    <div id="pushbanner-msg" class="small dim"></div></div>`;
 }
 
 // ---- the rescued shelf + the ladder ----
@@ -200,11 +285,12 @@ function playDeath(d, freezeAt) {
   const injBefore = (p.injuries || []).slice(0, Math.max(0, (d.deaths || 1) - 1)); // as it looked before this death
   const re = d.rekidnap;
   const msg = `${d.name} ${DEATH_TEXT[d.type] || 'met a cartoon end'}. ` + (re.same ? `I stitched him back together. ${re.need} days in a row. Again.` : `So I took ${re.name} back off your shelf. ${re.need} days. Same as before.`);
-  ov.innerHTML = `<div class="ovbox"><h2>☠ ${fmtDate(d.date)}: YOU MISSED A DAY</h2><canvas id="dscene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas>
+  ov.innerHTML = `<div class="ovbox"><h2>☠ ${fmtDate(d.date)}: YOU MISSED A DAY</h2><div class="scenewrap"><canvas id="dscene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas></div>
     <div class="note" id="dnote" style="visibility:hidden"><canvas class="px" id="drac" width="30" height="28"></canvas><div class="from">From: The Raccoon</div><div class="cut">${cutout(msg)}</div></div>
     <div class="row" style="justify-content:space-between"><button class="btn ghost small" id="dreplay">Replay</button><button class="btn acc" id="dok" style="visibility:hidden">${re.same ? 'Try again' : 'Rescue ' + esc(re.name)}</button></div></div>`;
   noteAvatar($('#drac'));
   const ctx = $('#dscene').getContext('2d');
+  attachTaps($('#dscene'), () => ({ st: { mode: 'death' }, t: 0, mode: 'ghost' }), null, () => ({ name: d.name, species: d.species, re: d.rekidnap.name }));
   let t0 = performance.now(), raf;
   const show = () => { $('#dnote').style.visibility = 'visible'; $('#dok').style.visibility = 'visible'; };
   const loop = now => {
@@ -299,7 +385,7 @@ function renderSettings() {
   view.innerHTML = `
     <h2>NOTIFICATIONS</h2>
     <div class="card">
-      <p>The Raccoon sends "encouragement" around noon, 3, 6 and 9 PM if you're behind, a note when you pay, and a morning report on yesterday (rescues, deaths, re-kidnappings).</p>
+      <p>Around 1 PM and 7:30 PM, if you're under 10,000, you get one note from your hostage (begging) and one from The Raccoon (taunting). Plus a note when you pay, and a morning report on yesterday (rescues, deaths, re-kidnappings).</p>
       <p class="dim">Status: ${s.push ? 'subscribed ✅' : 'off'} · permission: ${perm}</p>
       ${pushHint ? `<p class="hint">${pushHint}</p>` : ''}
       <div class="row">
@@ -344,8 +430,8 @@ function renderSettings() {
 }
 
 function b64uToBytes(s) { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; return Uint8Array.from(atob(s), c => c.charCodeAt(0)); }
-async function enablePush() {
-  const msg = $('#pushmsg');
+async function enablePush(e, msgEl) {
+  const msg = msgEl || $('#pushmsg');
   try {
     const perm = await Notification.requestPermission(); // must be first thing in the tap handler on iOS
     if (perm !== 'granted') { msg.textContent = 'Permission ' + perm + '. You can change it in iPhone Settings → Notifications → Pet Hostage.'; return; }
@@ -537,7 +623,7 @@ function demoState(m) {
     v: 2, today, hour, goal: GOAL, todaySteps, lastSync: m === 'nosync' ? null : Date.now() - 23 * 60000, lastSteps: todaySteps, started: day(-40),
     hostage, shelf, ladder, mood, lastDeath, deathSeen: 0,
     deathLog: [lastDeath, { id: 2, date: day(-21), rung: 2, name: 'Acorn', species: 'squirrel', type: 'catapult', rekidnap: { name: 'Nugget', same: false } }, { id: 1, date: day(-33), rung: 0, name: 'Chompsky', species: 'bunny', type: 'pop', rekidnap: { name: 'Chompsky', same: true } }].filter(Boolean),
-    stats: { metDays: 27, missedDays: 3, rescues: 4 }, push: true,
+    stats: { metDays: 27, missedDays: 3, rescues: 4 }, push: !qs.has('nopush'),
     days: Array.from({ length: 14 }, (_, i) => ({ date: day(i - 13), steps: i === 13 ? (todaySteps || null) : (m === 'nosync' ? null : hist[i]) })),
   };
 }
@@ -557,6 +643,7 @@ async function boot() {
     if (DEMO === 'welcome' || DEMO === 'lost') { renderWelcome(DEMO === 'lost' ? 'K7PQ2MXW9A' : null); return; }
     code = 'DEMO123456'; state = demoState(DEMO); tab = qs.get('tab') || (DEMO === 'lineup' ? 'shelf' : 'home'); render();
     if (DEMO === 'death') playDeath(state.lastDeath, qs.has('f') ? +qs.get('f') : undefined);
+    if (qs.has('tap')) setTimeout(() => window.__tap(qs.get('tap')), 1200);
     return;
   }
   rememberInUrl();

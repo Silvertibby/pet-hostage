@@ -8,7 +8,7 @@ kv_namespaces = [
 ]
 
 [triggers]
-crons = ["0 * * * *"]   # hourly (UTC); the worker checks the America/Vancouver hour itself
+crons = ["0,30 * * * *"]   # every 30 min (UTC); the worker checks America/Vancouver time itself (nudges at 1:00 and 7:30 PM PT)
 
 [vars]
 APP_URL = "https://silvertibby.github.io/pet-hostage/"

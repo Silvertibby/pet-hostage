@@ -1,5 +1,12 @@
 # Pet Hostage changelog
 
+## v0.3.3 (2026-10-09)
+- Tap your hostage to hear it beg (it hops), or tap The Raccoon for some discouragement. Lines change with the animal and with how your day is going.
+- Notifications now come twice a day, around 1 PM and 7:30 PM, only if you're under 10,000: one from your hostage, one from The Raccoon. If notifications are off, the home screen shows a big button to turn them on.
+
+## v0.3.2 (2026-10-09)
+- Hit 10,000 for the day and your hostage gets out of the cage for a walk around the room (still chained to The Raccoon's post). He is not thrilled.
+
 ## v0.3.0 (2026-10-09)
 - Multiplayer: share the app with a friend (Settings or Shelf → Share with a friend) and they get their own raccoon, ladder, shelf and code.
 - Restore with code: if the home-screen app ever forgets you, type your code to get your pets back.

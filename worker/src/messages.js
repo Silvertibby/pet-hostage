@@ -36,3 +36,65 @@ export function note(kind, vars, slot) {
   const set = kind === 'nudge' ? NUDGES[slot] : { paid: PAID, paidLast: PAID_LAST, met: MET, rescued: RESCUED, died: DIED, diedSame: DIED_SAME, test: TEST }[kind];
   return fill(pick(set), vars);
 }
+
+// ---- twice-daily nudges (v0.3.3): the hostage pleading, or The Raccoon taunting ----
+// Vars: {name} {animal} {left} {steps} {dish} {item} {day} {need}
+export const DISH = { bunny: 'bunny soup', hamster: 'hamster kebab', squirrel: 'squirrel pot pie', hedgehog: 'hedgehog crisps', kitten: 'kitten casserole', duckling: "duck à l'orange", piglet: 'bacon', panda: 'panda dumplings' };
+export const ITEM = { bunny: 'a hat', hamster: 'a keychain', squirrel: 'a scarf', hedgehog: 'a hairbrush', kitten: 'a pair of mittens', duckling: 'a pillow', piglet: 'a football', panda: 'a rug' };
+export const PET_EMOJI = { bunny: '🐰', hamster: '🐹', squirrel: '🐿️', hedgehog: '🦔', kitten: '🐱', duckling: '🐥', piglet: '🐷', panda: '🐼' };
+export const PLEAD = {
+  afternoon: [
+    '{name} here... I can hear the raccoon sharpening something. {left} more steps, please?',
+    "Hi, it's {name}. Just checking in. Not panicking. {left} steps would really help me not panic.",
+    "{name} again. He measured me for a pot this morning. {left} steps? For me?",
+    "It's {name}! You're at {steps}. That's a great start! Please don't stop at the start.",
+    "This is {name}. The raccoon keeps saying 'yum'. {left} more steps and he has to stop.",
+    "{name} here. I believe in you! {left} steps! (I have to believe in you. I'm in a cage.)",
+    "Psst. It's {name}. Lunch walk? {left} steps and I don't become {item}.",
+    "{name} the {animal} reporting: still alive! {left} steps would keep it that way.",
+    "Hi! {name}! Day {day} of {need}! Only {left} steps between me and not being {dish}!",
+    "It's {name}. I'm doing little laps in my cage to motivate you. Your turn. {left} steps.",
+  ],
+  evening: [
+    "{name} here... it's getting late and he's chopping carrots. {left} more steps, please?",
+    "It's {name}. He's reading a recipe out loud. It's called {dish}. {left} steps. PLEASE.",
+    "{name} again. I don't want to be {item}. I want to be your {animal}. {left} steps!",
+    "This is {name}. Evening walk? Kitchen laps? Anything? {left} to go.",
+    "{name} here. The pot is out. The POT IS OUT. {left} steps!!",
+    "It's {name}. If you walk {left} more steps I'll do the happiest little dance. Promise.",
+    "{name} the {animal}, begging politely: {left} steps before midnight. Pretty please with a carrot on top.",
+    "Hi, {name}. Day {day} of {need}. I really, really like being alive. {left} more steps?",
+    "{name} here. Don't sit down. Whatever you're doing, do it standing up and walking. {left} steps.",
+    "It's {name}. I wrote you a song. It goes: walk, walk, walk, {left} steps, walk.",
+  ],
+};
+export const TAUNT = {
+  afternoon: [
+    "{steps} steps? Cute. I've already picked out a pot for {name}.",
+    'Tick tock, couch potato. {left} steps to go and I\'m betting you won\'t.',
+    "Lovely afternoon for {dish}. Don't you think?",
+    "{left} steps. LOL. I'm sharpening the good knife.",
+    "{name} keeps asking if you'll make it. I keep laughing.",
+    "Sit down. Relax. Have a snack. {name} certainly won't.",
+    "Nobody walks {left} more steps today. Nobody. Prove me wrong. You can't.",
+    'Is {steps} a step count or a typo?',
+    "I've invited friends over for {dish}. {left} steps or they're not leaving hungry.",
+    "Your couch misses you. Go back to it. I'll take care of {name}. Heh.",
+  ],
+  evening: [
+    "Evening! The water's boiling. {left} steps, or {name} goes in.",
+    "{left} steps by midnight? From you? I'm already setting the table.",
+    'Bon appétit to me. {name} becomes {dish} at midnight unless you walk {left} steps.',
+    "I can smell the {dish} already. Oh wait, that's just {name}'s fear.",
+    "Last call, legs. {left} steps. You won't. You never do.",
+    "{name} is being brave. You're being horizontal. {left} steps.",
+    "Put your shoes on. Actually don't. I'm hungry.",
+    "I'm warming up the catapult. {left} steps if you want to stop me.",
+    'Day {day} of {need}? More like day {day} of NEVER. {left} steps.',
+    "I've got the salt. I've got the pepper. I've got {name}. You've got {left} steps to go.",
+  ],
+};
+export function nudgeText(voice, slot, v) {
+  const set = (voice === 'pet' ? PLEAD : TAUNT)[slot];
+  return fill(pick(set), v);
+}

@@ -94,3 +94,11 @@ label { display:block; margin: 10px 0 4px; color: var(--dim); }
 @keyframes rspin { to { transform: rotate(360deg); } }
 .upd { font-size: 16px; }
 .upd.flash { color: var(--good); }
+.scenewrap { position: relative; }
+.scenewrap canvas { cursor: pointer; }
+.bubble { position: absolute; z-index: 3; background: #fffaf0; color: #1b1626; border: 3px solid #000; box-shadow: 3px 3px 0 #000; padding: 8px 9px; font-family: 'Press Start 2P', monospace; font-size: 9px; line-height: 1.5; border-radius: 2px; pointer-events: none; animation: pop .18s steps(3); }
+.bubble.raccoon { background: #ffe0e0; }
+.bubble::after { content: ''; position: absolute; left: calc(var(--tail, 50%) - 6px); bottom: -11px; width: 10px; height: 8px; background: inherit; border: 3px solid #000; border-top: 0; border-left: 0; transform: skewX(-30deg); }
+@keyframes pop { from { transform: scale(.6); } to { transform: scale(1); } }
+.pushbanner { background: #3a1f3a; border: 3px solid var(--acc); box-shadow: 3px 3px 0 #000; border-radius: 4px; padding: 10px 12px; margin: 4px 0 10px; }
+.pushbanner .pbt { font-family: 'Press Start 2P', monospace; font-size: 11px; color: #ffd84a; margin-bottom: 6px; }
