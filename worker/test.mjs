@@ -1,6 +1,6 @@
 // Local checks: Web Push encryption round-trip, VAPID JWT signature, rules.
 import { encryptPayload, vapidJwt, b64u } from './src/push.js';
-import { settle, newState, addDays, mood, migrate, view, needFor, animalFor, ANIMALS } from './src/game.js';
+import { settle, newState, addDays, mood, migrate, view, needFor, animalFor, ANIMALS, goalFor, goalToday, isFinalDay, RULES } from './src/game.js';
 import assert from 'node:assert';
 const subtle = crypto.subtle;
 // Fake browser subscription
@@ -44,9 +44,9 @@ assert.equal(JSON.parse(new TextDecoder().decode(b64u.dec(c))).aud, 'https://web
 console.log('✓ VAPID JWT');
 // ---- Ladder sim (v0.2 rules) ----
 const D0 = '2026-10-09';
-function sim(pattern, start = D0) { // pattern: string of 'Y' (10k) / 'n' (missed) / '-' (no sync) per day from start
+function sim(pattern, start = D0) { // pattern: 'Y' (15k+, beats any day) / 'y' (10k-ish, beats a normal day only) / 'n' (9,999) / '-' (no sync)
   const st = newState('SIM', start); const evs = [];
-  [...pattern].forEach((c, i) => { const d = addDays(start, i); if (c === 'Y') st.days[d] = 10000 + i; else if (c === 'n') st.days[d] = 9999; });
+  [...pattern].forEach((c, i) => { const d = addDays(start, i); if (c === 'Y') st.days[d] = 15000 + i; else if (c === 'y') st.days[d] = 10000 + i; else if (c === 'n') st.days[d] = 9999; });
   evs.push(...settle(st, addDays(start, pattern.length)));
   return { st, evs, deaths: evs.filter(e => e.kind === 'death'), rescues: evs.filter(e => e.kind === 'rescue') };
 }
@@ -72,7 +72,7 @@ assert.equal(animalFor(0).name, 'Chompsky'); assert.equal(animalFor(8).name, 'Ch
   assert.equal(st.lastDeath.id, 1);
   const v = view(st); assert.equal(v.shelf.length, 0); assert.equal(v.hostage.need, 3);
   // re-rescue bunny with 3 days -> stitched Nugget is back for 5 days
-  const st2 = st; for (let i = 0; i < 3; i++) st2.days[addDays(D0, 6 + i)] = 12000;
+  const st2 = st; for (let i = 0; i < 3; i++) st2.days[addDays(D0, 6 + i)] = 15000;
   const ev2 = settle(st2, addDays(D0, 9));
   assert.equal(ev2.filter(e => e.kind === 'rescue').length, 1); assert.equal(st2.hostage.rung, 1); assert.equal(st2.pets[1].deaths, 1);
   assert.equal(view(st2).hostage.injuries.length, 1); }
@@ -95,4 +95,36 @@ assert.equal(animalFor(0).name, 'Chompsky'); assert.equal(animalFor(8).name, 'Ch
   st.days[D0] = 10500; settle(st, addDays(D0, 1)); assert.equal(st.hostage.streak, 1); }
 assert.equal(mood(newState('x', D0), { date: D0, hour: 22 }), 'scared');
 assert.equal(addDays('2026-11-01', 1), '2026-11-02'); // DST weekend safe
+// ---- v0.4.2 final-day challenge: day N of N needs 15,000; every other day 10,000 ----
+assert.equal(RULES.GOAL, 10000); assert.equal(RULES.FINAL_GOAL, 15000);
+assert.deepEqual([0, 1, 2].map(s => goalFor(s, 3)), [10000, 10000, 15000]);
+assert.deepEqual([0, 1, 2, 3, 4].map(s => goalFor(s, 5)), [10000, 10000, 10000, 10000, 15000]);
+assert.equal(isFinalDay(6, 7), true); assert.equal(isFinalDay(5, 7), false);
+// exactly 10k on days 1-2 is fine, 15k on day 3 rescues the bunny
+{ const { st, rescues, deaths } = sim('yyY'); assert.equal(rescues.length, 1); assert.equal(deaths.length, 0); assert.equal(st.hostage.rung, 1); }
+// 10k (or 14,999) on the final day is a MISS: bunny dies, re-kidnapped (same rung), streak back to 0
+{ const { st, rescues, deaths, evs } = sim('yyy'); assert.equal(rescues.length, 0); assert.equal(deaths.length, 1);
+  assert.equal(deaths[0].steps, 10002); assert.equal(deaths[0].goal, 15000); assert.ok(deaths[0].rekidnap.same);
+  assert.equal(st.hostage.rung, 0); assert.equal(st.hostage.streak, 0); assert.deepEqual(st.pets[0].injuries, ['pop']);
+  assert.deepEqual(evs.filter(e => e.kind === 'day').map(e => e.goal), [10000, 10000]); }
+{ const st = newState('SIM', D0); st.days[D0] = 10000; st.days[addDays(D0, 1)] = 10000; st.days[addDays(D0, 2)] = 14999;
+  const ev = settle(st, addDays(D0, 3)); assert.equal(ev.filter(e => e.kind === 'death').length, 1); assert.equal(st.pets[0].deaths, 1); }
+{ const st = newState('SIM', D0); st.days[D0] = 10000; st.days[addDays(D0, 1)] = 10000; st.days[addDays(D0, 2)] = 15000;
+  const ev = settle(st, addDays(D0, 3)); assert.equal(ev.filter(e => e.kind === 'rescue').length, 1); }
+// hamster (5 days): 10k on days 1-4, then day 5 at 10k kills him and the bunny is re-kidnapped off the shelf
+{ const { st, deaths } = sim('yyY' + 'yyyyy'); assert.equal(deaths.length, 1); assert.equal(deaths[0].name, 'Nugget'); assert.equal(deaths[0].goal, 15000);
+  assert.equal(st.hostage.rung, 0); assert.equal(st.pets[0].rescuedOn, null); }
+{ const { st, rescues } = sim('yyY' + 'yyyyY'); assert.equal(rescues.length, 2); assert.equal(st.hostage.rung, 2); }
+// the view: goal, finalDay and banked (todayMet) follow the day's goal; mood uses it too
+{ const at = (d, h) => Date.parse(d + 'T' + String(h + 7).padStart(2, '0') + ':00:00Z'); // PDT
+  const st = newState('BEN', D0); st.days[D0] = 10200; settle(st, addDays(D0, 1)); // Ben: day 1 banked -> today is day 2/3
+  const T = addDays(D0, 1); st.days[T] = 10400;
+  let v = view(st, at(T, 14)); assert.equal(v.hostage.day, 2); assert.equal(v.goal, 10000); assert.equal(v.hostage.finalDay, false); assert.equal(v.hostage.todayMet, true);
+  settle(st, addDays(T, 1)); assert.equal(st.hostage.streak, 2); assert.equal(st.hostage.rung, 0); // today's 10.4k still counts as day 2
+  const T2 = addDays(T, 1); st.days[T2] = 12000;
+  v = view(st, at(T2, 14)); assert.equal(v.hostage.day, 3); assert.equal(v.goal, 15000); assert.equal(v.hostage.finalDay, true); assert.equal(v.hostage.todayMet, false);
+  assert.equal(goalToday(st), 15000); assert.equal(mood(st, { date: T2, hour: 22 }), 'scared');
+  st.days[T2] = 15000; v = view(st, at(T2, 14)); assert.equal(v.hostage.todayMet, true); assert.equal(mood(st, { date: T2, hour: 22 }), 'happy');
+  settle(st, addDays(T2, 1)); assert.equal(st.hostage.rung, 1); assert.equal(view(st, at(addDays(T2, 1), 9)).goal, 10000); }
+console.log('✓ final-day challenge (15k on day N of N, 10k otherwise, miss = death + re-kidnap, view/mood)');
 console.log('✓ ladder sim (rescue, death, re-kidnap, original day count, injuries, rung 1 death, gaps, migration)');

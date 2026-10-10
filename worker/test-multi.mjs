@@ -44,7 +44,10 @@ ben = (await call('/state?code=3YS267ZCSA')).body; fr = (await call(`/state?code
 assert.equal(ben.hostage.deaths, 1); assert.deepEqual(ben.hostage.injuries, ['pop']); assert.equal(ben.lastDeath.name, 'Fluffy'); assert.equal(ben.hostage.streak, 0);
 assert.equal(fr.hostage.deaths, 0); assert.equal(fr.hostage.streak, 1); assert.equal(fr.lastDeath, null);
 // friend keeps going and rescues; Ben unaffected
-for (const d of ['2026-10-10', '2026-10-11']) { at(d + 'T21:00:00-07:00'); await call(`/sync?code=${F}&steps=10001`); }
+at('2026-10-10T21:00:00-07:00'); await call(`/sync?code=${F}&steps=10001`); // day 2/3: 10k
+at('2026-10-11T12:00:00-07:00'); r = await call(`/sync?code=${F}&steps=10001`); // day 3/3: final day, 10k isn't enough
+assert.match(r.body, /4,999 to go/); fr = (await call(`/state?code=${F}`)).body; assert.equal(fr.goal, 15000); assert.equal(fr.hostage.finalDay, true); assert.equal(fr.hostage.todayMet, false);
+at('2026-10-11T21:00:00-07:00'); await call(`/sync?code=${F}&steps=15001`); assert.equal((await call(`/state?code=${F}`)).body.hostage.todayMet, true);
 at('2026-10-12T00:05:00-07:00'); await cron();
 fr = (await call(`/state?code=${F}`)).body; ben = (await call('/state?code=3YS267ZCSA')).body;
 assert.equal(fr.shelf.length, 1); assert.equal(fr.hostage.name, 'Nugget');

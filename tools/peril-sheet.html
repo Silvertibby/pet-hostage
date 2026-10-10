@@ -1,0 +1,16 @@
+<!doctype html><meta charset="utf-8"><title>final-day scenes (spoilers!)</title>
+<style>body{margin:0;background:#1b1626}canvas{display:block;image-rendering:pixelated}</style><canvas id="c"></canvas>
+<script type="module">
+// SPOILERS: every animal's final-day scene. Columns: peril (2 frames), relief (15k banked). ?only=bunny for one row.
+import { drawScene, VIEW_W, VIEW_H, PERIL_SPECIES } from '../app/art.js?v=42';
+const qs = new URLSearchParams(location.search), SP = qs.get('only') ? [qs.get('only')] : PERIL_SPECIES, S = +(qs.get('s') || 4), G = 4;
+const cols = [{ t: 0.3 }, { t: 1.35 }, { t: 0.6, freed: true }, { t: 2.2, freed: true }];
+const c = document.getElementById('c'), ctx = c.getContext('2d');
+c.width = (cols.length * (VIEW_W + G) + G) * S; c.height = (SP.length * (VIEW_H + G) + G) * S;
+ctx.imageSmoothingEnabled = false; ctx.fillStyle = '#0e0b14'; ctx.fillRect(0, 0, c.width, c.height); ctx.scale(S, S);
+SP.forEach((sp, j) => cols.forEach((col, i) => {
+  ctx.save(); ctx.translate(G + i * (VIEW_W + G), G + j * (VIEW_H + G)); ctx.beginPath(); ctx.rect(0, 0, VIEW_W, VIEW_H); ctx.clip();
+  drawScene(ctx, { species: sp, mood: 'worried', injuries: [], final: true, freed: !!col.freed }, col.t); ctx.restore();
+}));
+const pre = document.createElement('pre'); pre.id = 'out'; pre.textContent = c.toDataURL('image/png'); document.body.appendChild(pre);
+</script>

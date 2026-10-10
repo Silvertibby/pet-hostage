@@ -1,6 +1,7 @@
 // Pet Hostage v0.2 rules: a rescue LADDER. Tunable constants up top.
 export const RULES = {
-  GOAL: 10000,          // always 10,000. Not editable.
+  GOAL: 10000,          // 10,000 a day. Not editable.
+  FINAL_GOAL: 15000,    // v0.4.2: the last day before a rescue (day N of N) needs 15,000
   BASE_DAYS: 3,         // rung 0 (the bunny) needs 3 days in a row
   STEP_DAYS: 2,         // each rung after that needs +2
   TZ: 'America/Vancouver',
@@ -29,6 +30,10 @@ export const DEATH_TEXT = {
 const ROMAN = ['', '', ' II', ' III', ' IV', ' V', ' VI', ' VII', ' VIII', ' IX', ' X'];
 
 export const needFor = rung => RULES.BASE_DAYS + RULES.STEP_DAYS * rung;
+// The goal for the hostage's next unsettled day: day (streak+1) of need. The final day is the 15k challenge.
+export const isFinalDay = (streak, need) => streak + 1 >= need;
+export const goalFor = (streak, need) => isFinalDay(streak, need) ? RULES.FINAL_GOAL : RULES.GOAL;
+export const goalToday = st => goalFor(st.hostage.streak, needFor(st.hostage.rung));
 export function animalFor(rung) {
   const a = ANIMALS[rung % ANIMALS.length], lap = Math.floor(rung / ANIMALS.length) + 1;
   return { species: a.species, name: a.name + (ROMAN[lap] ?? ' #' + lap) };
@@ -82,11 +87,11 @@ export function settle(st, today) {
   const events = []; const h = st.hostage;
   let d = addDays(h.settledThrough, 1);
   while (d < today) {
-    const steps = st.days[d] || 0, met = steps >= RULES.GOAL;
     const r = st.hostage.rung, p = petAt(st, r), need = needFor(r);
+    const goal = goalFor(st.hostage.streak, need), steps = st.days[d] || 0, met = steps >= goal;
     if (met) {
       st.hostage.streak++; st.stats.metDays++;
-      events.push({ kind: 'day', date: d, steps, met, rung: r, name: p.name, streak: st.hostage.streak, need });
+      events.push({ kind: 'day', date: d, steps, goal, met, rung: r, name: p.name, streak: st.hostage.streak, need });
       if (st.hostage.streak >= need) {
         p.rescuedOn = d; p.rescues++; st.stats.rescues++;
         kidnap(st, r + 1, addDays(d, 1));
@@ -101,7 +106,7 @@ export function settle(st, today) {
       kidnap(st, back, addDays(d, 1));
       const b = petAt(st, back);
       st.deathCount++;
-      const ev = { kind: 'death', id: st.deathCount, date: d, steps, rung: r, name: p.name, species: p.species, type, deaths: p.deaths,
+      const ev = { kind: 'death', id: st.deathCount, date: d, steps, goal, rung: r, name: p.name, species: p.species, type, deaths: p.deaths,
         rekidnap: { rung: back, name: b.name, species: b.species, need: needFor(back), same: back === r } };
       st.lastDeath = ev;
       st.deathLog = [ev, ...(st.deathLog || [])].slice(0, RULES.DEATH_LOG_MAX);
@@ -117,7 +122,7 @@ export function settle(st, today) {
 }
 
 export function mood(st, np) {
-  const steps = st.days[np.date] || 0, prog = steps / RULES.GOAL;
+  const steps = st.days[np.date] || 0, prog = steps / goalToday(st);
   if (prog >= 1) return 'happy';
   if (np.hour >= 21) return 'scared';
   const expected = Math.max(0, Math.min(1, (np.hour - 8) / 14)); // 8am..10pm
@@ -131,8 +136,8 @@ export function view(st, now = Date.now()) {
   const np = localParts(now);
   const days = [];
   for (let i = 13; i >= 0; i--) { const d = addDays(np.date, -i); days.push({ date: d, steps: st.days[d] ?? null }); }
-  const h = st.hostage, todaySteps = st.days[np.date] || 0;
-  const hostage = { ...petView(st, h.rung), streak: h.streak, since: h.since, todayMet: todaySteps >= RULES.GOAL };
+  const h = st.hostage, todaySteps = st.days[np.date] || 0, goal = goalToday(st);
+  const hostage = { ...petView(st, h.rung), streak: h.streak, since: h.since, todayMet: todaySteps >= goal, finalDay: isFinalDay(h.streak, needFor(h.rung)), goal };
   hostage.day = h.streak + 1; // today's day number toward rescue
   const shelf = []; for (let r = 0; r < h.rung; r++) shelf.push(petView(st, r));
   const top = Math.max(st.bestRung, h.rung) + 1, ladder = [];
@@ -142,7 +147,7 @@ export function view(st, now = Date.now()) {
     ladder.push({ rung: r, need: needFor(r), species: a.species, name: a.name, known, status: r < h.rung ? 'rescued' : r === h.rung ? 'hostage' : 'locked', deaths: known ? st.pets[r].deaths : 0, injuries: known ? st.pets[r].injuries : [] });
   }
   return {
-    v: 2, today: np.date, hour: np.hour, goal: RULES.GOAL, todaySteps,
+    v: 2, today: np.date, hour: np.hour, goal, baseGoal: RULES.GOAL, finalGoal: RULES.FINAL_GOAL, todaySteps,
     lastSync: st.lastSync, lastSteps: st.lastSteps,
     hostage, shelf, ladder, mood: mood(st, np), days,
     lastDeath: st.lastDeath, deathSeen: st.deathSeen || 0, deathLog: (st.deathLog || []).slice(0, 10),

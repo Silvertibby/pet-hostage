@@ -1,4 +1,4 @@
-import { RULES, localParts, newState, migrate, settle, view, petAt, needFor, DEATH_TEXT } from './game.js';
+import { RULES, localParts, newState, migrate, settle, view, petAt, needFor, goalToday, DEATH_TEXT } from './game.js';
 import { note, nudgeText, DISH, ITEM, PET_EMOJI } from './messages.js';
 import { sendPush } from './push.js';
 
@@ -66,7 +66,8 @@ const n = x => Number(x).toLocaleString('en-US');
 const vars = st => {
   const t = localParts().date; const steps = st.days[t] || 0;
   const h = st.hostage, p = petAt(st, h.rung), need = needFor(h.rung);
-  return { name: p.name, species: p.species, steps: n(steps), goal: n(RULES.GOAL), left: n(Math.max(0, RULES.GOAL - steps)), day: h.streak + 1, need, streak: h.streak, togo: need - h.streak };
+  const goal = goalToday(st);
+  return { name: p.name, species: p.species, steps: n(steps), goal: n(goal), left: n(Math.max(0, goal - steps)), day: h.streak + 1, need, streak: h.streak, togo: need - h.streak };
 };
 
 async function push(env, st, title, body, tag) {
@@ -96,7 +97,7 @@ async function reportEvents(env, st, events) {
   } else if (rescue) {
     await push(env, st, '🎉 ' + rescue.name + ' rescued!', note('rescued', { ...v, dead: rescue.name, name: rescue.next.name, need: rescue.next.need }), 'ph-report');
   } else if (day) {
-    await push(env, st, '🥕 Ransom paid', note('met', v), 'ph-report');
+    await push(env, st, '🥕 Ransom paid', note(v.day >= v.need ? 'metFinal' : 'met', v), 'ph-report');
   }
 }
 
@@ -206,13 +207,14 @@ export default {
       st.lastSync = Date.now(); st.lastSteps = stored;
       logSync(st, { ok: true, steps: stored, raw: clip(raw), date, method: req.method, codeNote, test, src, reason: note2 });
       const v = vars(st);
-      if (date === today && before < RULES.GOAL && stored >= RULES.GOAL && !(st.sent[today] || []).includes('paid')) {
+      const goal = goalToday(st);
+      if (date === today && before < goal && stored >= goal && !(st.sent[today] || []).includes('paid')) {
         st.sent[today] = [...(st.sent[today] || []), 'paid'];
         const last = v.day >= v.need;
         await push(env, st, last ? '🗝 Final payment!' : '🥕 Ransom paid!', note(last ? 'paidLast' : 'paid', v), 'ph-paid');
       }
       await save(env, st);
-      const left = Math.max(0, RULES.GOAL - stored);
+      const left = Math.max(0, goal - stored);
       if (url.searchParams.has('plain') || req.method === 'GET') return text(left
         ? `Got ${n(stored)} steps. ${n(left)} to go or ${v.name} gets it. (Day ${v.day} of ${v.need})`
         : `Got ${n(stored)} steps. Ransom paid. Day ${v.day} of ${v.need} for ${v.name}.${v.day >= v.need ? ' Rescue at midnight!' : ''}`);
@@ -222,7 +224,7 @@ export default {
     if (req.method !== 'POST') return json({ error: 'not found' }, 404);
 
     if (path === '/settings') {
-      // The goal is always 10,000 (ignored if sent). Only the current hostage's name can change.
+      // The goal is fixed by the rules (10,000; 15,000 on a final day) and ignored if sent. Only the current hostage's name can change.
       if (typeof body.name === 'string' && body.name.trim()) petAt(st, st.hostage.rung).name = body.name.trim().slice(0, 24);
       await save(env, st); return json(view(st));
     }
@@ -281,15 +283,15 @@ async function tickPlayer(env, code) {
 // Which nudge (if any) is due now for this player. Pure, so the tests can drive it.
 function dayCoin(code, date) { let h = 2166136261; for (const ch of code + date) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return (h >>> 0) % 2; }
 export function planNudge(st, np) {
-  const steps = st.days[np.date] || 0;
-  if (steps >= RULES.GOAL) return null; // banked: no nagging
+  const steps = st.days[np.date] || 0, goal = goalToday(st);
+  if (steps >= goal) return null; // banked: no nagging
   const mins = np.hour * 60 + np.minute, sent = st.sent[np.date] || [];
   const idx = NUDGES2.findIndex(n => mins >= n.at && mins < n.at + NUDGE_WINDOW && !sent.includes(n.id));
   if (idx < 0) return null;
   const n = NUDGES2[idx];
   const voice = (dayCoin(st.code, np.date) + idx) % 2 === 0 ? 'pet' : 'raccoon'; // one of each per day
   const h = st.hostage, p = petAt(st, h.rung), need = needFor(h.rung);
-  const v = { name: p.name, species: p.species, animal: p.species === 'panda' ? 'panda cub' : p.species, steps: steps.toLocaleString('en-US'), left: (RULES.GOAL - steps).toLocaleString('en-US'),
-    dish: DISH[p.species] || 'stew', item: ITEM[p.species] || 'a hat', day: h.streak + 1, need };
+  const v = { name: p.name, species: p.species, animal: p.species === 'panda' ? 'panda cub' : p.species, steps: steps.toLocaleString('en-US'), left: (goal - steps).toLocaleString('en-US'), goal: goal.toLocaleString('en-US'),
+    dish: DISH[p.species] || 'stew', item: ITEM[p.species] || 'a hat', day: h.streak + 1, need, final: h.streak + 1 >= need };
   return { id: n.id, voice, title: voice === 'pet' ? `${PET_EMOJI[p.species] || '🐾'} ${p.name}` : '🦝 The Raccoon', body: nudgeText(voice, n.slot, v) };
 }

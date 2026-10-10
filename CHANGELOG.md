@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.4.2 (2026-10-10)
+- Final day before a rescue is now a 15,000-step boss day. The Raccoon has been preparing.
+
 ## v0.4.1 (2026-10-10)
 - The Raccoon now shows up in person: full body, trench coat, striped tail, and opinions about your step count.
 

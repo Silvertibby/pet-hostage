@@ -1,7 +1,7 @@
 // Twice-daily nudge schedule + voices.
 import assert from 'node:assert';
 import worker, { planNudge, NUDGES2 } from './src/index.js';
-import { PLEAD, TAUNT, PLEAD_SP, TAUNT_SP, nudgeText, DISH, ITEM } from './src/messages.js';
+import { PLEAD, TAUNT, PLEAD_SP, TAUNT_SP, PLEAD_FINAL, TAUNT_FINAL, nudgeText, DISH, ITEM } from './src/messages.js';
 import { newState, ANIMALS, petAt } from './src/game.js';
 const D = '2026-10-10', np = (h, m) => ({ date: D, hour: h, minute: m });
 const st = newState('ABCDEFGHJK', D); st.days[D] = 3800;
@@ -17,13 +17,17 @@ assert.equal(petN.title, '🐰 Chompsky'); assert.equal(racN.title, '🦝 The Ra
 assert.match(a.body + b.body, /6,200/); // 10,000 - 3,800 filled in
 // banked = silent
 st.sent[D] = []; st.days[D] = 10000; assert.equal(planNudge(st, np(13, 0)), null); assert.equal(planNudge(st, np(19, 30)), null);
+// final day (day 3/3): 12,000 is NOT banked, so the nudges still come; 15,000 silences them
+{ const f = newState('ABCDEFGHJK', D); f.hostage.streak = 2; f.days[D] = 12000;
+  assert.ok(planNudge(f, np(13, 0))); assert.ok(planNudge(f, np(19, 30)));
+  f.days[D] = 15000; assert.equal(planNudge(f, np(13, 0)), null); assert.equal(planNudge(f, np(19, 30)), null); }
 // voice order varies by day (randomized per player/day) but always alternates within the day
 const order = new Set(); for (let d = 1; d <= 20; d++) { const s2 = newState('ABCDEFGHJK', `2026-11-${String(d).padStart(2, '0')}`); const dd = s2.started; order.add(planNudge(s2, { date: dd, hour: 13, minute: 0 }).voice); }
 assert.equal(order.size, 2);
 // every line renders for every animal with no leftover {placeholders}
 let n = 0;
-for (const an of ANIMALS) for (const voice of ['pet', 'raccoon']) for (const slot of ['afternoon', 'evening']) for (const line of [...(voice === 'pet' ? PLEAD : TAUNT)[slot], ...(voice === 'pet' ? PLEAD_SP : TAUNT_SP)[an.species]]) {
-  const out = line.replace(/\{(\w+)\}/g, (_, k) => ({ name: an.name, animal: an.species, left: '1,234', steps: '8,766', dish: DISH[an.species], item: ITEM[an.species], day: 2, need: 3 })[k] ?? `{${k}}`);
+for (const an of ANIMALS) for (const voice of ['pet', 'raccoon']) for (const slot of ['afternoon', 'evening']) for (const line of [...(voice === 'pet' ? PLEAD : TAUNT)[slot], ...(voice === 'pet' ? PLEAD_SP : TAUNT_SP)[an.species], ...(voice === 'pet' ? PLEAD_FINAL : TAUNT_FINAL)]) {
+  const out = line.replace(/\{(\w+)\}/g, (_, k) => ({ name: an.name, animal: an.species, left: '1,234', steps: '8,766', dish: DISH[an.species], item: ITEM[an.species], day: 2, need: 3, goal: '15,000' })[k] ?? `{${k}}`);
   assert.ok(!/\{\w+\}/.test(out), out); n++;
 }
 assert.ok(PLEAD.afternoon.length + PLEAD.evening.length >= 60 && TAUNT.afternoon.length + TAUNT.evening.length >= 60);

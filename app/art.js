@@ -268,6 +268,12 @@ export function raccoon(t, look = 0, annoyed = false) {
 // pose: idle | smug (rubbing paws, leaning at the cage) | sulk (arms crossed, half-lidded) | leash (holding the chain) | glee (paws up, hopping) | walk
 // 34x48 grid; feet rest on row 46. Faces left (toward the cage). Chain paw (leash pose) is at RACCOON_PAW.
 export const RACCOON_W = 34, RACCOON_H = 48, RACCOON_PAW = { x: 5, y: 33 };
+// v0.4.2 final-day poses: where his working paw is (sprite coords), so the scene can hang a ladle/crank/cord off it
+export function racPaw(pose, t) {
+  if (pose === 'stir') return [4 + Math.round(Math.sin(t * 5) * 1.5), 35 + Math.round(Math.cos(t * 5))];
+  if (pose === 'crank') return [5 + Math.round(Math.cos(t * 5) * 2), 33 + Math.round(Math.sin(t * 5) * 2)];
+  return [12, 33];
+}
 export function raccoonBody(t, pose = 'idle', opts = {}) {
   const g = grid(RACCOON_W, RACCOON_H), k = 'k';
   const glee = pose === 'glee', sulk = pose === 'sulk' || pose === 'leash', walk = pose === 'walk';
@@ -292,13 +298,15 @@ export function raccoonBody(t, pose = 'idle', opts = {}) {
   const arms = glee ? [[[11, 30], [6, 22]], [[23, 30], [28, 22]]]
     : pose === 'smug' ? [[[11, 30], [14 + rub, 34]], [[23, 30], [19 + rub, 34]]]
     : pose === 'leash' ? [[[11, 30], [RACCOON_PAW.x + 1, RACCOON_PAW.y]], [[23, 30], [20, 35]]]
+    : pose === 'stir' || pose === 'crank' ? [[[11, 30], racPaw(pose, t)], [[23, 30], [25, 37]]]
+    : pose === 'recipe' ? [[[11, 30], [12, 33]], [[23, 30], [22, 33]]]
     : sulk ? [[[11, 31], [20, 33]], [[23, 31], [14, 34]]]
     : walk ? [[[11, 30], [9 - st, 36]], [[23, 30], [25 + st, 36]]]
     : [[[11, 30], [9, 37]], [[23, 30], [25, 37]]];
   layer(g, l => { for (const [[x0, y0], [x1, y1]] of arms) { stroke(l, [[x0, y0 + by], [x1, y1 + by]], 1.7, 1.5, 'c'); } }, k);
   layer(g, l => { for (const [, [x1, y1]] of arms) ell(l, x1 + (x1 < 17 ? -0.6 : 0.6), y1 + by, 1.8, 1.6, 'd'); }, k);
   // head (the classic fedora head) + red bow tie
-  const head = raccoon(t, opts.look ?? (pose === 'smug' || pose === 'leash' || walk ? -1 : 0), sulk);
+  const head = raccoon(t, opts.look ?? (pose === 'smug' || pose === 'leash' || pose === 'stir' || pose === 'crank' || pose === 'recipe' || walk ? -1 : 0), sulk);
   const hx = 2 - lean, hy = 1 + by + (sulk ? 1 : 0);
   for (let y = 0; y < head.h; y++) for (let x = 0; x < head.w; x++) { const c = head.a[y * head.w + x]; if (c) set(g, x + hx, y + hy, c); }
   pat2(g, 14 - lean, 26 + by + (sulk ? 1 : 0), ['rr.rr', 'rRRRr', 'rr.rr']);
@@ -352,8 +360,8 @@ export const VIEW_W = 100, VIEW_H = 88, VIEW_X = 14, VIEW_Y = 14;
 function px(ctx, x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(Math.round(x), Math.round(y), w, h); }
 
 // Layout (v0.4.1): cage on the left, The Raccoon standing on the right, all inside the visible 100x88 window.
-const LAMP = 50, CAGE_X = 20, PET_X = 30, RAC_X = 80, RAC_Y = 45;
-function room(ctx, t, dark) {
+const LAMP0 = 50, CAGE_X = 20, PET_X = 30, RAC_X = 80, RAC_Y = 45;
+function room(ctx, t, dark, LAMP = LAMP0) {
   px(ctx, 0, 0, SCENE_W, SCENE_H, dark ? '#1b1626' : '#2c2340');
   for (let y = 0; y < 92; y += 6) for (let x = (y / 6) % 2 ? -6 : 0; x < SCENE_W; x += 12) {
     px(ctx, x, y, 11, 5, dark ? '#211b2e' : '#352a4b'); px(ctx, x, y, 11, 1, dark ? '#251f33' : '#3e3256');
@@ -415,6 +423,7 @@ export function hitBoxes(st, t) {
   const rac = box(RAC_X + 4, RAC_Y + 1, 28, 46);
   if (st.mode === 'death') return { pet: box(14, 6, 64, 90), raccoon: rac };
   if (st.freed) { const w = walker(t); return { pet: box(w.x + 2, 46, 32, 46), raccoon: rac }; }
+  if (st.final) return { pet: box(PET_X - 2, 28, 40, 50), raccoon: rac };
   return { pet: box(PET_X, 46, 36, 46), raccoon: rac };
 }
 // The Raccoon in the scene: idles, smirks and rubs his paws; a tap makes him jolt.
@@ -424,8 +433,9 @@ function drawRaccoon(ctx, st, t, pose, x = RAC_X) {
   return rr;
 }
 function drawFreed(ctx, st, t) {
-  room(ctx, t, false);
-  cage(ctx, CAGE_X, 46, 56, 47, 1); // empty, door off
+  room(ctx, t, false, st.final ? (PERIL_LAMP[st.species] || LAMP0) : LAMP0);
+  if (st.final) { ctx.save(); ctx.globalAlpha = 0.75; (PERIL[st.species] || PERIL.bunny)(ctx, st, t, true); ctx.restore(); } // final day banked: the defused contraption
+  else cage(ctx, CAGE_X, 46, 56, 47, 1); // empty, door off
   const pose = 'leash';
   const rr = drawRaccoon(ctx, st, t, pose);
   if (Math.sin(t * 1.7) > 0.6 || rr) { const ax = RAC_X + 22, ay = RAC_Y + 3; px(ctx, ax, ay, 2, 1, '#ff5a5a'); px(ctx, ax - 1, ay + 1, 1, 2, '#ff5a5a'); px(ctx, ax + 2, ay + 1, 1, 2, '#ff5a5a'); px(ctx, ax, ay + 3, 2, 1, '#ff5a5a'); } // anger mark
@@ -443,9 +453,175 @@ function drawFreed(ctx, st, t) {
   px(ctx, RAC_X + RACCOON_PAW.x - 1, RAC_Y + RACCOON_PAW.y - 1, 3, 3, '#8a8f9c'); // chain end in his paw
 }
 
+// ---- v0.4.2: final-day peril scenes (day N of N, 15k). One per species; `calm` = the relief backdrop once 15k is banked ----
+const lerp = (a, b, f) => a + (b - a) * f;
+function pline(ctx, x0, y0, x1, y1, c, w = 1) { const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) || 1; for (let i = 0; i <= n; i++) px(ctx, lerp(x0, x1, i / n), lerp(y0, y1, i / n), w, w, c); }
+function flames(ctx, x, y, w, t) {
+  for (let i = 0; i < w; i += 2) {
+    const h = 2 + Math.round((Math.sin(t * 13 + i * 1.7) * 0.5 + 0.5) * 4 + (Math.sin(t * 7.3 + i * 0.9) * 0.5 + 0.5) * 2);
+    px(ctx, x + i, y - h, 2, h, '#ff5a2a'); px(ctx, x + i, y - Math.max(1, h - 2), 2, Math.max(1, h - 2), '#ffa83a'); if (h > 5) px(ctx, x + i, y - 2, 2, 2, '#ffe27a');
+  }
+  ctx.save(); ctx.globalAlpha = 0.12 + 0.04 * Math.sin(t * 9); px(ctx, x - 8, y - 14, w + 16, 16, '#ff9a3a'); ctx.restore();
+}
+function steam(ctx, x, y, w, t, n = 6, calm = false) {
+  ctx.save();
+  for (let i = 0; i < n; i++) {
+    const f = (t * (calm ? 0.12 : 0.35) + i / n) % 1, sx = x + ((i * 37) % w) + Math.sin(t * 1.5 + i) * 4 * f;
+    ctx.globalAlpha = (calm ? 0.22 : 0.5) * Math.sin(Math.PI * f); px(ctx, sx, y - f * 28, 3 + Math.round(f * 3), 2 + Math.round(f * 2), '#ece6f4');
+  }
+  ctx.restore();
+}
+function bubbles(ctx, x, y, w, t, col, n = 7) {
+  for (let i = 0; i < n; i++) { const f = (t * 1.7 + i * 0.37) % 1, bx = x + ((i * 13 + Math.floor(t * 1.7 + i * 0.37) * 7) % w);
+    if (f < 0.75) px(ctx, bx, y - Math.round(f * 2), 2, 2, col); else { px(ctx, bx - 1, y - 2, 1, 1, col); px(ctx, bx + 2, y - 2, 1, 1, col); } }
+}
+function rope(ctx, x, y0, y1, t, fray) {
+  for (let y = y0; y < y1; y++) {
+    const thin = fray && y >= y0 + 3 && y <= y0 + 6;
+    px(ctx, x, y, thin ? 1 : 2, 1, (y + Math.floor(x)) % 2 ? '#d2ae72' : '#a7824c');
+  }
+  if (fray) { const f = Math.sin(t * 6) > 0 ? 1 : 0; px(ctx, x - 1 - f, y0 + 4, 1, 1, '#d2ae72'); px(ctx, x + 2 + f, y0 + 5, 1, 1, '#a7824c'); px(ctx, x + 2, y0 + 3 + f, 1, 1, '#d2ae72'); }
+}
+function beam(ctx) { px(ctx, 14, 14, 72, 3, '#4a3828'); px(ctx, 14, 17, 72, 1, '#2e2018'); }
+function pulley(ctx, x, y) { px(ctx, x - 2, y - 2, 5, 5, '#8a8f9c'); px(ctx, x - 1, y - 1, 3, 3, '#5d6170'); px(ctx, x, y, 1, 1, '#c5cad6'); }
+function winch(ctx, x, y, t) { px(ctx, x - 3, y - 3, 7, 7, '#6a4a32'); px(ctx, x - 2, y - 2, 5, 5, '#8a6a48'); const a = t * 5; px(ctx, x + Math.round(Math.cos(a) * 2), y + Math.round(Math.sin(a) * 2), 1, 1, '#2e2018'); }
+function petAt(ctx, st, t, x, y, opts = {}) {
+  const mood = st.mood === 'scared' ? 'scared' : 'worried', pr = reactAmt(st, 'pet', t);
+  const shake = (Math.sin(t * 17) > 0.7 ? 1 : 0) + (pr ? (Math.sin(t * 30) > 0 ? 1 : -1) : 0);
+  blit(ctx, critter(st.species || 'bunny', mood, t, st.injuries, opts), Math.round(x + shake), Math.round(y - pr * 4), { flipX: !!opts.flip });
+}
+function racWithPaw(ctx, st, t, pose) { const rr = drawRaccoon(ctx, st, t, pose); const [qx, qy] = racPaw(pose, t); return [RAC_X + qx + (rr ? (Math.sin(t * 40) > 0 ? 1 : -1) : 0), RAC_Y + qy - Math.round(rr * 4)]; }
+function recipeCard(ctx, t) {
+  const x = RAC_X + 9, y = RAC_Y + 27 + (Math.sin(t * 2) > 0.9 ? 1 : 0);
+  px(ctx, x, y, 15, 11, '#f3ead2'); px(ctx, x, y, 15, 1, '#fffaf0'); px(ctx, x + 2, y + 2, 9, 1, '#d8405e');
+  for (let j = 0; j < 3; j++) px(ctx, x + 2, y + 5 + j * 2, 7 + (j % 2) * 3, 1, '#8a7f6a');
+  px(ctx, x - 1, y + 4, 2, 3, '#1f1a28'); px(ctx, x + 14, y + 4, 2, 3, '#1f1a28'); // paws
+}
+// each returns nothing; peril draws pet + raccoon, calm draws only the defused props (drawFreed adds the chained walk)
+const PERIL = {
+  bunny(ctx, st, t, calm) { // dangling by the ears over a bubbling pot
+    beam(ctx); px(ctx, 38, 17, 5, 2, '#8a8f9c');
+    const sw = calm ? 0 : Math.sin(t * 1.8) * 2.5, HX = 40;
+    if (!calm) flames(ctx, 16, 92, 60, t); else { px(ctx, 22, 89, 48, 3, '#3a2a22'); px(ctx, 28, 88, 12, 2, '#5a4a3a'); px(ctx, 48, 88, 14, 2, '#4a3a2e'); }
+    if (calm) { rope(ctx, HX, 19, 30, t, true); px(ctx, HX - 1, 30, 1, 2, '#d2ae72'); px(ctx, HX + 2, 30, 1, 2, '#a7824c'); }
+    else { pline(ctx, HX, 19, HX + sw, 36, '#c9a46a', 2); rope(ctx, HX, 19, 24, t, true); petAt(ctx, st, t, HX - 18 + sw, 24); px(ctx, HX - 3 + sw, 33, 8, 2, '#a7824c'); }
+    // cauldron: rim, water, round belly, little legs
+    px(ctx, 16, 63, 58, 2, '#8a8c9a'); px(ctx, 18, 65, 54, 2, calm ? '#6fa8c4' : '#8fd3f0');
+    if (!calm) bubbles(ctx, 19, 66, 50, t, '#e8f8ff', 9);
+    px(ctx, 16, 67, 58, 2, '#6e7080'); px(ctx, 16, 67, 58, 1, '#9a9cac');
+    for (let j = 0; j < 20; j++) { const o = Math.round(Math.max(0, Math.abs(j - 7) - 3) ** 2 / 5) - (j > 2 && j < 12 ? 2 : 0); px(ctx, 18 + o, 69 + j, 54 - 2 * o, 1, '#33353f'); px(ctx, 21 + o, 69 + j, 3, 1, '#545666'); }
+    px(ctx, 24, 88, 3, 4, '#2a2c34'); px(ctx, 63, 88, 3, 4, '#2a2c34');
+    steam(ctx, 22, 64, 46, t, calm ? 3 : 8, calm);
+    if (!calm) { const [ax, ay] = racWithPaw(ctx, st, t, 'stir'); pline(ctx, ax, ay, 64, 65, '#c8a070'); px(ctx, ax - 1, ay - 1, 3, 3, '#1f1a28'); }
+  },
+  hamster(ctx, st, t, calm) { // running for dear life in a wheel over the grill
+    const cx = 47, cy = 44, R = 22, rot = calm ? 0.3 : t * 3.2;
+    px(ctx, 46, 14, 2, 30, '#5d6170');
+    if (!calm) flames(ctx, 22, 78, 50, t);
+    for (let i = 0; i < 4; i++) { const a = rot + i * Math.PI / 4 * 2; pline(ctx, cx, cy, cx + Math.cos(a) * R, cy + Math.sin(a) * R, '#7a8090'); }
+    for (let a = 0; a < Math.PI * 2; a += 0.06) { px(ctx, cx + Math.cos(a) * R, cy + Math.sin(a) * R, 1, 1, '#c5cad6'); px(ctx, cx + Math.cos(a) * (R - 1), cy + Math.sin(a) * (R - 1), 1, 1, '#9aa0ad'); }
+    for (let i = 0; i < 12; i++) { const a = rot + i * Math.PI / 6; px(ctx, cx + Math.cos(a) * (R - 2), cy + Math.sin(a) * (R - 2), 1, 1, '#e8ecf4'); }
+    px(ctx, cx - 2, cy - 2, 5, 5, '#8a8f9c'); px(ctx, cx - 1, cy - 1, 3, 3, '#c5cad6');
+    if (!calm) { const [ax, ay] = racWithPaw(ctx, st, t, 'crank'); const off = Math.floor(t * 10) % 2; // drive belt runs behind the hamster
+      const n = Math.hypot(ax - cx, ay - cy); for (let i = 0; i <= n; i++) px(ctx, lerp(cx, ax, i / n), lerp(cy, ay, i / n), 1, 1, (i + off) % 2 ? '#2e2018' : '#9a7a50');
+      winch(ctx, ax, ay, t); petAt(ctx, st, t, 29, 28, { walk: t * 15 }); }
+    px(ctx, 20, 78, 56, 1, '#9aa0ad'); for (let x = 20; x < 76; x += 4) px(ctx, x, 77, 1, 3, '#9aa0ad');
+    px(ctx, 22, 79, 52, 2, calm ? '#3a3036' : (Math.sin(t * 6) > 0 ? '#ff4a2a' : '#d8302a'));
+    px(ctx, 22, 81, 52, 8, '#3a3c48'); px(ctx, 22, 81, 52, 1, '#565868'); px(ctx, 24, 89, 3, 3, '#2a2c34'); px(ctx, 69, 89, 3, 3, '#2a2c34');
+  },
+  squirrel(ctx, st, t, calm) { // sat in a pie tin while the top crust comes down
+    const ly = calm ? 24 : Math.round(28 + (Math.sin(t * 0.9) * 0.5 + 0.5) * 9);
+    px(ctx, 30, 14, 1, ly - 18, '#a7824c'); px(ctx, 63, 14, 1, ly - 18, '#a7824c');
+    for (let j = 0; j < 7; j++) { const o = Math.round((6 - j) ** 2 / 2.2); px(ctx, 22 + o, ly - 6 + j, 50 - 2 * o, 1, '#e8b060'); }
+    for (let x = 24; x < 72; x += 5) pline(ctx, x, ly, Math.min(70, x + 5), ly - 5, '#c88a40');
+    px(ctx, 46, ly - 9, 3, 3, '#c88a40'); for (const x of [36, 47, 58]) px(ctx, x, ly - 4, 2, 1, '#7a4a20');
+    for (let x = 22; x < 72; x += 2) px(ctx, x, ly, 2, 1, x % 4 ? '#f4c878' : '#c88a40');
+    px(ctx, 16, 80, 62, 3, '#8a5a3a'); px(ctx, 16, 80, 62, 1, '#a8704a'); px(ctx, 18, 83, 58, 2, '#6a4028'); px(ctx, 20, 85, 3, 7, '#6a4028'); px(ctx, 71, 85, 3, 7, '#6a4028');
+    if (!calm) petAt(ctx, st, t, 29, 40);
+    px(ctx, 22, 74, 50, 6, '#b0b4c0'); px(ctx, 22, 74, 50, 1, '#d8dce6'); px(ctx, 24, 79, 46, 1, '#8a8f9c');
+    for (let x = 22; x < 72; x += 2) px(ctx, x, 73, 2, 1, x % 4 ? '#e8b060' : '#c88a40');
+    px(ctx, 60, 77, 5, 2, '#7a3a8a'); px(ctx, 30, 77, 4, 2, '#7a3a8a');
+    if (!calm) { racWithPaw(ctx, st, t, 'recipe'); recipeCard(ctx, t); }
+  },
+  hedgehog(ctx, st, t, calm) { // in the fryer basket, being lowered
+    const bb = calm ? 40 : Math.round(60 + (Math.sin(t * 0.8) * 0.5 + 0.5) * 7), top = bb - 18;
+    pulley(ctx, 47, 18); pulley(ctx, 76, 18);
+    px(ctx, 47, 18, 29, 1, '#a7824c'); px(ctx, 47, 18, 1, top - 21, '#a7824c');
+    for (let x = 30; x < 65; x++) { const y = top - 3 - Math.round(Math.sin(Math.PI * (x - 30) / 35) * 2); px(ctx, x, y, 1, 1, '#8a8f9c'); }
+    if (!calm) petAt(ctx, st, t, 29, bb - 37);
+    ctx.save(); ctx.globalAlpha = 0.85;
+    for (let x = 26; x <= 68; x += 3) px(ctx, x, top, 1, 18, '#c5cad6'); for (let y = top; y <= bb; y += 3) px(ctx, 26, y, 43, 1, '#c5cad6');
+    ctx.restore(); px(ctx, 26, bb, 43, 1, '#e8ecf4'); px(ctx, 26, top, 43, 1, '#e8ecf4');
+    px(ctx, 20, 69, 54, 2, '#c5cad6'); px(ctx, 22, 70, 50, 3, calm ? '#a87828' : '#e0a030');
+    if (!calm) { bubbles(ctx, 23, 71, 46, t, '#ffe08a', 9); for (let i = 0; i < 4; i++) if (Math.sin(t * 11 + i * 2) > 0.7) px(ctx, 26 + i * 12, 64 - (i % 2) * 3, 1, 1, '#ffe08a'); }
+    px(ctx, 20, 73, 54, 19, '#9aa0ad'); px(ctx, 20, 73, 54, 1, '#c5cad6'); px(ctx, 24, 78, 46, 9, '#7a8090'); px(ctx, 28, 81, 6, 2, '#ff5a5a'); px(ctx, 60, 81, 3, 3, '#3a3c48');
+    if (!calm) { const [ax, ay] = racWithPaw(ctx, st, t, 'crank'); pline(ctx, 76, 18, ax, ay, '#a7824c'); winch(ctx, ax, ay, t); }
+    else pline(ctx, 76, 18, 78, 60, '#a7824c');
+  },
+  kitten(ctx, st, t, calm) { // in the mixing bowl, under the mixer
+    const by = calm ? 0 : Math.round((Math.sin(t * 0.7) * 0.5 + 0.5) * 6);
+    px(ctx, 47, 14, 1, 3, '#5d6170'); px(ctx, 32, 17, 30, 9, '#ff9ac0'); px(ctx, 32, 17, 30, 1, '#ffc4dc'); px(ctx, 34, 25, 26, 1, '#d86a98'); px(ctx, 52, 19, 6, 2, '#ffffff');
+    for (const bx of [39, 53]) {
+      const len = calm ? 4 : 12 + by; px(ctx, bx, 26, 1, len, '#c5cad6');
+      const y0 = 26 + len, f = calm ? 0 : Math.floor(t * 18) % 2;
+      for (let j = 0; j < 7; j++) { const w = [2, 4, 5, 6, 5, 4, 2][j]; px(ctx, bx - (f ? w - 1 : 1) + (f ? 0 : 0), y0 + j, 1, 1, '#e8ecf4'); px(ctx, bx + (f ? 1 : w - 1), y0 + j, 1, 1, '#e8ecf4'); }
+      if (!calm) for (let i = 0; i < 2; i++) if (Math.sin(t * 20 + i * 3 + bx) > 0.5) px(ctx, bx + (i ? 5 : -6), y0 + 2 + i, 2, 1, '#ffffff');
+    }
+    px(ctx, 18, 64, 58, 3, '#d8c8b0'); px(ctx, 20, 65, 54, 2, calm ? '#e8d8a8' : '#f8e8c0');
+    if (!calm) petAt(ctx, st, t, 29, 40);
+    for (let j = 0; j < 26; j++) { const o = Math.round(j * j / 42); px(ctx, 18 + o, 67 + j, 58 - 2 * o, 1, j === 5 || j === 6 ? '#7fb8e0' : '#f2e6d8'); px(ctx, 20 + o, 67 + j, 2, 1, '#fffaf2'); }
+    if (!calm) { const [ax, ay] = racWithPaw(ctx, st, t, 'crank');
+      for (let i = 0; i <= 20; i++) { const f = i / 20; px(ctx, lerp(62, ax, f), lerp(21, ay, f) + Math.sin(Math.PI * f) * 6, 1, 1, '#9aa0ad'); }
+      px(ctx, ax - 3, ay - 3, 7, 7, '#e8e4ec'); px(ctx, ax - 1, ay - 1, 3, 3, '#d8405e'); px(ctx, ax + Math.round(Math.cos(t * 5) * 2), ay + Math.round(Math.sin(t * 5) * 2), 1, 1, '#1f1a28'); }
+  },
+  duckling(ctx, st, t, calm) { // running the wrong way on a conveyor into the oven
+    px(ctx, 14, 44, 22, 48, '#5a5e6a'); px(ctx, 14, 44, 22, 2, '#7a7e8a'); for (let i = 0; i < 3; i++) px(ctx, 17 + i * 6, 48, 3, 3, '#2e2e38');
+    const glow = calm ? '#2a2630' : (Math.sin(t * 8) > 0 ? '#ff8a3a' : '#ff6a2a');
+    px(ctx, 17, 56, 16, 26, '#2e2e38'); px(ctx, 18, 57, 14, 24, glow);
+    if (!calm) { ctx.save(); ctx.globalAlpha = 0.18; px(ctx, 32, 54, 14, 30, '#ffb04a'); ctx.restore(); for (let i = 0; i < 3; i++) px(ctx, 20 + i * 4, 60 + Math.round(Math.sin(t * 6 + i) * 2), 1, 3, '#ffd870'); }
+    const off = calm ? 0 : Math.floor(t * 14) % 6;
+    px(ctx, 32, 84, 48, 3, '#3a3c48'); px(ctx, 32, 87, 48, 5, '#2a2c34');
+    for (let x = 32 + (6 - off); x < 80; x += 6) px(ctx, x, 84, 2, 1, '#6a6e7a');
+    for (const rx of [34, 77]) { px(ctx, rx - 2, 86, 5, 5, '#8a8f9c'); px(ctx, rx, 88, 1, 1, '#2a2c34'); }
+    for (let i = 0; i < 3; i++) { const ox = calm ? 40 + i * 13 : 80 - ((t * 14 + i * 16) % 48); if (ox > 33 && ox < 77) { px(ctx, ox, 82, 5, 2, '#ff9a2a'); px(ctx, ox + 1, 82, 3, 1, '#ffd870'); } }
+    if (!calm) { petAt(ctx, st, t, 42 + Math.sin(t * 0.7) * 3, 47, { walk: t * 18 }); if (Math.sin(t * 3) > 0) px(ctx, 62, 52, 1, 2, '#8fd3f0');
+      const [ax, ay] = racWithPaw(ctx, st, t, 'crank'); pline(ctx, 77, 88, ax, ay, '#8a8f9c'); px(ctx, ax - 1, ay - 1, 3, 3, '#1f1a28'); }
+  },
+  piglet(ctx, st, t, calm) { // hot-footing it in a frying pan
+    px(ctx, 16, 80, 62, 12, '#e8e4ec'); px(ctx, 16, 80, 62, 1, '#ffffff'); for (let i = 0; i < 4; i++) px(ctx, 22 + i * 14, 86, 3, 3, '#3a3c48'); px(ctx, 18, 90, 58, 1, '#b8b4c0');
+    if (!calm) flames(ctx, 24, 80, 46, t);
+    if (!calm) petAt(ctx, st, t, 29, 34 - Math.abs(Math.sin(t * 6)) * 5);
+    px(ctx, 20, 72, 52, 5, '#2e2e38'); px(ctx, 20, 72, 52, 1, '#5a5a6a'); px(ctx, 22, 77, 48, 1, '#24242c'); px(ctx, 72, 73, 10, 2, '#5a3a28');
+    for (const ex of [21, 63]) { px(ctx, ex, 70, 8, 2, '#ffffff'); px(ctx, ex + 1, 69, 6, 1, '#ffffff'); px(ctx, ex + 3, 69, 2, 2, '#ffc83a'); }
+    if (!calm) { for (let i = 0; i < 6; i++) if (Math.sin(t * 13 + i * 1.9) > 0.6) px(ctx, 24 + i * 8, 66 - (i % 3) * 2, 1, 1, i % 2 ? '#ffffff' : '#ffe27a');
+      steam(ctx, 26, 70, 40, t, 4);
+      const [ax, ay] = racWithPaw(ctx, st, t, 'stir'); pline(ctx, ax, ay, 66, 66, '#c8a070'); px(ctx, 63, 64, 5, 2, '#8a8f9c'); px(ctx, ax - 1, ay - 1, 3, 3, '#1f1a28'); }
+  },
+  panda(ctx, st, t, calm) { // in the bamboo steamer, lid coming down
+    const ly = calm ? 16 : Math.round(19 + (Math.sin(t * 0.8) * 0.5 + 0.5) * 8);
+    pulley(ctx, 47, 14); pulley(ctx, 74, 14); px(ctx, 47, 14, 27, 1, '#a7824c'); px(ctx, 47, 14, 1, ly - 15, '#a7824c');
+    px(ctx, 44, ly - 1, 6, 2, '#a88848'); px(ctx, 32, ly + 1, 30, 2, '#d8b878'); px(ctx, 27, ly + 3, 40, 3, '#d8b878'); px(ctx, 27, ly + 5, 40, 1, '#a88848');
+    for (let x = 30; x < 66; x += 5) px(ctx, x, ly + 2, 1, 3, '#a88848'); px(ctx, 56, ly - 1, 4, 2, '#5aa84a');
+    if (!calm) flames(ctx, 24, 92, 46, t);
+    for (let j = 0; j < 10; j++) { const o = Math.round(j * j / 9); px(ctx, 18 + o, 80 + j, 58 - 2 * o, 1, '#2e2e38'); } px(ctx, 18, 80, 58, 1, '#5a5a6a');
+    if (!calm) petAt(ctx, st, t, 29, 30);
+    px(ctx, 24, 62, 46, 18, '#d8b878'); for (const y of [62, 70, 78]) px(ctx, 24, y, 46, 2, '#a88848'); for (let x = 27; x < 70; x += 6) px(ctx, x, 64, 1, 6, '#c0a060');
+    steam(ctx, 24, 62, 46, t, calm ? 3 : 9, calm); if (!calm) { steam(ctx, 18, 70, 6, t + 0.3, 2); steam(ctx, 70, 70, 6, t + 0.6, 2); }
+    if (!calm) { const [ax, ay] = racWithPaw(ctx, st, t, 'crank'); pline(ctx, 74, 14, ax, ay, '#a7824c'); winch(ctx, ax, ay, t); }
+    else pline(ctx, 74, 14, 76, 60, '#a7824c');
+  },
+};
+export const PERIL_SPECIES = Object.keys(PERIL);
+const PERIL_LAMP = { bunny: 66, hamster: 68, kitten: 70, hedgehog: 62, panda: 62 }; // keep the lamp clear of the ropes
+function drawPeril(ctx, st, t) {
+  room(ctx, t, false, PERIL_LAMP[st.species] || LAMP0);
+  (PERIL[st.species] || PERIL.bunny)(ctx, st, t, false);
+}
+
 export function drawScene(ctx, st, t) {
   ctx.save(); ctx.translate(-VIEW_X, -VIEW_Y);
   if (st.freed) { drawFreed(ctx, st, t); ctx.restore(); return; }
+  if (st.final) { drawPeril(ctx, st, t); ctx.restore(); return; }
   const mood = st.mood;
   room(ctx, t, false);
   const b = critter(st.species || 'bunny', mood, t, st.injuries);
