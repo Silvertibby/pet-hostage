@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.4.1 (2026-10-10)
+- The Raccoon now shows up in person: full body, trench coat, striped tail, and opinions about your step count.
+
 ## v0.4.0 (2026-10-10)
 - All-new look for every pet: big heads, bigger sparkly eyes, rosy cheeks. Same pets, much harder to let down.
 - Lots more things for your pet and The Raccoon to say, in taps and notifications, and every animal now has lines of its own.

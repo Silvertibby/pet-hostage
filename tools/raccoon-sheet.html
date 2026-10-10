@@ -1,0 +1,10 @@
+<!doctype html><meta charset="utf-8"><title>raccoon</title>
+<style>body{margin:0;background:#1b1626}canvas{display:block;image-rendering:pixelated}</style><canvas id="c"></canvas>
+<script type="module">
+import { raccoonBody, blit } from '../app/art.js?v=2';
+const P = ['idle', 'smug', 'sulk', 'leash', 'glee', 'walk'], T = [0, 0.4, 0.8, 1.2], S = 5;
+const c = document.getElementById('c'), ctx = c.getContext('2d'); c.width = P.length * 38 * S; c.height = T.length * 50 * S;
+ctx.fillStyle = '#2c2340'; ctx.fillRect(0, 0, c.width, c.height); ctx.scale(S, S);
+P.forEach((p, i) => T.forEach((t, j) => blit(ctx, raccoonBody(t, p), i * 38 + 2, j * 50 + 1)));
+const pre = document.createElement('pre'); pre.textContent = c.toDataURL('image/png'); document.body.appendChild(pre);
+</script>

@@ -264,6 +264,52 @@ export function raccoon(t, look = 0, annoyed = false) {
   return g;
 }
 
+// The Raccoon, full body (v0.4.1): chibi villain in a trench coat with a red bow tie, striped tail, little dark paws.
+// pose: idle | smug (rubbing paws, leaning at the cage) | sulk (arms crossed, half-lidded) | leash (holding the chain) | glee (paws up, hopping) | walk
+// 34x48 grid; feet rest on row 46. Faces left (toward the cage). Chain paw (leash pose) is at RACCOON_PAW.
+export const RACCOON_W = 34, RACCOON_H = 48, RACCOON_PAW = { x: 5, y: 33 };
+export function raccoonBody(t, pose = 'idle', opts = {}) {
+  const g = grid(RACCOON_W, RACCOON_H), k = 'k';
+  const glee = pose === 'glee', sulk = pose === 'sulk' || pose === 'leash', walk = pose === 'walk';
+  const hop = glee ? Math.round(Math.abs(Math.sin(t * 7)) * 2) : 0;
+  const lean = pose === 'smug' ? Math.round((Math.sin(t * 0.9) + 1) * 0.75) : 0; // leans in toward the cage now and then
+  const by = -hop;
+  // tail (behind): striped, swishing; droops when sulking, wags when gleeful
+  const sw = Math.sin(t * (glee ? 9 : 2.4)) * (glee ? 2.2 : 1.4), droop = sulk ? 5 : 0;
+  const tp = [[23, 39 + by], [28, 37 + by + droop * 0.4], [31 + sw * 0.5, 31 + by + droop], [30 + sw, 24 + by + droop * 1.4]];
+  layer(g, l => { stroke(l, tp, 3, 2.6, 'h');
+    for (let y = 0; y < l.h; y++) for (let x = 0; x < l.w; x++) if (get(l, x, y) && Math.floor((y - by + x * 0.35) / 2.6) % 2) set(l, x, y, 'd');
+    const [ex, ey] = tp[3]; ell(l, ex, ey - 0.5, 2.2, 2, 'd'); }, k);
+  // legs + feet
+  const st = walk ? Math.sin(t * 9) * 1.6 : 0;
+  layer(g, l => { ell(l, 13 + st, 45 - Math.max(0, st) + (glee ? by : 0), 3.2, 1.8, 'd'); ell(l, 21 - st, 45 - Math.max(0, -st) + (glee ? by : 0), 3.2, 1.8, 'd'); }, k);
+  // coat
+  layer(g, l => { ell(l, 17, 35 + by, 8, 8, 'c', { shade: 'C', sd: 1.6 }); rect(l, 10, 39 + by, 15, 4, 'c'); for (let x = 10; x < 25; x++) set(l, x, 42 + by, x % 3 ? 'C' : 'c'); }, k);
+  for (let y = 28; y < 43; y++) set(g, 17, y + by, 'C'); // coat seam
+  set(g, 18, 33 + by, 'y'); set(g, 18, 37 + by, 'y'); // buttons
+  // arms by pose (shoulders at 11 / 23, row 30)
+  const rub = Math.sin(t * 10) > 0 ? 1 : 0;
+  const arms = glee ? [[[11, 30], [6, 22]], [[23, 30], [28, 22]]]
+    : pose === 'smug' ? [[[11, 30], [14 + rub, 34]], [[23, 30], [19 + rub, 34]]]
+    : pose === 'leash' ? [[[11, 30], [RACCOON_PAW.x + 1, RACCOON_PAW.y]], [[23, 30], [20, 35]]]
+    : sulk ? [[[11, 31], [20, 33]], [[23, 31], [14, 34]]]
+    : walk ? [[[11, 30], [9 - st, 36]], [[23, 30], [25 + st, 36]]]
+    : [[[11, 30], [9, 37]], [[23, 30], [25, 37]]];
+  layer(g, l => { for (const [[x0, y0], [x1, y1]] of arms) { stroke(l, [[x0, y0 + by], [x1, y1 + by]], 1.7, 1.5, 'c'); } }, k);
+  layer(g, l => { for (const [, [x1, y1]] of arms) ell(l, x1 + (x1 < 17 ? -0.6 : 0.6), y1 + by, 1.8, 1.6, 'd'); }, k);
+  // head (the classic fedora head) + red bow tie
+  const head = raccoon(t, opts.look ?? (pose === 'smug' || pose === 'leash' || walk ? -1 : 0), sulk);
+  const hx = 2 - lean, hy = 1 + by + (sulk ? 1 : 0);
+  for (let y = 0; y < head.h; y++) for (let x = 0; x < head.w; x++) { const c = head.a[y * head.w + x]; if (c) set(g, x + hx, y + hy, c); }
+  pat2(g, 14 - lean, 26 + by + (sulk ? 1 : 0), ['rr.rr', 'rRRRr', 'rr.rr']);
+  if (glee) { for (let x = 13; x <= 19; x++) { set(g, x + hx, 22 + hy, 'b'); set(g, x + hx, 23 + hy, x % 2 ? 'e' : 'b'); } set(g, 12 + hx, 21 + hy, 'k'); set(g, 20 + hx, 21 + hy, 'k'); } // big grin
+  if (sulk) for (let x = 13; x <= 19; x++) { set(g, x + hx, 22 + hy, null); set(g, x + hx, 23 + hy, x === 13 || x === 19 ? 'k' : null); set(g, x + hx, 22 + hy, x > 13 && x < 19 ? 'k' : 'm'); } // flat frown
+  g.pal = { ...head.pal, c: '#4a3858', C: '#33263f', r: '#d8405e', R: '#a02a46', y: '#ffd84a' };
+  g.alpha = 1;
+  return g;
+}
+function pat2(g, x, y, rows) { rows.forEach((r, j) => { for (let i = 0; i < r.length; i++) if (r[i] !== '.') set(g, x + i, y + j, r[i]); }); }
+
 export function blit(ctx, g, ox, oy, opt = {}) {
   ctx.save(); ctx.globalAlpha = (opt.alpha ?? 1) * (g.alpha ?? 1);
   for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) {
@@ -305,6 +351,8 @@ export const SCENE_W = 128, SCENE_H = 112;
 export const VIEW_W = 100, VIEW_H = 88, VIEW_X = 14, VIEW_Y = 14;
 function px(ctx, x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(Math.round(x), Math.round(y), w, h); }
 
+// Layout (v0.4.1): cage on the left, The Raccoon standing on the right, all inside the visible 100x88 window.
+const LAMP = 50, CAGE_X = 20, PET_X = 30, RAC_X = 80, RAC_Y = 45;
 function room(ctx, t, dark) {
   px(ctx, 0, 0, SCENE_W, SCENE_H, dark ? '#1b1626' : '#2c2340');
   for (let y = 0; y < 92; y += 6) for (let x = (y / 6) % 2 ? -6 : 0; x < SCENE_W; x += 12) {
@@ -314,13 +362,13 @@ function room(ctx, t, dark) {
   for (let x = 0; x < SCENE_W; x += 16) px(ctx, x, 92, 1, 20, '#2a1d19');
   px(ctx, 0, 92, SCENE_W, 1, '#55403a');
   const sw = Math.sin(t * 1.4) * 3;
-  for (let y = 0; y < 20; y++) px(ctx, 64 + sw * (y / 20), y, 1, 1, '#111');
+  for (let y = 0; y < 20; y++) px(ctx, LAMP + sw * (y / 20), y, 1, 1, '#111');
   ctx.save(); ctx.globalAlpha = dark ? 0.05 : 0.09; ctx.fillStyle = '#ffe9a0';
-  ctx.beginPath(); ctx.moveTo(64 + sw, 22); ctx.lineTo(18 + sw * 3, 112); ctx.lineTo(110 + sw * 3, 112); ctx.closePath(); ctx.fill(); ctx.restore();
+  ctx.beginPath(); ctx.moveTo(LAMP + sw, 22); ctx.lineTo(LAMP - 46 + sw * 3, 112); ctx.lineTo(LAMP + 46 + sw * 3, 112); ctx.closePath(); ctx.fill(); ctx.restore();
   if (!dark) for (let i = 0; i < 9; i++) { // dust motes drifting in the lamp light
-    const f = ((t * (0.03 + i * 0.004) + i * 0.137) % 1), y = 30 + f * 70, x = 64 + sw * 2 + Math.sin(t * 0.7 + i * 2.1) * (6 + f * 30);
+    const f = ((t * (0.03 + i * 0.004) + i * 0.137) % 1), y = 30 + f * 70, x = LAMP + sw * 2 + Math.sin(t * 0.7 + i * 2.1) * (6 + f * 30);
     ctx.save(); ctx.globalAlpha = 0.35 * Math.sin(Math.PI * f); px(ctx, x, y, 1, 1, '#fff3c4'); ctx.restore(); }
-  px(ctx, 62 + sw, 20, 5, 4, dark ? '#776a3a' : '#ffe27a'); px(ctx, 63 + sw, 24, 3, 1, dark ? '#776a3a' : '#ffd84a'); px(ctx, 63 + sw, 19, 3, 1, '#666');
+  px(ctx, LAMP - 2 + sw, 20, 5, 4, dark ? '#776a3a' : '#ffe27a'); px(ctx, LAMP - 1 + sw, 24, 3, 1, dark ? '#776a3a' : '#ffd84a'); px(ctx, LAMP - 1 + sw, 19, 3, 1, '#666');
 }
 function cage(ctx, x, y, w, h, open = 0) {
   px(ctx, x, y, w, 2, '#9aa0ad'); px(ctx, x, y + h - 2, w, 2, '#9aa0ad');
@@ -343,7 +391,7 @@ function puff(ctx, x, y, t, n = 5, col = '#d8d2e0') { ctx.save(); for (let i = 0
 // Home scene: the current hostage in the cage, the raccoon peeking in.
 // Freed-but-chained (today's 10k banked): the pet strolls back and forth in front of the open cage,
 // chained by the ankle to the raccoon's post. Every few laps it stops for a happy hop or a big stretch.
-const POST_X = 88, ANCHOR = { x: 89, y: 89 }, WALK_MIN = 6, WALK_MAX = 58, WALK_SPEED = 13; // px/s
+const WALK_MIN = 13, WALK_MAX = 44, WALK_SPEED = 11; // px/s; the chain runs to The Raccoon's paw
 function walker(t) {
   const span = WALK_MAX - WALK_MIN, lap = span / WALK_SPEED, pause = 1.4, cycle = 2 * lap + 2 * pause;
   const u = t % cycle, n = Math.floor(t / cycle);
@@ -360,38 +408,39 @@ function chain(ctx, x0, y0, x1, y1, len) {
     if (i % 2) { px(ctx, x - 1, y, 3, 2, '#5d6170'); px(ctx, x, y, 1, 1, '#c5cad6'); } else { px(ctx, x, y - 1, 2, 3, '#5d6170'); px(ctx, x, y - 1, 1, 1, '#d8dce6'); }
   }
 }
-function post(ctx) {
-  px(ctx, POST_X - 1, 58, 6, 36, '#5e3a20'); px(ctx, POST_X - 1, 58, 2, 36, '#7a4a2a'); px(ctx, POST_X - 2, 56, 8, 3, '#4e2e1a');
-  px(ctx, ANCHOR.x - 2, ANCHOR.y - 2, 5, 5, '#8a8f9c'); px(ctx, ANCHOR.x - 1, ANCHOR.y - 1, 3, 3, '#3a3040'); // ring
-}
 const reactAmt = (st, who, t) => { const r = st.react; if (!r || r.who !== who) return 0; const u = (t - r.at) / 0.7; return u >= 0 && u < 1 ? Math.sin(Math.PI * u) : 0; };
 // Tap targets in view pixels (the visible 100x88 window), padded for thumbs.
 export function hitBoxes(st, t) {
   const pad = 5, box = (x, y, w, h) => ({ x: x - VIEW_X - pad, y: y - VIEW_Y - pad, w: w + 2 * pad, h: h + 2 * pad });
-  if (st.mode === 'death') return { pet: box(30, 6, 60, 90), raccoon: box(90, 38, 30, 30) };
-  if (st.freed) { const w = walker(t); return { pet: box(w.x + 2, 46, 32, 46), raccoon: box(92, 38, 30, 30) }; }
-  return { pet: box(46, 46, 36, 46), raccoon: box(92, 38, 30, 30) };
+  const rac = box(RAC_X + 4, RAC_Y + 1, 28, 46);
+  if (st.mode === 'death') return { pet: box(14, 6, 64, 90), raccoon: rac };
+  if (st.freed) { const w = walker(t); return { pet: box(w.x + 2, 46, 32, 46), raccoon: rac }; }
+  return { pet: box(PET_X, 46, 36, 46), raccoon: rac };
+}
+// The Raccoon in the scene: idles, smirks and rubs his paws; a tap makes him jolt.
+function drawRaccoon(ctx, st, t, pose, x = RAC_X) {
+  const rr = st ? reactAmt(st, 'raccoon', t) : 0;
+  blit(ctx, raccoonBody(t, pose), x + (rr ? (Math.sin(t * 40) > 0 ? 1 : -1) : 0), RAC_Y - Math.round(rr * 4));
+  return rr;
 }
 function drawFreed(ctx, st, t) {
   room(ctx, t, false);
-  cage(ctx, 36, 46, 56, 47, 1); // empty, door off
-  post(ctx);
-  const r = raccoon(t, -1, true);
-  const rr = reactAmt(st, 'raccoon', t);
-  blit(ctx, r, 92 + Math.round(Math.sin(t * 0.5)) + (rr ? (Math.sin(t * 40) > 0 ? 1 : -1) : 0), 40 - rr * 3);
-  if (Math.sin(t * 1.7) > 0.6 || rr) { px(ctx, 95, 39, 2, 1, '#ff5a5a'); px(ctx, 94, 40, 1, 2, '#ff5a5a'); px(ctx, 97, 40, 1, 2, '#ff5a5a'); px(ctx, 95, 42, 2, 1, '#ff5a5a'); } // anger mark
+  cage(ctx, CAGE_X, 46, 56, 47, 1); // empty, door off
+  const pose = 'leash';
+  const rr = drawRaccoon(ctx, st, t, pose);
+  if (Math.sin(t * 1.7) > 0.6 || rr) { const ax = RAC_X + 22, ay = RAC_Y + 3; px(ctx, ax, ay, 2, 1, '#ff5a5a'); px(ctx, ax - 1, ay + 1, 1, 2, '#ff5a5a'); px(ctx, ax + 2, ay + 1, 1, 2, '#ff5a5a'); px(ctx, ax, ay + 3, 2, 1, '#ff5a5a'); } // anger mark
   const w = walker(t);
   let y = 55, sx = 1, sy = 1, phase;
   if (w.walking) { phase = t * 9; y -= Math.abs(Math.sin(phase)) * 1.5; }
   else if (w.trick === 'hop') { y -= Math.sin(Math.PI * Math.min(1, w.p * 1.4)) * 10; }
   else { const k = Math.sin(Math.PI * w.p); sx = 1 - 0.08 * k; sy = 1 + 0.12 * k; }
-  const mood = w.walking || w.trick === 'hop' ? 'happy' : 'happy';
-  const g = critter(st.species || 'bunny', mood, w.trick === 'stretch' ? 2.5 : t, st.injuries, phase != null ? { walk: phase } : {});
+  const g = critter(st.species || 'bunny', 'happy', w.trick === 'stretch' ? 2.5 : t, st.injuries, phase != null ? { walk: phase } : {});
   const pr = reactAmt(st, 'pet', t); y -= pr * 9;
   const ax = w.x + 13 + (w.dir < 0 ? 10 : 0), ay = y + 36; // ankle (left or right foot depending on facing)
-  chain(ctx, ANCHOR.x, ANCHOR.y, ax, Math.min(ay, 92), 104);
+  chain(ctx, RAC_X + RACCOON_PAW.x, RAC_Y + RACCOON_PAW.y, ax, Math.min(ay, 92), 80);
   if (sx !== 1 || sy !== 1) blitScaled(ctx, g, w.x, y, sx, sy, { flipX: w.dir < 0 }); else blit(ctx, g, w.x, y, { flipX: w.dir < 0 });
   px(ctx, ax - 2, Math.min(ay, 92) - 1, 5, 2, '#8a8f9c'); // ankle cuff
+  px(ctx, RAC_X + RACCOON_PAW.x - 1, RAC_Y + RACCOON_PAW.y - 1, 3, 3, '#8a8f9c'); // chain end in his paw
 }
 
 export function drawScene(ctx, st, t) {
@@ -400,13 +449,13 @@ export function drawScene(ctx, st, t) {
   const mood = st.mood;
   room(ctx, t, false);
   const b = critter(st.species || 'bunny', mood, t, st.injuries);
-  const pr = reactAmt(st, 'pet', t), rr = reactAmt(st, 'raccoon', t);
+  const pr = reactAmt(st, 'pet', t);
   const hop = (mood === 'happy' ? Math.abs(Math.sin(t * 4)) * 6 : Math.abs(Math.sin(t * 2)) * 1.5) + pr * 7;
   const shake = (mood === 'scared' ? (Math.sin(t * 18) > 0.6 ? 1 : 0) : 0) + (pr ? (Math.sin(t * 30) > 0 ? 1 : -1) : 0);
-  blit(ctx, b, 46 + shake, 54 - hop);
-  cage(ctx, 36, 46, 56, 47);
-  const r = raccoon(t, rr ? -1 : 0);
-  blit(ctx, r, 92 + Math.round(Math.sin(t * 0.7) * 2) - Math.round(rr * 3), 40 + Math.round(Math.sin(t * 2.1)) - Math.round(rr * 2));
+  blit(ctx, b, PET_X + shake, 54 - hop);
+  cage(ctx, CAGE_X, 46, 56, 47);
+  // behind on steps: smug, rubbing his paws and leaning at the cage. Otherwise he just loiters.
+  drawRaccoon(ctx, st, t, mood === 'worried' || mood === 'scared' ? 'smug' : 'idle');
   ctx.restore();
 }
 
@@ -415,16 +464,16 @@ export const DEATH_LEN = 5.2;
 export function drawDeath(ctx, d, t) {
   ctx.save(); ctx.translate(-VIEW_X, -VIEW_Y);
   room(ctx, t, t > 3.2);
-  const sp = d.species, inj = d.injuries || [], X = 46, Y = 54;
+  const sp = d.species, inj = d.injuries || [], X = PET_X, Y = 54;
   const A = 1.0, B = 3.4; // phase boundaries
   if (t < A) { // nervous in the cage, raccoon walks up
     blit(ctx, critter(sp, 'scared', t, inj), X + (Math.sin(t * 30) > 0 ? 1 : 0), Y);
-    cage(ctx, 36, 46, 56, 47);
-    blit(ctx, raccoon(t, -1), 104 - t * 10, 40);
+    cage(ctx, CAGE_X, 46, 56, 47);
+    blit(ctx, raccoonBody(t, 'walk'), Math.round(RAC_X + 34 * (1 - t / A)), RAC_Y); // strolls in
   } else if (t < B) {
     const u = t - A;
-    cage(ctx, 36, 46, 56, 47, 1);
-    blit(ctx, raccoon(t, -1), 94, 40);
+    cage(ctx, CAGE_X, 46, 56, 47, 1);
+    blit(ctx, raccoonBody(t, u < 0.4 ? 'smug' : 'glee'), RAC_X, RAC_Y);
     if (d.type === 'anvil') {
       const drop = Math.min(1, u / 0.45), ay = -20 + drop * drop * (Y + 24 - 18 - -20);
       if (drop < 1) { blit(ctx, critter(sp, 'scared', t, inj), X, Y); anvil(ctx, X + 3, ay); }
@@ -467,9 +516,10 @@ export function drawDeath(ctx, d, t) {
     }
   } else { // ghost floats up; little tombstone
     const u = t - B;
-    tomb(ctx, 88, 74);
+    tomb(ctx, X + 24, 74);
+    blit(ctx, raccoonBody(t, 'glee'), RAC_X, RAC_Y);
     const gy = Y - u * 14;
-    blit(ctx, critter(sp, 'ghost', t), X, gy + Math.sin(t * 2) * 2, { alpha: Math.max(0.15, 1 - u * 0.25) });
+    blit(ctx, critter(sp, 'ghost', t), X + 14, gy + Math.sin(t * 2) * 2, { alpha: Math.max(0.15, 1 - u * 0.25) });
     pxText(ctx, 'RIP', 19, 58, '#cfe9fb', 2);
   }
   ctx.restore();

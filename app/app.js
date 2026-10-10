@@ -1,7 +1,7 @@
 import { drawScene, drawDeath, drawShelfPet, raccoon, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.4.0';
+const VERSION = 'v0.4.1';
 const GOAL = 10000;
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
 const APP_URL = 'https://silvertibby.github.io/pet-hostage/';
