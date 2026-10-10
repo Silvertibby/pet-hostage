@@ -1,0 +1,39 @@
+<!doctype html><meta charset="utf-8"><title>Bunny options 3</title>
+<style>body{margin:0;background:#1b1626}canvas{display:block;image-rendering:pixelated}</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
+<canvas id="c"></canvas>
+<script type="module">
+import { blit } from '../app/art.js';
+const { BUNNIES3 } = await import('./bunny-options-3.js?v=' + Date.now());
+const q = new URLSearchParams(location.search), only = q.get('only');
+try { await document.fonts.load('12px "Press Start 2P"'); } catch {}
+const c = document.getElementById('c'), ctx = c.getContext('2d');
+const poses = o => [o.fn('happy', 0), o.fn('worried', 0.3), o.fn('happy', 0, { walk: 1.3 })];
+const TARGET = 228; // on-screen sprite height so every style reads at a similar size
+// integer nearest-neighbour scale
+const draw = (g, x, y, S) => { ctx.save(); ctx.translate(x, y); ctx.scale(S, S); blit(ctx, g, 0, 0); ctx.restore(); };
+const scaleOf = g => Math.max(1, Math.floor(TARGET / g.h));
+if (only != null) {
+  const o = BUNNIES3[+only - 1], ps = poses(o), S = scaleOf(ps[0]), cw = ps[0].w * S + 30;
+  c.width = 3 * cw + 20; c.height = ps[0].h * S + 110;
+  ctx.fillStyle = '#2c2340'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = '#ff6fa8'; ctx.font = '20px "Press Start 2P"'; ctx.fillText(`${only}. ${o.label}`, 16, 36);
+  ctx.fillStyle = '#ffd84a'; ctx.font = '11px "Press Start 2P"'; ctx.fillText(o.style.toUpperCase(), 16, 60);
+  ctx.fillStyle = '#a99fbd'; ['happy', 'worried', 'walking'].forEach((l, j) => ctx.fillText(l, 20 + j * cw, 86));
+  ps.forEach((g, j) => draw(g, 20 + j * cw, 96, S));
+} else {
+  const rowH = TARGET + 50, W = 1060; c.width = W; c.height = BUNNIES3.length * rowH + 70;
+  ctx.fillStyle = '#1b1626'; ctx.fillRect(0, 0, W, c.height);
+  ctx.fillStyle = '#ff6fa8'; ctx.font = '20px "Press Start 2P"'; ctx.fillText('PICK A BUNNY (ROUND 3)', 16, 42);
+  BUNNIES3.forEach((o, i) => {
+    const y = 64 + i * rowH, ps = poses(o), S = scaleOf(ps[0]), sw = ps[0].w * S, gap = Math.max(20, (720 - 3 * sw) / 2);
+    ctx.fillStyle = '#2a2238'; ctx.fillRect(8, y, W - 16, rowH - 10);
+    ctx.fillStyle = '#ffd84a'; ctx.font = '22px "Press Start 2P"'; ctx.fillText(`${i + 1}`, 24, y + 44);
+    ctx.font = '13px "Press Start 2P"'; ctx.fillText(o.label.toUpperCase(), 24, y + 76);
+    ctx.fillStyle = '#a99fbd'; ctx.font = '9px "Press Start 2P"'; o.style.toUpperCase().split(' ').reduce((a, w) => { const l = a[a.length - 1]; if ((l + ' ' + w).length > 14 && l) a.push(w); else a[a.length - 1] = (l ? l + ' ' : '') + w; return a; }, ['']).forEach((l, k) => ctx.fillText(l, 24, y + 102 + k * 16));
+    ps.forEach((g, j) => { const x = 300 + j * (sw + gap); draw(g, x, y + 10 + (TARGET - g.h * S), S);
+      ctx.fillStyle = '#a99fbd'; ctx.fillText(['happy', 'worried', 'walking'][j], x, y + rowH - 18); });
+  });
+}
+document.title = 'ready ' + c.width + 'x' + c.height; const pre = document.createElement('pre'); pre.id = 'out'; pre.textContent = c.toDataURL('image/png'); document.body.appendChild(pre);
+</script>
