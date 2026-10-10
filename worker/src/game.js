@@ -149,6 +149,7 @@ export function view(st, now = Date.now()) {
     stats: st.stats, bestRung: st.bestRung, started: st.started,
     push: !!st.sub, events: (st.events || []).slice(-5),
     code: st.code, syncLog: (st.syncLog || []).slice(0, 5),
+    garmin: st.garmin ? { lastSync: st.garmin.lastSync || null, lastSteps: st.garmin.lastSteps ?? null, lastError: st.garmin.lastError || null, lastErrorAt: st.garmin.lastErrorAt || null } : null,
     // v0.1 app compat (a stale cached app shouldn't crash before it updates)
     pet: { name: hostage.name, born: h.since, alive: true, died: null, peril: 0, streak: h.streak, bestStreak: h.streak, metDays: st.stats.metDays, missedDays: st.stats.missedDays },
     perilLabel: `Day ${hostage.day} of ${hostage.need}`, deathAt: 1, graveyard: [],

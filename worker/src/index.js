@@ -158,6 +158,16 @@ export default {
     if (path === '/state') { if (events.length) await save(env, st); return json(view(st)); }
 
     if (path === '/sync') {
+      const src = clip(url.searchParams.get('src') ?? body.src ?? null) || undefined; // 'garmin' = server-side Garmin job
+      const isGarmin = src === 'garmin';
+      const failure = url.searchParams.get('error') ?? body.error ?? null;
+      if (isGarmin && failure != null) { // the Garmin job reports a failed attempt (reason only, never secrets)
+        const reason = 'Garmin: ' + String(failure).slice(0, 160);
+        st.garmin = { ...(st.garmin || {}), lastError: reason, lastErrorAt: Date.now() };
+        logSync(st, { ok: false, src, reason, method: req.method, test: url.searchParams.has('test') || undefined });
+        await save(env, st);
+        return json({ ok: false, logged: true, reason });
+      }
       const raw = url.searchParams.get('steps') ?? body.steps ?? body.raw ?? null;
       const test = url.searchParams.has('test') || !!body.test || undefined; // test entries can be cleared later
       const dry = url.searchParams.has('dry') || !!body.dry || undefined;     // validate + log only, never stores steps
@@ -165,7 +175,7 @@ export default {
       const steps = parseSteps(raw);
       if (!Number.isFinite(steps) || steps < 0 || steps > 300000) {
         const reason = raw == null || raw === '' ? 'steps missing (is the Statistics Result variable after steps= ?)' : 'steps not a number: ' + clip(raw);
-        logSync(st, { ok: false, reason, raw: clip(raw), method: req.method, codeNote, test, dry });
+        logSync(st, { ok: false, reason, raw: clip(raw), method: req.method, codeNote, test, dry, src });
         await save(env, st);
         return json({ error: 'steps missing or weird', reason, got: clip(raw) }, 400);
       }
@@ -176,21 +186,35 @@ export default {
         return json({ ok: true, dry: true, steps, date });
       }
       const before = st.days[date] || 0;
-      st.days[date] = steps; // Health's daily total; latest wins
-      st.lastSync = Date.now(); st.lastSteps = steps;
-      logSync(st, { ok: true, steps, raw: clip(raw), date, method: req.method, codeNote, test });
+      // Garmin (src=garmin) is authoritative: it sets the day's count. Once Garmin has reported a day, a laggy
+      // Shortcut/Health sync can only raise the count, never lower it. Days with no Garmin report: latest wins.
+      const g = st.garmin || (st.garmin = {});
+      g.days = g.days || {};
+      let stored = steps, note2;
+      if (isGarmin) {
+        g.days[date] = Math.max(g.days[date] || 0, steps);
+        stored = g.days[date];
+        g.lastSync = Date.now(); g.lastSteps = stored; g.lastError = null; g.lastErrorAt = null;
+        for (const k of Object.keys(g.days).sort().slice(0, -7)) delete g.days[k];
+      } else if (g.days[date] != null) {
+        stored = Math.max(g.days[date], before, steps);
+        if (stored !== steps) note2 = `kept ${stored} (Garmin is authoritative; shortcut sent ${steps})`;
+      }
+      st.days[date] = stored;
+      st.lastSync = Date.now(); st.lastSteps = stored;
+      logSync(st, { ok: true, steps: stored, raw: clip(raw), date, method: req.method, codeNote, test, src, reason: note2 });
       const v = vars(st);
-      if (date === today && before < RULES.GOAL && steps >= RULES.GOAL && !(st.sent[today] || []).includes('paid')) {
+      if (date === today && before < RULES.GOAL && stored >= RULES.GOAL && !(st.sent[today] || []).includes('paid')) {
         st.sent[today] = [...(st.sent[today] || []), 'paid'];
         const last = v.day >= v.need;
         await push(env, st, last ? '🗝 Final payment!' : '🥕 Ransom paid!', note(last ? 'paidLast' : 'paid', v), 'ph-paid');
       }
       await save(env, st);
-      const left = Math.max(0, RULES.GOAL - steps);
+      const left = Math.max(0, RULES.GOAL - stored);
       if (url.searchParams.has('plain') || req.method === 'GET') return text(left
-        ? `Got ${n(steps)} steps. ${n(left)} to go or ${v.name} gets it. (Day ${v.day} of ${v.need})`
-        : `Got ${n(steps)} steps. Ransom paid. Day ${v.day} of ${v.need} for ${v.name}.${v.day >= v.need ? ' Rescue at midnight!' : ''}`);
-      return json({ ok: true, steps, state: view(st) });
+        ? `Got ${n(stored)} steps. ${n(left)} to go or ${v.name} gets it. (Day ${v.day} of ${v.need})`
+        : `Got ${n(stored)} steps. Ransom paid. Day ${v.day} of ${v.need} for ${v.name}.${v.day >= v.need ? ' Rescue at midnight!' : ''}`);
+      return json({ ok: true, steps: stored, state: view(st) });
     }
 
     if (req.method !== 'POST') return json({ error: 'not found' }, 404);

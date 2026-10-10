@@ -1,7 +1,7 @@
 import { drawScene, drawDeath, drawShelfPet, raccoon, blit, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.3.0';
+const VERSION = 'v0.3.1';
 const GOAL = 10000;
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
 const APP_URL = 'https://silvertibby.github.io/pet-hostage/';
@@ -226,15 +226,29 @@ function playDeath(d, freezeAt) {
 function syncLogHtml(s) {
   const log = (s.syncLog || []);
   if (!log.length) return `<span class="dim">Nothing has reached The Raccoon yet. Run the "${SHORTCUT_NAME}" shortcut once by hand, then tap "I ran it, check steps" below.</span>`;
-  const line = e => `${e.ok ? '✅' : '❌'} ${timePT(e.at)} · ${ago(e.at)} · ${e.ok ? (e.dry ? 'dry run, ' : '') + fmt(e.steps) + ' steps' : esc(e.reason || 'failed')}${e.raw != null && !e.ok ? ` <span class="dim">(got "${esc(e.raw)}")</span>` : ''}${e.codeNote ? ` <span class="dim">· ${esc(e.codeNote)}</span>` : ''}`;
+  const line = e => `${e.ok ? '✅' : '❌'} ${timePT(e.at)} · ${ago(e.at)} · ${e.ok ? (e.dry ? 'dry run, ' : '') + fmt(e.steps) + ' steps' : esc(e.reason || 'failed')}${e.raw != null && !e.ok ? ` <span class="dim">(got "${esc(e.raw)}")</span>` : ''}${e.codeNote ? ` <span class="dim">· ${esc(e.codeNote)}</span>` : ''}${e.src === 'garmin' ? ' <span class="dim">· Garmin</span>' : ''}${e.ok && e.reason ? ` <span class="dim">· ${esc(e.reason)}</span>` : ''}`;
   return `<div>${line(log[0])}</div>` + (log.length > 1 ? `<div class="dim" style="margin-top:6px">Earlier:<br>${log.slice(1).map(line).join('<br>')}</div>` : '');
+}
+function garminHtml(s) {
+  const g = s.garmin;
+  if (!g || !g.lastSync) return '';
+  const err = g.lastError && g.lastErrorAt && g.lastErrorAt > g.lastSync;
+  return `<h2>GARMIN</h2>
+    <div class="card" id="garmin">
+      <div>⌚ <b>Synced automatically from Garmin</b></div>
+      <div class="dim" style="margin-top:6px">Last Garmin sync ${timePT(g.lastSync)} · ${ago(g.lastSync)} · ${fmt(g.lastSteps)} steps</div>
+      <div class="dim">Checks your Garmin account every 15 minutes, 5 AM to midnight, plus 11:55 PM. Nothing to run on your phone.</div>
+      ${err ? `<div style="margin-top:6px">❌ Last attempt failed ${timePT(g.lastErrorAt)}: ${esc(g.lastError)}</div>` : ''}
+    </div>`;
 }
 function syncUrl() { return `${WORKER}/sync?code=${code}&steps=`; }
 function renderSync() {
   view.innerHTML = `
     <h2>LAST SYNC ATTEMPT</h2>
     <div class="card" id="synclog">${syncLogHtml(state)}</div>
-    <h2>SET UP STEP SYNC</h2>
+    ${garminHtml(state)}
+    <h2>${state.garmin && state.garmin.lastSync ? 'BACKUP: SHORTCUT SYNC' : 'SET UP STEP SYNC'}</h2>
+    ${state.garmin && state.garmin.lastSync ? `<p class="dim">Only needed if Garmin sync stops working. A Shortcut sync can raise today's count but never lower what Garmin reported.</p>` : ''}
     <p class="dim">Your iPhone counts steps into Apple Health (Garmin steps land there too). A Shortcut sends today's total to The Raccoon. Build it once, then automate it.</p>
     <div class="card">
       <div class="dim">Your sync code</div>
@@ -270,6 +284,7 @@ function renderSync() {
   $('#refresh').addEventListener('click', async () => {
     await refresh(true);
     $('#synclog').innerHTML = syncLogHtml(state);
+    if ($('#garmin')) $('#garmin').outerHTML = garminHtml(state).replace(/^<h2>GARMIN<\/h2>\s*/, '');
     $('#synctest').textContent = state.lastSync ? `Last sync ${timePT(state.lastSync)} (${ago(state.lastSync)}): ${fmt(state.lastSteps)} steps.` : 'Nothing received yet.';
   });
 }

@@ -28,3 +28,8 @@
 - Step sync from Apple Health via an iPhone Shortcut, with a built-in setup guide.
 - Kidnapper "encouragement" notifications, a morning report, and a test button.
 - Pixel-art scenes for each mood, ransom notes, a 14-day chart, streaks and a small graveyard.
+
+## v0.3.1 (2026-10-09)
+- Garmin direct sync: a box job (tools/garmin) reads today's steps from Garmin Connect every 15 min (5 AM–11:45 PM PT, plus 11:55 and 11:58 PM) and calls /sync with src=garmin. Tokens live outside the repo.
+- Worker: src=garmin is authoritative for the day; once Garmin has reported, a Shortcut sync can raise but never lower the count. Garmin failures (src=garmin&error=...) are logged in the sync log and shown in the app.
+- App: Step sync tab shows "Synced automatically from Garmin" with last Garmin sync time; Shortcut setup kept as a backup section.
