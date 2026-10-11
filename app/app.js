@@ -1,7 +1,7 @@
 import { drawScene, drawDeath, drawShelfPet, raccoon, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.4.5';
+const VERSION = 'v0.4.6';
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
 const APP_URL = 'https://silvertibby.github.io/pet-hostage/';
@@ -13,7 +13,7 @@ const REFRESH_MS = 60_000;
 
 const $ = s => document.querySelector(s);
 const view = $('#view');
-const qs = new URLSearchParams(location.search);
+const qs = new URLSearchParams(location.search); // mutable: picker taps drop ?phone/?watch overrides
 const DEMO = qs.get('demo');
 const isStandalone = () => window.navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
 const isAndroid = /Android/i.test(navigator.userAgent) || qs.get('android') != null; // ?android=1 to preview
@@ -235,7 +235,7 @@ function renderHome() {
   $('#gosetup')?.addEventListener('click', () => go('sync'));
   $('#refreshbtn')?.addEventListener('click', () => doRefresh('button'));
   $('#pushbanner-on')?.addEventListener('click', e => enablePush(e, $('#pushbanner-msg'))); // permission prompt must come straight from this tap
-  $('#syncnow')?.addEventListener('click', () => { location.href = isAndroid ? androidLink() : 'shortcuts://run-shortcut?name=' + encodeURIComponent(SHORTCUT_NAME); });
+  $('#syncnow')?.addEventListener('click', () => { location.href = phonePick() === 'android' ? androidLink() : 'shortcuts://run-shortcut?name=' + encodeURIComponent(SHORTCUT_NAME); });
 }
 
 // Notifications are off: a big banner so the hostage can beg (and the raccoon can taunt) twice a day.
@@ -331,8 +331,8 @@ function playDeath(d, freezeAt) {
 
 function syncLogHtml(s) {
   const log = (s.syncLog || []);
-  if (!log.length && isAndroid) return `<span class="dim">Nothing has reached The Raccoon yet. Set up the Pet Hostage Sync app below, then tap "Check steps".</span>`;
-  if (!log.length) return `<span class="dim">Nothing has reached The Raccoon yet. Run the "${SHORTCUT_NAME}" shortcut once by hand, then tap "I ran it, check steps" below.</span>`;
+  if (!log.length && phonePick() === 'android') return `<span class="dim">Nothing has reached The Raccoon yet. Set up the Pet Hostage Sync app below, then tap "Check steps".</span>`;
+  if (!log.length) return `<span class="dim">Nothing has reached The Raccoon yet. Run the "${SHORTCUT_NAME}" shortcut once by hand, then tap "Check steps" below.</span>`;
   const line = e => `${e.ok ? '✅' : '❌'} ${timePT(e.at)} · ${ago(e.at)} · ${e.ok ? (e.dry ? 'dry run, ' : '') + fmt(e.steps) + ' steps' : esc(e.reason || 'failed')}${e.raw != null && !e.ok ? ` <span class="dim">(got "${esc(e.raw)}")</span>` : ''}${e.codeNote ? ` <span class="dim">· ${esc(e.codeNote)}</span>` : ''}${e.src === 'garmin' ? ' <span class="dim">· Garmin</span>' : e.src === 'android' ? ' <span class="dim">· Android</span>' : ''}${e.ok && e.reason ? ` <span class="dim">· ${esc(e.reason)}</span>` : ''}`;
   return `<div>${line(log[0])}</div>` + (log.length > 1 ? `<div class="dim" style="margin-top:6px">Earlier:<br>${log.slice(1).map(line).join('<br>')}</div>` : '');
 }
@@ -350,36 +350,48 @@ function garminHtml(s) {
 }
 // Android: Chrome opens the companion app with the code filled in; if it isn't installed, the APK downloads instead.
 function androidLink() { return `intent://setup?c=${encodeURIComponent(code)}#Intent;scheme=pethostage;package=${ANDROID_PKG};S.browser_fallback_url=${encodeURIComponent(APK_URL)};end`; }
-function androidHtml(s) {
+function androidHtml(s, w = 'garmin') {
   const a = s.android;
+  const share = w === 'garmin'
+    ? `<li>In <b>Garmin Connect</b>: menu → Settings → <b>Health Connect</b> (or Connected apps), tap Connect and allow <b>Steps</b>. Needs Android 14+.</li>`
+    : `<li>Make sure ${w === 'none' ? 'the app that counts your steps' : 'your watch\'s app'} (<b>Samsung Health</b>, <b>Fitbit</b>, Google Fit…) shares <b>Steps</b> with <b>Health Connect</b>: in that app's settings, or phone Settings → Health Connect → App permissions.</li>`;
   return `<div class="card" id="android">${a && a.lastSync
-      ? `<div>🤖 <b>Pet Hostage Sync is connected</b></div><div class="dim" style="margin-top:6px">Last sync ${timePT(a.lastSync)} · ${ago(a.lastSync)} · ${fmt(a.lastSteps)} steps</div>`
-      : `<div>🤖 <b>Android phone + Garmin?</b></div>`}
-    <div class="dim" style="margin-top:6px">Garmin Connect shares your steps with Health Connect, and the little Pet Hostage Sync app sends them here every ~15 minutes. No passwords, nothing to share.</div></div>
+      ? `<div><b>Pet Hostage Sync is connected</b></div><div class="dim" style="margin-top:6px">Last sync ${timePT(a.lastSync)} · ${ago(a.lastSync)} · ${fmt(a.lastSteps)} steps</div>`
+      : `<div class="dim">A small app reads your steps from Health Connect and sends them here every ~15 min. No passwords.</div>`}</div>
+    <details class="more"${a && a.lastSync ? '' : ' open'}><summary>Set it up</summary>
     <ol class="guide">
-      <li><a class="btn" href="${APK_URL}" download>Download the app</a><br>Open it and allow <b>Install unknown apps</b> for your browser when asked.</li>
-      <li>In <b>Garmin Connect</b>: menu → Settings → <b>Health Connect</b> (or Connected apps), tap Connect and allow <b>Steps</b>.</li>
+      <li><a class="btn" href="${APK_URL}" download>Download the app</a><br>Open it and allow <b>Install unknown apps</b> when asked.</li>
+      ${share}
       <li><a class="btn acc" href="${esc(androidLink())}">Set up Android sync</a><br>Opens the app with your code filled in. Tap <b>Allow steps</b>.</li>
     </ol>
-    <p class="dim">Garmin's Health Connect sharing needs Android 14 or newer. The app also syncs around 11:50 PM; days are judged at midnight Pacific.</p>`;
+    <p class="dim">Code: <b>${esc(code)}</b> <button class="btn small ghost" data-copy="${esc(code)}">Copy</button> (paste it in the app if the button doesn't open it). Days end at midnight Pacific.</p></details>`;
 }
 function syncUrl() { return `${WORKER}/sync?code=${code}&steps=`; }
 
-// ---- iPhone Shortcut setup: one recipe per watch type ----
-// No shareable iCloud shortcut exists (they can't be made from Linux), so everyone builds it; the sync URL carries their code.
-const WATCHES = [['apple', 'Apple Watch / iPhone only'], ['garmin', 'Garmin'], ['other', 'Other']];
+// ---- Step sync setup: pick phone + watch, show only that recipe ----
+// No shareable iCloud shortcut exists (they can't be made from Linux), so iPhone players build it; the sync URL carries their code.
+const PHONES = [['iphone', 'iPhone'], ['android', 'Android']];
+const WATCHES = [['apple', 'Apple Watch'], ['garmin', 'Garmin'], ['none', 'No watch'], ['other', 'Other (Fitbit, Samsung…)']];
+const benLike = () => !!(state.garmin && state.garmin.lastSync); // direct Garmin server sync = Ben's player
+function phonePick() {
+  const q = qs.get('phone') || (qs.get('android') != null ? 'android' : null); if (PHONES.some(p => p[0] === q)) return q;
+  return localStorage.getItem('ph.phone') || (benLike() ? 'iphone' : isAndroid ? 'android' : 'iphone');
+}
 function watchPick() {
   const q = qs.get('watch'); if (WATCHES.some(w => w[0] === q)) return q;
-  return localStorage.getItem('ph.watch') || (state.garmin && state.garmin.lastSync ? 'garmin' : 'apple');
+  return localStorage.getItem('ph.watch') || (benLike() || phonePick() === 'android' ? 'garmin' : 'apple');
 }
 function recipeHtml(w) {
   const open = state.lastSync ? '' : ' open';
   const filter = {
     apple: `<li>Don't add a Source filter. Health already merges iPhone + Apple Watch steps without double counting.</li>`,
-    garmin: `<li>Also add the filter <b>Source is Garmin Connect</b>, so iPhone steps aren't counted twice. (In Garmin Connect, Apple Health sharing must be on.)</li>`,
+    none: `<li>Don't add a Source filter.</li>`,
+    garmin: `<li>Also add the filter <b>Source is Connect</b> (Garmin's app), so iPhone steps aren't counted twice.</li>`,
     other: `<li>No Source filter to start. If your total looks doubled (phone + watch app), add <b>Source is</b> your watch's app.</li>`,
   }[w];
   return `
+    ${w === 'garmin' ? `<details class="more"${open}><summary>0. Garmin → Apple Health</summary>
+    <ol class="guide"><li>In <b>Garmin Connect</b>: menu → Settings → Connected Apps → <b>Apple Health</b>. Turn it on and allow <b>Steps</b>.</li></ol></details>` : ''}
     <details class="more"${open}><summary>1. Build the shortcut</summary>
     <ol class="guide">
       <li>Shortcuts app → <b>+</b> → name it <b>${SHORTCUT_NAME}</b> (exact name, so the Sync button can find it).</li>
@@ -397,52 +409,52 @@ function recipeHtml(w) {
     </ol>
     <p class="dim">Days end at midnight Pacific. Health is locked while your iPhone is locked, so a run can miss; tap Sync before bed to be safe.</p></details>`;
 }
-function shortcutHtml() {
-  const backup = !!(state.garmin && state.garmin.lastSync), w = watchPick();
-  return `<h2>${backup ? 'BACKUP: SHORTCUT SYNC' : 'SET UP STEP SYNC'}</h2>
-    ${backup ? `<p class="dim">Only needed if Garmin sync stops. A Shortcut can raise today's count, never lower it.</p>` : ''}
-    <div class="dim">Which watch?</div>
-    <div class="seg" id="watchseg">${WATCHES.map(([k, l]) => `<button class="${k === w ? 'on' : ''}" data-watch="${k}">${l}</button>`).join('')}</div>
+function iphoneHtml(w) {
+  return `${benLike() ? `<p class="dim">Backup only: Garmin syncs on its own (above). A Shortcut can raise today's count, never lower it.</p>` : ''}
     <div class="card">
       <div class="dim">Your sync URL (has your code <b>${esc(code)}</b> in it)</div>
       <div class="code" id="surl">${esc(syncUrl())}</div>
       <p><button class="btn acc" data-copy="${esc(syncUrl())}">Copy sync URL</button></p>
     </div>
-    <div id="recipe">${recipeHtml(w)}</div>`;
+    ${recipeHtml(w)}`;
 }
-function wireWatchSeg() {
-  view.querySelectorAll('[data-watch]').forEach(b => b.addEventListener('click', () => {
-    localStorage.setItem('ph.watch', b.dataset.watch);
-    view.querySelectorAll('[data-watch]').forEach(x => x.classList.toggle('on', x === b));
-    $('#recipe').innerHTML = recipeHtml(b.dataset.watch);
+function stepsHtml(ph, w) {
+  if (ph === 'android' && w === 'apple') return `<div class="card">Apple Watch only works with an iPhone. Pick <b>iPhone</b> above, or the watch you have.</div>`;
+  return ph === 'android' ? androidHtml(state, w) : iphoneHtml(w);
+}
+const segHtml = (id, opts, cur, attr, off = []) => `<div class="seg" id="${id}">${opts.map(([k, l]) => `<button class="${k === cur ? 'on' : ''}${off.includes(k) ? ' off' : ''}" data-${attr}="${k}">${l}</button>`).join('')}</div>`;
+function pickerHtml() {
+  const ph = phonePick(), w = watchPick();
+  return `<div class="dim">Which phone?</div>${segHtml('phoneseg', PHONES, ph, 'phone')}
+    <div class="dim">Which watch?</div>${segHtml('watchseg', WATCHES, w, 'watch', ph === 'android' ? ['apple'] : [])}`;
+}
+function wireCopy(root) {
+  root.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(b.dataset.copy); toast('Copied'); } catch { toast('Copy failed, long-press to select'); }
   }));
+}
+function wirePickers() {
+  const redo = () => { $('#pickers').innerHTML = pickerHtml(); $('#syncsteps').innerHTML = stepsHtml(phonePick(), watchPick()); wireCopy($('#syncsteps')); wirePickers(); };
+  view.querySelectorAll('[data-phone]').forEach(b => b.addEventListener('click', () => { localStorage.setItem('ph.phone', b.dataset.phone); qs.delete('phone'); qs.delete('android'); redo(); }));
+  view.querySelectorAll('[data-watch]').forEach(b => b.addEventListener('click', () => { localStorage.setItem('ph.watch', b.dataset.watch); qs.delete('watch'); redo(); }));
 }
 function renderSync() {
   view.innerHTML = `
     <h2>LAST SYNC ATTEMPT</h2>
     <div class="card" id="synclog">${syncLogHtml(state)}</div>
     ${garminHtml(state)}
-    ${isAndroid ? `<h2>ANDROID SYNC</h2>${androidHtml(state)}
-    <div class="card"><div class="dim">Your sync code</div>
-      <div class="row" style="justify-content:space-between"><span class="big-code">${esc(code)}</span><button class="btn small" data-copy="${esc(code)}">Copy</button></div>
-      <div class="dim" style="margin-top:6px">If the button doesn't open the app, copy this and paste it there.</div></div>
+    <h2>${benLike() ? 'OTHER WAYS TO SYNC' : 'SET UP STEP SYNC'}</h2>
+    <div id="pickers">${pickerHtml()}</div>
+    <div id="syncsteps">${stepsHtml(phonePick(), watchPick())}</div>
     <h2>TEST IT</h2>
     <p><button class="btn" id="refresh">Check steps</button></p>
     <div id="synctest" class="dim"></div>
-    <details class="more"><summary>iPhone instructions</summary>` : ''}
-    ${shortcutHtml()}
-    ${isAndroid ? '</details>' : `<h2>TEST IT</h2>
-    <p><button class="btn" id="refresh">I ran it, check steps</button></p>
-    <div id="synctest" class="dim"></div>`}
   `;
-  wireWatchSeg();
-  view.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText(b.dataset.copy); toast('Copied'); } catch { toast('Copy failed, long-press to select'); }
-  }));
+  wirePickers(); wireCopy(view);
   $('#refresh').addEventListener('click', async () => {
     await refresh(true);
     $('#synclog').innerHTML = syncLogHtml(state);
-    if ($('#android')) $('#android').outerHTML = androidHtml(state).replace(/<\/div>\s*<ol[\s\S]*$/, '</div>');
+    if ($('#android')) $('#android').outerHTML = androidHtml(state, watchPick()).replace(/<\/div>\s*<details[\s\S]*$/, '</div>');
     if ($('#garmin')) $('#garmin').outerHTML = garminHtml(state).replace(/^<h2>GARMIN<\/h2>\s*/, '');
     $('#synctest').textContent = state.lastSync ? `Last sync ${timePT(state.lastSync)} (${ago(state.lastSync)}): ${fmt(state.lastSteps)} steps.` : 'Nothing received yet.';
   });
@@ -717,7 +729,7 @@ async function boot() {
   if (DEMO && qs.has('spin')) setTimeout(() => spinner(true, 'Checking with The Raccoon…'), 50);
   if (DEMO) {
     if (DEMO === 'welcome' || DEMO === 'lost') { renderWelcome(DEMO === 'lost' ? 'K7PQ2MXW9A' : null); return; }
-    code = 'DEMO123456'; state = demoState(DEMO); tab = qs.get('tab') || (DEMO === 'lineup' ? 'shelf' : 'home'); render();
+    code = 'DEMO123456'; state = demoState(DEMO); if (qs.has('garmin')) state.garmin = { lastSync: Date.now() - 9 * 60000, lastSteps: state.todaySteps, lastError: null, lastErrorAt: null }; tab = qs.get('tab') || (DEMO === 'lineup' ? 'shelf' : 'home'); render();
     if (DEMO === 'death') playDeath(state.lastDeath, qs.has('f') ? +qs.get('f') : undefined);
     if (qs.has('tap')) setTimeout(() => window.__tap(qs.get('tap')), 1200);
     return;

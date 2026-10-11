@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.4.6 (2026-10-10)
+- Step sync asks which phone and which watch you have, then shows just those steps.
+
 ## v0.4.5 (2026-10-10)
 - Step sync now asks which watch you have (Apple Watch, Garmin or other) and shows the matching setup.
 
