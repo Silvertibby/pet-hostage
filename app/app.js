@@ -1,7 +1,7 @@
 import { drawScene, drawDeath, drawShelfPet, raccoon, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.4.4';
+const VERSION = 'v0.4.5';
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
 const APP_URL = 'https://silvertibby.github.io/pet-hostage/';
@@ -364,6 +364,59 @@ function androidHtml(s) {
     <p class="dim">Garmin's Health Connect sharing needs Android 14 or newer. The app also syncs around 11:50 PM; days are judged at midnight Pacific.</p>`;
 }
 function syncUrl() { return `${WORKER}/sync?code=${code}&steps=`; }
+
+// ---- iPhone Shortcut setup: one recipe per watch type ----
+// No shareable iCloud shortcut exists (they can't be made from Linux), so everyone builds it; the sync URL carries their code.
+const WATCHES = [['apple', 'Apple Watch / iPhone only'], ['garmin', 'Garmin'], ['other', 'Other']];
+function watchPick() {
+  const q = qs.get('watch'); if (WATCHES.some(w => w[0] === q)) return q;
+  return localStorage.getItem('ph.watch') || (state.garmin && state.garmin.lastSync ? 'garmin' : 'apple');
+}
+function recipeHtml(w) {
+  const open = state.lastSync ? '' : ' open';
+  const filter = {
+    apple: `<li>Don't add a Source filter. Health already merges iPhone + Apple Watch steps without double counting.</li>`,
+    garmin: `<li>Also add the filter <b>Source is Garmin Connect</b>, so iPhone steps aren't counted twice. (In Garmin Connect, Apple Health sharing must be on.)</li>`,
+    other: `<li>No Source filter to start. If your total looks doubled (phone + watch app), add <b>Source is</b> your watch's app.</li>`,
+  }[w];
+  return `
+    <details class="more"${open}><summary>1. Build the shortcut</summary>
+    <ol class="guide">
+      <li>Shortcuts app → <b>+</b> → name it <b>${SHORTCUT_NAME}</b> (exact name, so the Sync button can find it).</li>
+      <li>Add <b>Find Health Samples</b>: Type <b>Steps</b>, filter <b>Start Date is Today</b>, <b>Group By Day</b>.</li>
+      ${filter}
+      <li>Add <b>Calculate Statistics</b> → <b>Sum</b>.</li>
+      <li>Add <b>Get Contents of URL</b>: paste your sync URL, then put <b>Statistics Result</b> right after <b>steps=</b>.</li>
+      <li>Tap ▶︎ once. Allow Health and <b>workers.dev</b>.</li>
+    </ol></details>
+    <details class="more"${open}><summary>2. Run it automatically</summary>
+    <ol class="guide">
+      <li>Shortcuts → <b>Automation</b> → <b>+</b> → <b>Time of Day</b>.</li>
+      <li><b>11:50 PM</b>, Daily, <b>Run Immediately</b> (older iOS: turn off <b>Ask Before Running</b>). Pick <b>${SHORTCUT_NAME}</b>.</li>
+      <li>Add a few more the same way, e.g. <b>12, 3, 6, 9 PM</b>${w === 'apple' ? '. Watch steps reach your iPhone fast, so these stay current' : ''}.</li>
+    </ol>
+    <p class="dim">Days end at midnight Pacific. Health is locked while your iPhone is locked, so a run can miss; tap Sync before bed to be safe.</p></details>`;
+}
+function shortcutHtml() {
+  const backup = !!(state.garmin && state.garmin.lastSync), w = watchPick();
+  return `<h2>${backup ? 'BACKUP: SHORTCUT SYNC' : 'SET UP STEP SYNC'}</h2>
+    ${backup ? `<p class="dim">Only needed if Garmin sync stops. A Shortcut can raise today's count, never lower it.</p>` : ''}
+    <div class="dim">Which watch?</div>
+    <div class="seg" id="watchseg">${WATCHES.map(([k, l]) => `<button class="${k === w ? 'on' : ''}" data-watch="${k}">${l}</button>`).join('')}</div>
+    <div class="card">
+      <div class="dim">Your sync URL (has your code <b>${esc(code)}</b> in it)</div>
+      <div class="code" id="surl">${esc(syncUrl())}</div>
+      <p><button class="btn acc" data-copy="${esc(syncUrl())}">Copy sync URL</button></p>
+    </div>
+    <div id="recipe">${recipeHtml(w)}</div>`;
+}
+function wireWatchSeg() {
+  view.querySelectorAll('[data-watch]').forEach(b => b.addEventListener('click', () => {
+    localStorage.setItem('ph.watch', b.dataset.watch);
+    view.querySelectorAll('[data-watch]').forEach(x => x.classList.toggle('on', x === b));
+    $('#recipe').innerHTML = recipeHtml(b.dataset.watch);
+  }));
+}
 function renderSync() {
   view.innerHTML = `
     <h2>LAST SYNC ATTEMPT</h2>
@@ -377,37 +430,12 @@ function renderSync() {
     <p><button class="btn" id="refresh">Check steps</button></p>
     <div id="synctest" class="dim"></div>
     <details class="more"><summary>iPhone instructions</summary>` : ''}
-    <h2>${state.garmin && state.garmin.lastSync ? 'BACKUP: SHORTCUT SYNC' : 'SET UP STEP SYNC'}</h2>
-    ${state.garmin && state.garmin.lastSync ? `<p class="dim">Only needed if Garmin sync stops working. A Shortcut sync can raise today's count but never lower what Garmin reported.</p>` : ''}
-    <p class="dim">Your iPhone counts steps into Apple Health (Garmin steps land there too). A Shortcut sends today's total to The Raccoon. Build it once, then automate it.</p>
-    <div class="card">
-      <div class="dim">Your sync code</div>
-      <div class="row" style="justify-content:space-between"><span class="big-code">${esc(code)}</span><button class="btn small" data-copy="${esc(code)}">Copy</button></div>
-      <div class="dim" style="margin-top:10px">Sync URL (paste into the Shortcut)</div>
-      <div class="code" id="surl">${esc(syncUrl())}</div>
-      <p><button class="btn acc" data-copy="${esc(syncUrl())}">Copy sync URL</button></p>
-    </div>
-    <h2>1. BUILD THE SHORTCUT</h2>
-    <ol class="guide">
-      <li>Open the <b>Shortcuts</b> app, tap <b>+</b>, and name it <b>${SHORTCUT_NAME}</b> (exact name, so the Sync now button can find it).</li>
-      <li>Add <b>Find Health Samples</b>. Set Type to <b>Steps</b>, add the filter <b>Start Date is Today</b>, and set <b>Group By</b> to <b>Day</b> (this gives Health's real daily total with no double counting from phone + watch).</li>
-      <li>Add <b>Calculate Statistics</b>, set it to <b>Sum</b> of the Health Samples.</li>
-      <li>Add <b>Get Contents of URL</b>. Paste the sync URL above, then tap right after <b>steps=</b> and insert the <b>Statistics Result</b> variable.</li>
-      <li>Optional: add <b>Show Result</b> on <b>Contents of URL</b> to see The Raccoon's reply.</li>
-      <li>Tap ▶︎ once. Allow Health access and allow it to connect to <b>workers.dev</b>.</li>
-    </ol>
-    <h2>2. AUTOMATE IT</h2>
-    <ol class="guide">
-      <li>In Shortcuts, open the <b>Automation</b> tab, tap <b>+</b> (or New Automation).</li>
-      <li>Pick <b>Time of Day</b>, set <b>11:30 PM</b>, <b>Daily</b>, and choose <b>Run Immediately</b> (turn off Notify When Run).</li>
-      <li>Tap Next and pick <b>${SHORTCUT_NAME}</b>.</li>
-      <li>Repeat for a few daytime times (e.g. <b>12 PM, 3 PM, 6 PM, 9 PM</b>) so The Raccoon's nudges know how you're doing. One automation per time.</li>
-    </ol>
-    <p class="dim">The 11:30 PM sync is the one that matters: a day is judged at midnight Pacific with whatever steps were synced last.</p>
+    ${shortcutHtml()}
     ${isAndroid ? '</details>' : `<h2>TEST IT</h2>
     <p><button class="btn" id="refresh">I ran it, check steps</button></p>
     <div id="synctest" class="dim"></div>`}
   `;
+  wireWatchSeg();
   view.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(b.dataset.copy); toast('Copied'); } catch { toast('Copy failed, long-press to select'); }
   }));

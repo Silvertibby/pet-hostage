@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.4.5 (2026-10-10)
+- Step sync now asks which watch you have (Apple Watch, Garmin or other) and shows the matching setup.
+
 ## v0.4.4 (2026-10-10)
 - Android + Garmin players: a little companion app now syncs your steps on its own. Find it under Step sync.
 

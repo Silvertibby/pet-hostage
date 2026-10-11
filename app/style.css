@@ -121,3 +121,7 @@ details.more[open] summary::after { content: '▾'; }
 details.more summary canvas { width: 26px; height: 24px; }
 details.more .note { padding-left: 10px; margin-top: 8px; min-height: 0; }
 #refreshbtn { font-family: inherit; font-size: 20px; padding: 2px 10px; line-height: 1.1; }
+.seg { display:flex; gap: 6px; margin: 6px 0 4px; }
+.seg button { flex: 1 1 0; white-space: normal; font-family:'Press Start 2P', monospace; font-size: 9px; line-height: 1.4; padding: 9px 8px; background: #120e1a; color: var(--dim); border: 3px solid #000; border-radius: 2px; cursor: pointer; }
+.seg button:first-child { flex-grow: 2; }
+.seg button.on { background: var(--acc); color: #111; box-shadow: 2px 2px 0 #000; }
