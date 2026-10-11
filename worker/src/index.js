@@ -175,10 +175,14 @@ export default {
         return json({ ok: false, logged: true, reason });
       }
       const raw = url.searchParams.get('steps') ?? body.steps ?? body.raw ?? null;
+      // A steps param that is present but blank (e.g. "&steps=" when Health has no samples yet today, so the
+      // Shortcut's Sum is empty) counts as 0: a valid sync that never lowers the day. No steps param at all is still an error.
+      const hasSteps = url.searchParams.has('steps') || Object.prototype.hasOwnProperty.call(body, 'steps');
+      const empty = hasSteps && (raw == null || String(raw).trim() === '');
       const test = url.searchParams.has('test') || !!body.test || undefined; // test entries can be cleared later
       const dry = url.searchParams.has('dry') || !!body.dry || undefined;     // validate + log only, never stores steps
       const codeNote = undefined; // the code always matches now: it's how we found this player
-      const steps = parseSteps(raw);
+      const steps = empty ? 0 : parseSteps(raw);
       if (!Number.isFinite(steps) || steps < 0 || steps > 300000) {
         const reason = raw == null || raw === '' ? 'steps missing (is the Statistics Result variable after steps= ?)' : 'steps not a number: ' + clip(raw);
         logSync(st, { ok: false, reason, raw: clip(raw), method: req.method, codeNote, test, dry, src });
@@ -206,6 +210,9 @@ export default {
         stored = Math.max(g.days[date] || 0, before, steps);
         if (stored !== steps) note2 = `kept ${stored} (higher than the ${steps} Android sent)`;
         st.android = { lastSync: Date.now(), lastSteps: steps, app: clip(url.searchParams.get('app') ?? body.app ?? null) };
+      } else if (empty) {
+        stored = Math.max(g.days[date] || 0, before, 0);
+        note2 = stored ? `empty steps= counted as 0; kept ${stored}` : 'empty steps= counted as 0 (no Health samples yet?)';
       } else if (g.days[date] != null) {
         stored = Math.max(g.days[date], before, steps);
         if (stored !== steps) note2 = `kept ${stored} (Garmin is authoritative; shortcut sent ${steps})`;
