@@ -1,9 +1,6 @@
 # Pet Hostage changelog
 
 ## v0.4.7 (2026-10-11)
-- New Board tab: see how your streak stacks up against everyone else's. Pick a name, or hide.
-
-## v0.4.7 (2026-10-11)
 - Clearer iPhone Shortcut steps: every setting spelled out, plus how to let Shortcuts read your steps.
 
 ## v0.4.6 (2026-10-10)

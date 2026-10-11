@@ -291,51 +291,6 @@ function renderShelf() {
   animateShelf();
 }
 
-// ---- v0.4.7 leaderboard: every player, ranked by current goal-day streak (ties: pets saved, then who got there first) ----
-let board = null, boardSort = localStorage.getItem('ph.boardSort') || 'streak', boardEdit = false;
-function demoBoard() {
-  const r = (name, species, streak, saved, you) => ({ name, species, streak, saved, ...(you ? { you } : {}) });
-  const rows = [r('Speedy', 'hamster', 9, 1), r('Ben', 'bunny', 4, 1, true), r('Nana K', 'squirrel', 4, 0), r('Bao·Q7', 'panda', 2, 7), r('Chompsky·M2', 'bunny', 0, 0)];
-  return { rows: rows.map((x, i) => ({ ...x, rank: i + 1 })), count: rows.length, me: { name: 'Ben', custom: false, hidden: false, rank: 2 } };
-}
-async function loadBoard() {
-  try { board = DEMO ? demoBoard() : await api('/leaderboard'); } catch (e) { board = board || { error: true }; }
-  if (tab === 'board') renderBoard();
-}
-function sortedRows(b) {
-  if (boardSort !== 'saved') return b.rows;
-  return [...b.rows].sort((x, y) => y.saved - x.saved || y.streak - x.streak || x.rank - y.rank).map((x, i) => ({ ...x, rank: i + 1 }));
-}
-function renderBoard() {
-  shelfPets = [];
-  if (!board) { view.innerHTML = `<h2>LEADERBOARD</h2><div class="card dim">Asking The Raccoon…</div>`; loadBoard(); return; }
-  if (board.error) { view.innerHTML = `<h2>LEADERBOARD</h2><div class="card dim">Can't reach the board right now.</div>`; return; }
-  const me = board.me || {}, rows = sortedRows(board);
-  const list = rows.map(x => { shelfPets.push({ species: x.species, injuries: [], rung: x.rank });
-    return `<div class="lbrow ${x.you ? 'you' : ''}"><span class="lbrank">${x.rank}</span><canvas class="px shelfpet lbpet" width="40" height="42" data-i="${shelfPets.length - 1}"></canvas>
-      <span class="lbname">${esc(x.name)}</span><span class="lbstat ${x.streak ? '' : 'zero'}" title="streak">🔥${x.streak}</span><span class="lbstat dim" title="pets saved">🐾${x.saved}</span></div>`; }).join('');
-  view.innerHTML = `
-    <div class="lbhead"><h2>LEADERBOARD</h2><span class="seg"><button class="${boardSort !== 'saved' ? 'on' : ''}" data-sort="streak">🔥 streak</button><button class="${boardSort === 'saved' ? 'on' : ''}" data-sort="saved">🐾 saved</button></span></div>
-    <div class="lb">${list || '<div class="card dim">Nobody yet.</div>'}</div>
-    <div class="lbme">${boardEdit
-      ? `<input id="lbname" maxlength="16" placeholder="${esc(me.name || '')}" value="${esc(me.custom ? me.name : '')}" autocomplete="off"><button class="btn small acc" id="lbsave">Save</button><button class="btn small ghost" id="lbcancel">✕</button>`
-      : `<span class="dim">You:</span> <b>${esc(me.name || '?')}</b>${me.hidden ? ' <span class="dim">(hidden)</span>' : ''} <button class="btn small ghost" id="lbedit" aria-label="Edit name">✎</button>
-         <label class="lbhide"><input type="checkbox" id="lbhide" ${me.hidden ? 'checked' : ''}> Hide me</label>`}</div>
-    <div id="lbmsg" class="small dim"></div>`;
-  view.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { boardSort = b.dataset.sort; localStorage.setItem('ph.boardSort', boardSort); renderBoard(); }));
-  $('#lbedit')?.addEventListener('click', () => { boardEdit = true; renderBoard(); $('#lbname').focus(); });
-  $('#lbcancel')?.addEventListener('click', () => { boardEdit = false; renderBoard(); });
-  const saveProfile = async patch => {
-    if (DEMO) { Object.assign(board.me, patch.name != null ? { name: patch.name || 'Ben', custom: !!patch.name } : {}, 'hidden' in patch ? { hidden: patch.hidden } : {}); boardEdit = false; renderBoard(); return; }
-    try { const r = await api('/profile', patch); board = r.board; boardEdit = false; renderBoard(); }
-    catch (e) { const m = $('#lbmsg'); if (m) m.textContent = (e.body && e.body.error) || "Couldn't save. Try again."; }
-  };
-  $('#lbsave')?.addEventListener('click', () => saveProfile({ name: $('#lbname').value }));
-  $('#lbname')?.addEventListener('keydown', e => { if (e.key === 'Enter') saveProfile({ name: e.target.value }); });
-  $('#lbhide')?.addEventListener('change', e => saveProfile({ hidden: e.target.checked }));
-  animateShelf();
-}
-
 // ---- death replay: plays once, the next time the app opens after a death ----
 function seenDeathId() { return Math.max(state?.deathSeen || 0, +(localStorage.getItem('ph.deathSeen') || 0)); }
 function maybePlayDeath() {
@@ -641,10 +596,10 @@ function render() {
   stopAnim();
   $('#tabs').hidden = !state;
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
-  if (tab === 'sync') renderSync(); else if (tab === 'settings') renderSettings(); else if (tab === 'shelf') renderShelf(); else if (tab === 'board') renderBoard(); else renderHome();
+  if (tab === 'sync') renderSync(); else if (tab === 'settings') renderSettings(); else if (tab === 'shelf') renderShelf(); else renderHome();
   maybePlayDeath();
 }
-function go(t) { tab = t; render(); window.scrollTo(0, 0); if (t === 'board' && board) loadBoard(); }
+function go(t) { tab = t; render(); window.scrollTo(0, 0); }
 document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => go(b.dataset.tab)));
 
 async function refresh(force) {

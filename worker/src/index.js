@@ -1,7 +1,6 @@
 import { RULES, localParts, newState, migrate, settle, view, petAt, needFor, goalToday, DEATH_TEXT } from './game.js';
 import { note, nudgeText, DISH, ITEM, PET_EMOJI } from './messages.js';
 import { sendPush } from './push.js';
-import { LB_KEY, lbId, rowOf, boardView, readIndex, upsertRow, cleanName } from './leaderboard.js';
 
 // Multi-player: one KV key per player, "player:<CODE>". The old single-player key "state" is migrated once.
 const PKEY = c => 'player:' + c;
@@ -135,14 +134,9 @@ export default {
     if (path === '/vapid') return json({ publicKey: env.VAPID_PUBLIC_KEY });
     await migrateLegacy(env);
     if (path === '/status') return json({ multiplayer: true });
-    if (path === '/leaderboard' && req.method === 'GET') { // public; ?code= only marks your own row (codes never leave)
-      const c = normCode(url.searchParams.get('code')), idx = await readIndex(env);
-      return json(boardView(idx, c ? await lbId(c) : null, url.searchParams.get('sort') === 'saved' ? 'saved' : 'streak'));
-    }
     if (path === '/claim' && req.method === 'POST') { // every fresh player gets their own code + ladder
       let c; do { c = makeCode(); } while (await env.PH.get(PKEY(c)));
       const st = newState(c, today); await save(env, st);
-      await upsertRow(env, st, today);
       console.log('claim', c);
       return json({ code: st.code, state: view(st) });
     }
@@ -164,7 +158,7 @@ export default {
     const events = settle(st, today);
     if (events.length) st.pendingReport = [...(st.pendingReport || []), ...events]; // pushed at the morning report
 
-    if (path === '/state') { if (events.length) { await save(env, st); await upsertRow(env, st, today).catch(() => {}); } return json(view(st)); }
+    if (path === '/state') { if (events.length) await save(env, st); return json(view(st)); }
 
     if (path === '/sync') {
       const src = clip(url.searchParams.get('src') ?? body.src ?? null) || undefined; // 'garmin' = server-side Garmin job
@@ -228,14 +222,12 @@ export default {
       logSync(st, { ok: true, steps: stored, raw: clip(raw), date, method: req.method, codeNote, test, src, reason: note2 });
       const v = vars(st);
       const goal = goalToday(st);
-      if (date === today && before < goal && stored >= goal) st.paidAt = { date: today, at: Date.now() }; // leaderboard tie-break
       if (date === today && before < goal && stored >= goal && !(st.sent[today] || []).includes('paid')) {
         st.sent[today] = [...(st.sent[today] || []), 'paid'];
         const last = v.day >= v.need;
         await push(env, st, last ? '🗝 Final payment!' : '🥕 Ransom paid!', note(last ? 'paidLast' : 'paid', v), 'ph-paid');
       }
       await save(env, st);
-      await upsertRow(env, st, today).catch(e => console.log('lb upsert', String(e))); // no write unless the row changed
       const left = Math.max(0, goal - stored);
       if (url.searchParams.has('plain') || req.method === 'GET') return text(left
         ? `Got ${n(stored)} steps. ${n(left)} to go or ${v.name} gets it. (Day ${v.day} of ${v.need})`
@@ -248,15 +240,7 @@ export default {
     if (path === '/settings') {
       // The goal is fixed by the rules (10,000; 15,000 on a final day) and ignored if sent. Only the current hostage's name can change.
       if (typeof body.name === 'string' && body.name.trim()) petAt(st, st.hostage.rung).name = body.name.trim().slice(0, 24);
-      await save(env, st); await upsertRow(env, st, today).catch(() => {}); return json(view(st));
-    }
-    if (path === '/profile') { // leaderboard display name + "Hide me". Authenticated by the player's own code.
-      const prof = { ...(st.profile || {}) };
-      if ('name' in body) { const r = cleanName(body.name); if (r.error) return json({ error: r.error }, 400); prof.name = r.name; }
-      if ('hidden' in body) prof.hidden = !!body.hidden;
-      st.profile = prof; await save(env, st);
-      const idx = await upsertRow(env, st, today), id = await lbId(st.code);
-      return json({ ok: true, board: boardView(idx, id) });
+      await save(env, st); return json(view(st));
     }
     if (path === '/subscribe') {
       const s = body.subscription;
@@ -284,28 +268,16 @@ export default {
 
   async scheduled(event, env, ctx) {
     await migrateLegacy(env);
-    const rows = {}, today = localParts().date;
     for (const code of await allCodes(env)) {
-      try { const st = await tickPlayer(env, code); if (st && st.hostage) rows[await lbId(code)] = rowOf(st, await lbId(code), today); } catch (e) { console.log('cron error', code, String(e)); }
+      try { await tickPlayer(env, code); } catch (e) { console.log('cron error', code, String(e)); }
     }
-    await rebuildBoard(env, rows).catch(e => console.log('lb rebuild', String(e)));
   },
 };
 
 // Hourly: settle finished days, morning report, nudges. One player at a time.
-// Full leaderboard rebuild from the rows the cron already computed (midnight rollover, players that left).
-export async function rebuildBoard(env, rows) {
-  const old = await readIndex(env);
-  let legacyId = old.legacyId;
-  if (!legacyId) { const s = await env.PH.get('legacy:state'); if (s) { const c = JSON.parse(s).code; if (c) legacyId = await lbId(c); } }
-  if (JSON.stringify(old.rows) === JSON.stringify(rows) && old.legacyId === legacyId) return old;
-  const idx = { v: 1, legacyId: legacyId || null, rows, updated: Date.now() };
-  await env.PH.put(LB_KEY, JSON.stringify(idx)); return idx;
-}
 async function tickPlayer(env, code) {
     const st = await load(env, code);
     if (!st) return;
-    const before = JSON.stringify(st);
     const np = localParts();
     const events = settle(st, np.date);
     const sent = st.sent[np.date] || [];
@@ -319,8 +291,7 @@ async function tickPlayer(env, code) {
       st.sent[np.date] = [...(st.sent[np.date] || []), nn.id];
     }
     for (const k of Object.keys(st.sent)) if (k < np.date) delete st.sent[k];
-    if (JSON.stringify(st) !== before) await save(env, st); // v0.4.7: skip no-op writes (free-tier KV writes)
-    return st;
+    await save(env, st);
 }
 
 // Which nudge (if any) is due now for this player. Pure, so the tests can drive it.
