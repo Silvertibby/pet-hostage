@@ -54,7 +54,9 @@ code, .code { font-family: ui-monospace, Menlo, monospace; font-size: 15px; back
 .big-code { font-family:'Press Start 2P', monospace; font-size: 16px; letter-spacing: 2px; color: var(--y, #ffd84a); }
 ol.guide { padding-left: 24px; margin: 6px 0; }
 ol.guide li { margin: 8px 0; }
-ol.guide b { color: #ffd84a; font-weight: normal; }
+ol.guide b, ul.guide b { color: #ffd84a; font-weight: normal; }
+ul.guide { padding-left: 18px; margin: 4px 0; }
+ul.guide li { margin: 2px 0; }
 input[type=text], input[type=number] { font: inherit; font-size: 20px; background:#120e1a; color: var(--ink); border: 2px solid #5a4a70; padding: 6px 8px; border-radius: 3px; width: 100%; }
 label { display:block; margin: 10px 0 4px; color: var(--dim); }
 .grave { display:flex; gap: 8px; align-items:center; padding: 6px 0; border-bottom: 1px dashed #3e3256; }

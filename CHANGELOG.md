@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.4.7 (2026-10-11)
+- Clearer iPhone Shortcut steps: every setting spelled out, plus how to let Shortcuts read your steps.
+
 ## v0.4.6 (2026-10-10)
 - Step sync asks which phone and which watch you have, then shows just those steps.
 
