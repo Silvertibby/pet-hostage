@@ -27,4 +27,5 @@ r = await call(`/sync?code=${C}`); assert.equal(r.status, 400); assert.match(r.b
 r = await call('/sync', { code: C }); assert.equal(r.status, 400); assert.equal(r.body.error, 'steps missing or weird');
 r = await call(`/sync?code=${C}&steps=abc`); assert.equal(r.status, 400);                              // garbage still rejected
 assert.equal((await st()).todaySteps, 2400);
-console.error('✓ empty steps= (0, never lowers; missing param still rejected)');
+r = await call('/leaderboard'); assert.equal(r.status, 404); r = await call('/profile', { code: C }); assert.equal(r.status, 404); // removed
+console.error('✓ unknown paths 404; ✓ empty steps= (0, never lowers; missing param still rejected)');

@@ -116,6 +116,7 @@ async function readBody(req) {
   return body;
 }
 
+const ROUTES = new Set(['/state', '/sync', '/settings', '/subscribe', '/sync-log/clear-test', '/unsubscribe', '/test-nudge', '/seen-death']);
 const SYNC_LOG_MAX = 10;
 function logSync(st, entry) {
   st.syncLog = [{ at: Date.now(), ...entry }, ...(st.syncLog || [])].slice(0, SYNC_LOG_MAX);
@@ -141,6 +142,7 @@ export default {
       return json({ code: st.code, state: view(st) });
     }
 
+    if (!ROUTES.has(path)) return json({ error: 'not found' }, 404); // unknown paths: 404 before any code lookup
     const body = await readBody(req);
     const code = normCode(url.searchParams.get('code') || body.code);
     const st = await load(env, code);
