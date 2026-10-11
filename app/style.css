@@ -127,3 +127,22 @@ details.more .note { padding-left: 10px; margin-top: 8px; min-height: 0; }
 .seg button { flex: 1 1 auto; white-space: normal; font-family:'Press Start 2P', monospace; font-size: 9px; line-height: 1.4; padding: 9px 8px; background: #120e1a; color: var(--dim); border: 3px solid #000; border-radius: 2px; cursor: pointer; }
 .seg button.on { background: var(--acc); color: #111; box-shadow: 2px 2px 0 #000; }
 .seg button.off { opacity: .35; text-decoration: line-through; }
+
+/* v0.4.7 leaderboard */
+.lbhead { display:flex; align-items:center; justify-content:space-between; gap: 8px; }
+.seg { display:inline-flex; border: 2px solid #000; border-radius: 3px; overflow:hidden; }
+.seg button { font: inherit; font-size: 16px; background: var(--panel); color: var(--dim); border: 0; padding: 3px 8px; cursor:pointer; }
+.seg button.on { background: var(--paper); color: #111; }
+.lb { display:flex; flex-direction:column; gap: 6px; }
+.lbrow { display:grid; grid-template-columns: 26px 56px 1fr auto auto; align-items:center; gap: 8px; background: var(--panel); border: 2px solid #000; border-radius: 4px; padding: 2px 10px 2px 6px; }
+.lbrow.you { border-color: var(--acc); box-shadow: 0 0 0 1px var(--acc) inset; }
+.lbrank { font-family:'Press Start 2P', monospace; font-size: 11px; color: var(--dim); text-align:center; }
+.lbrow:nth-child(1) .lbrank { color: #ffd84a; } .lbrow:nth-child(2) .lbrank { color: #d8dce6; } .lbrow:nth-child(3) .lbrank { color: #e0a070; }
+canvas.lbpet { width: 56px; height: 59px; margin: -4px 0 -6px; }
+.lbstat.zero { opacity: .45; }
+#lbedit { font-family: inherit; font-size: 20px; padding: 0 8px; }
+.lbname { overflow:hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 22px; }
+.lbstat { font-size: 20px; min-width: 40px; text-align:right; }
+.lbme { display:flex; align-items:center; flex-wrap: wrap; gap: 6px; margin-top: 12px; font-size: 19px; }
+.lbme input#lbname { flex:1; min-width: 0; font: inherit; font-size: 20px; padding: 5px 8px; background: #120e1a; color: var(--ink); border: 2px solid #5a4a70; border-radius: 3px; }
+.lbhide { margin-left:auto; display:inline-flex; align-items:center; gap: 4px; color: var(--dim); }
