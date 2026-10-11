@@ -2,7 +2,7 @@
 <style>body{margin:0;background:#1b1626}canvas{display:block;image-rendering:pixelated}</style>
 <canvas id="c"></canvas>
 <script type="module">
-import { critter, blit, SPECIES_ORDER, pxText } from '../app/art.js?v=1';
+import { critter, blit, SPECIES_ORDER, pxText } from '../app/art.js?v=4';
 const q = new URLSearchParams(location.search), S = +(q.get('s') || 5);
 const cols = [['happy', 0.5, []], ['worried', 0.3, []], ['walk', 0.5, []], ['scared', 0.2, []], ['dead', 0.5, []], ['ghost', 0.5, []], ['char', 0.5, []], ['happy', 0.5, ['pop', 'anvil']], ['happy', 0.5, ['catapult', 'zap', 'pop']]];
 const c = document.getElementById('c'), ctx = c.getContext('2d');

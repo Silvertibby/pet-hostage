@@ -121,8 +121,20 @@ export const SPECIES = {
     head(g) { for (const [ex, s] of [[11, -1], [24, 1]]) for (let y = -6; y <= 6; y++) for (let x = -6; x <= 6; x++) {
       const rx = (x + 0.5 - s * 0.35 * (y + 0.5)) / 4.2, ry = (y + 0.5) / 4.8; if (rx * rx + ry * ry <= 1) set(g, ex + x, 20 + y, 'D'); } },
     arms: 'd', feet: 'd', lightX: true },
+  // v0.4.3: the capybara. Chill: half-lidded eyes when happy, a big soft muzzle, and a yuzu balanced on its head.
+  capybara: { label: 'capybara', chill: true, pal: { k: '#7a5236', w: '#c99668', g: '#b17f55', c: '#e3c29a', p: '#9a6448', P: '#4a2e22', q: '#ff9c94', m: '#5a3020', e: '#2a1a12', i: '#5a3a22', I: '#9a6a42', j: '#e8c8a0', u: '#ffb52e', U: '#e0880e', L: '#5aa84a' },
+    ears(l, t, dr) { for (const c of [9.4, MC(9.4)]) { ell(l, c, 9.9 + dr * 0.8, 2, 1.8, 'w'); ell(l, c, 10.2 + dr * 0.8, 1, 0.9, 'p'); } },
+    mouth: 'capy',
+    head(g, t) {
+      for (const [x, y] of [[15, 9], [17, 8], [19, 8], [21, 9]]) set(g, x, y, 'g'); // fur tufts
+      ell(g, CX, 24.2, 6.4, 3.6, 'c'); ell(g, CX, 22.4, 4.6, 1.6, 'c'); // big soft blocky muzzle
+      const bob = Math.sin(t * 1.6) > 0.7 ? 1 : 0; // the yuzu wobbles now and then
+      layer(g, l => ell(l, 22.5 + bob * 0.4, 5.8, 2.9, 2.5, 'u'), 'k');
+      set(g, 21, 4, 't'); set(g, 24, 7, 'U'); set(g, 23, 7, 'U'); set(g, 25, 6, 'U');
+      set(g, 23, 2, 'L'); set(g, 24, 2, 'L'); set(g, 24, 1, 'L'); set(g, 22, 3, 'k');
+    } },
 };
-export const SPECIES_ORDER = ['bunny', 'hamster', 'squirrel', 'hedgehog', 'kitten', 'duckling', 'piglet', 'panda'];
+export const SPECIES_ORDER = ['bunny', 'hamster', 'squirrel', 'hedgehog', 'kitten', 'duckling', 'piglet', 'panda', 'capybara'];
 
 function mixHex(h, to, w) { const n = parseInt(h.slice(1, 7), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
   return '#' + [r, g, b].map((v, i) => Math.round(v * (1 - w) + to[i] * w).toString(16).padStart(2, '0')).join(''); }
@@ -168,6 +180,7 @@ const EYES = {
   blink: ['.....', '.....', '.....', 'eeeee', '.....'],
   ghost: ['.....', '.....', '.....', 'e...e', '.eee.'],
   x: ['.....', 'e...e', '.e.e.', '..e..', '.e.e.', 'e...e'],
+  chill: ['.....', '.....', '.....', 'eeeee', 'eiiIe', 'eiItI', '.eee.'], // half-lidded (capybara, happy)
 };
 
 // mood: happy | worried | scared | ghost | dead | char. injuries: ['pop','anvil',...]. opts.walk = phase (radians)
@@ -200,7 +213,7 @@ export function critter(species, mood, t, injuries = [], opts = {}) {
   // eyes
   const blink = (t % 4.2) < 0.13 && !dead && !ghost;
   let ep = mood === 'worried' || mood === 'scared' ? EYES.teary : EYES.open;
-  if (ghost) ep = EYES.ghost; else if (dead) ep = EYES.x; else if (blink) ep = EYES.blink; else if (mood === 'happy' && Math.sin(t * 1.3) > 0.85) ep = EYES.squint;
+  if (ghost) ep = EYES.ghost; else if (dead) ep = EYES.x; else if (blink) ep = EYES.blink; else if (mood === 'happy' && sp.chill) ep = EYES.chill; else if (mood === 'happy' && Math.sin(t * 1.3) > 0.85) ep = EYES.squint;
   const emap = mood === 'char' || (dead && sp.lightX) ? { e: 't' } : {};
   pat(g, 9, 17, ep, emap); pat(g, M(13), 17, ep, emap);
   if (ep === EYES.open) both(g, 8, 18, 'e'); // lash flick
@@ -216,6 +229,7 @@ export function critter(species, mood, t, injuries = [], opts = {}) {
   } else {
     let my = 22;
     if (sp.mouth === 'snout') { layer(g, l => ell(l, CX, 22, 3, 1.9, 'n'), 'N'); set(g, 16, 22, 'N'); set(g, 19, 22, 'N'); my = 24.4; }
+    else if (sp.mouth === 'capy') { for (let x = 15; x <= 20; x++) set(g, x, 22, x === 15 || x === 20 ? 'k' : 'P'); for (let x = 16; x <= 19; x++) set(g, x, 21, 'k'); set(g, 16, 22, 't'); set(g, 17, 23, 'P'); set(g, 18, 23, 'P'); my = 23.5; } // wide flat capybara nose
     else { set(g, 17, 21, 'P'); set(g, 18, 21, 'P'); }
     const y = Math.round(my) - 22;
     if (face === 'happy' || face === 'calm') for (const [x, dy] of [[15, 1], [17, 1], [18, 1], [20, 1], [16, 2], [19, 2]]) set(g, x, 21 + y + dy, 'm');
@@ -610,9 +624,30 @@ const PERIL = {
     if (!calm) { const [ax, ay] = racWithPaw(ctx, st, t, 'crank'); pline(ctx, 74, 14, ax, ay, '#a7824c'); winch(ctx, ax, ay, t); }
     else pline(ctx, 74, 14, 76, 60, '#a7824c');
   },
+  capybara(ctx, st, t, calm) { // v0.4.3: a relaxing hot spring that is quietly becoming hot pot
+    // wall thermometer creeping into the red
+    const lvl = calm ? 0.2 : 0.72 + Math.sin(t * 1.3) * 0.12;
+    px(ctx, 15, 28, 5, 34, '#e8e4ec'); px(ctx, 16, 29, 3, 32, '#3a3442'); px(ctx, 16, 29 + 32 * (1 - lvl), 3, 32 * lvl, lvl > 0.6 ? '#ff4a3a' : '#5ab0e0'); px(ctx, 14, 61, 7, 5, lvl > 0.6 ? '#ff4a3a' : '#5ab0e0');
+    for (let y = 31; y < 60; y += 4) px(ctx, 20, y, 1, 1, '#8a8f9c'); px(ctx, 15, 28, 5, 3, '#ff9a8a');
+    if (!calm) flames(ctx, 26, 92, 46, t); else { px(ctx, 28, 89, 40, 3, '#3a2a22'); px(ctx, 34, 88, 10, 2, '#5a4a3a'); }
+    // the little sign: a hot-spring mark, with a sneaky "+ soup" plank nailed under it
+    px(ctx, 54, 20, 16, 12, '#8a5a36'); px(ctx, 55, 21, 14, 10, '#c89a68'); px(ctx, 58, 27, 8, 2, '#d8405e'); for (const x of [60, 63, 66]) px(ctx, x - 1, 23 + (x % 2), 1, 3, '#d8405e');
+    if (!calm) { px(ctx, 55, 33, 14, 4, '#a8703e'); px(ctx, 57, 34, 10, 1, '#4a2a18'); px(ctx, 56, 35, 1, 1, '#2e2018'); px(ctx, 67, 35, 1, 1, '#2e2018'); }
+    if (!calm) petAt(ctx, st, t, 30, 32 + (Math.sin(t * 1.2) > 0 ? 0 : 1));
+    // wooden bath tub with hoops; the water has 'ingredients' in it
+    px(ctx, 24, 64, 48, 2, '#8a5a36'); px(ctx, 25, 66, 46, 3, calm ? '#6aa8b8' : '#c8884a');
+    if (!calm) { bubbles(ctx, 27, 67, 42, t, '#ffd8a0', 8);
+      for (const [vx, c] of [[30, '#ff8a2a'], [44, '#7ac84a'], [58, '#ff8a2a'], [52, '#f4f0e0']]) px(ctx, vx + Math.round(Math.sin(t * 2 + vx) * 1.5), 66 + (Math.sin(t * 3 + vx) > 0 ? 0 : 1), 3, 2, c); }
+    else { px(ctx, 48, 66, 4, 3, '#ffb52e'); px(ctx, 49, 65, 2, 1, '#5aa84a'); } // just a yuzu floating, the way it should be
+    for (let x = 24; x < 72; x += 4) px(ctx, x, 69, 4, 20, (x / 4) % 2 ? '#a8703e' : '#94602f');
+    px(ctx, 24, 69, 48, 1, '#6a4020'); for (const y of [73, 83]) { px(ctx, 23, y, 50, 2, '#5d6170'); px(ctx, 23, y, 50, 1, '#8a8f9c'); }
+    px(ctx, 26, 89, 3, 3, '#4a3020'); px(ctx, 67, 89, 3, 3, '#4a3020');
+    steam(ctx, 26, 64, 44, t, calm ? 3 : 8, calm);
+    if (!calm) { const [ax, ay] = racWithPaw(ctx, st, t, 'stir'); pline(ctx, ax, ay, 66, 64, '#c8a070'); px(ctx, 63, 66, 5, 2, '#a8703e'); px(ctx, ax - 1, ay - 1, 3, 3, '#1f1a28'); }
+  },
 };
 export const PERIL_SPECIES = Object.keys(PERIL);
-const PERIL_LAMP = { bunny: 66, hamster: 68, kitten: 70, hedgehog: 62, panda: 62 }; // keep the lamp clear of the ropes
+const PERIL_LAMP = { bunny: 66, hamster: 68, kitten: 70, hedgehog: 62, panda: 62, capybara: 38 }; // keep the lamp clear of the ropes
 function drawPeril(ctx, st, t) {
   room(ctx, t, false, PERIL_LAMP[st.species] || LAMP0);
   (PERIL[st.species] || PERIL.bunny)(ctx, st, t, false);

@@ -1,5 +1,6 @@
 // Twice-daily nudge schedule + voices.
 import assert from 'node:assert';
+import { readFileSync } from 'node:fs';
 import worker, { planNudge, NUDGES2 } from './src/index.js';
 import { PLEAD, TAUNT, PLEAD_SP, TAUNT_SP, PLEAD_FINAL, TAUNT_FINAL, nudgeText, DISH, ITEM } from './src/messages.js';
 import { newState, ANIMALS, petAt } from './src/game.js';
@@ -24,6 +25,13 @@ st.sent[D] = []; st.days[D] = 10000; assert.equal(planNudge(st, np(13, 0)), null
 // voice order varies by day (randomized per player/day) but always alternates within the day
 const order = new Set(); for (let d = 1; d <= 20; d++) { const s2 = newState('ABCDEFGHJK', `2026-11-${String(d).padStart(2, '0')}`); const dd = s2.started; order.add(planNudge(s2, { date: dd, hour: 13, minute: 0 }).voice); }
 assert.equal(order.size, 2);
+// per-animal pools: every ladder animal (incl. the v0.4.3 capybara) has the same number of its own lines, in the worker AND the app
+{ const n0 = [PLEAD_SP.bunny.length, TAUNT_SP.bunny.length];
+  for (const an of ANIMALS) { assert.deepEqual([PLEAD_SP[an.species]?.length, TAUNT_SP[an.species]?.length], n0, an.species); assert.ok(DISH[an.species] && ITEM[an.species], an.species); }
+  const app = readFileSync(new URL('../app/app.js', import.meta.url), 'utf8'), SL = JSON.parse(app.match(/const SPECIES_LINES = (\{.*\});/)[1]);
+  const shape = o => ['pet', 'raccoon'].flatMap(w => ['behind', 'banked'].map(m => o?.[w]?.[m]?.length));
+  for (const an of ANIMALS) assert.deepEqual(shape(SL[an.species]), shape(SL.bunny), 'app lines ' + an.species);
+  for (const an of ANIMALS) assert.ok(new RegExp(an.species + ': ["\']').test(app.match(/const DISH = \{.*?\};/)[0]), 'app DISH ' + an.species); }
 // every line renders for every animal with no leftover {placeholders}
 let n = 0;
 for (const an of ANIMALS) for (const voice of ['pet', 'raccoon']) for (const slot of ['afternoon', 'evening']) for (const line of [...(voice === 'pet' ? PLEAD : TAUNT)[slot], ...(voice === 'pet' ? PLEAD_SP : TAUNT_SP)[an.species], ...(voice === 'pet' ? PLEAD_FINAL : TAUNT_FINAL)]) {

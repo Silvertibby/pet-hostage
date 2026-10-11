@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.4.3 (2026-10-10)
+- A new face joins the end of the ladder. Very calm. Has a yuzu.
+
 ## v0.4.2 (2026-10-10)
 - Final day before a rescue is now a 15,000-step boss day. The Raccoon has been preparing.
 

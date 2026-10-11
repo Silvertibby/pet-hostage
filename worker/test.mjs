@@ -52,7 +52,12 @@ function sim(pattern, start = D0) { // pattern: 'Y' (15k+, beats any day) / 'y' 
 }
 assert.deepEqual([0, 1, 2, 3, 4].map(needFor), [3, 5, 7, 9, 11]);
 assert.equal(new Set(ANIMALS.map(a => a.species)).size, ANIMALS.length); assert.ok(ANIMALS.length >= 6);
-assert.equal(animalFor(0).name, 'Chompsky'); assert.equal(animalFor(8).name, 'Chompsky II');
+assert.equal(animalFor(0).name, 'Chompsky'); assert.equal(animalFor(9).name, 'Chompsky II');
+// v0.4.3: the capybara is APPENDED; the first 8 rungs are unchanged so nobody's progress shifts
+assert.deepEqual(ANIMALS.slice(0, 8).map(a => a.species), ['bunny', 'hamster', 'squirrel', 'hedgehog', 'kitten', 'duckling', 'piglet', 'panda']);
+assert.equal(ANIMALS.length, 9); assert.deepEqual(animalFor(8), { species: 'capybara', name: 'Yuzu' }); assert.equal(needFor(8), 19); assert.equal(animalFor(17).name, 'Yuzu II');
+{ const st = newState('OLD', D0); st.pets[8] = { species: 'bunny', name: 'Chompsky II', deaths: 0, injuries: [], rescuedOn: null, rescues: 0, firstKidnapped: D0 }; // a pet already made keeps its identity
+  assert.equal(view(st).ladder[8].name, 'Chompsky II'); assert.equal(view(st).ladder.length, 9); }
 // no free start day: missing it kills the bunny (rung 1 -> bunny again, patched up); hitting it counts as day 1
 { const { st, deaths } = sim('n'); assert.equal(deaths.length, 1); assert.equal(deaths[0].date, D0); assert.ok(deaths[0].rekidnap.same); assert.equal(st.hostage.rung, 0); assert.deepEqual(st.pets[0].injuries, ['pop']); }
 { const { st } = sim('Y'); assert.equal(st.hostage.streak, 1); }
