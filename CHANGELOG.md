@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.4.4 (2026-10-10)
+- Android + Garmin players: a little companion app now syncs your steps on its own. Find it under Step sync.
+
 ## v0.4.3 (2026-10-10)
 - A new face joins the end of the ladder. Very calm. Has a yuzu.
 

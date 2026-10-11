@@ -1,0 +1,11 @@
+<resources>
+    <color name="bg">#1B1626</color>
+    <color name="panel">#2A2238</color>
+    <color name="panel_edge">#3E3256</color>
+    <color name="ink">#F4EEE0</color>
+    <color name="dim">#A99FBD</color>
+    <color name="acc">#FF6FA8</color>
+    <color name="good">#6FE07A</color>
+    <color name="bad">#FF5A5A</color>
+    <color name="nav">#120E1A</color>
+</resources>

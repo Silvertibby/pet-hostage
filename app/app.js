@@ -1,11 +1,13 @@
 import { drawScene, drawDeath, drawShelfPet, raccoon, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.4.3';
+const VERSION = 'v0.4.4';
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
 const APP_URL = 'https://silvertibby.github.io/pet-hostage/';
 const SHORTCUT_NAME = 'Pet Hostage Sync';
+const APK_URL = APP_URL + 'android/pet-hostage-sync.apk';
+const ANDROID_PKG = 'com.silvertibby.pethostage.sync';
 const BAR_SEGMENTS = 20;
 const REFRESH_MS = 60_000;
 
@@ -14,6 +16,7 @@ const view = $('#view');
 const qs = new URLSearchParams(location.search);
 const DEMO = qs.get('demo');
 const isStandalone = () => window.navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+const isAndroid = /Android/i.test(navigator.userAgent) || qs.get('android') != null; // ?android=1 to preview
 const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 $('#ver').textContent = VERSION;
 
@@ -232,7 +235,7 @@ function renderHome() {
   $('#gosetup')?.addEventListener('click', () => go('sync'));
   $('#refreshbtn')?.addEventListener('click', () => doRefresh('button'));
   $('#pushbanner-on')?.addEventListener('click', e => enablePush(e, $('#pushbanner-msg'))); // permission prompt must come straight from this tap
-  $('#syncnow')?.addEventListener('click', () => { location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(SHORTCUT_NAME); });
+  $('#syncnow')?.addEventListener('click', () => { location.href = isAndroid ? androidLink() : 'shortcuts://run-shortcut?name=' + encodeURIComponent(SHORTCUT_NAME); });
 }
 
 // Notifications are off: a big banner so the hostage can beg (and the raccoon can taunt) twice a day.
@@ -328,8 +331,9 @@ function playDeath(d, freezeAt) {
 
 function syncLogHtml(s) {
   const log = (s.syncLog || []);
+  if (!log.length && isAndroid) return `<span class="dim">Nothing has reached The Raccoon yet. Set up the Pet Hostage Sync app below, then tap "Check steps".</span>`;
   if (!log.length) return `<span class="dim">Nothing has reached The Raccoon yet. Run the "${SHORTCUT_NAME}" shortcut once by hand, then tap "I ran it, check steps" below.</span>`;
-  const line = e => `${e.ok ? '✅' : '❌'} ${timePT(e.at)} · ${ago(e.at)} · ${e.ok ? (e.dry ? 'dry run, ' : '') + fmt(e.steps) + ' steps' : esc(e.reason || 'failed')}${e.raw != null && !e.ok ? ` <span class="dim">(got "${esc(e.raw)}")</span>` : ''}${e.codeNote ? ` <span class="dim">· ${esc(e.codeNote)}</span>` : ''}${e.src === 'garmin' ? ' <span class="dim">· Garmin</span>' : ''}${e.ok && e.reason ? ` <span class="dim">· ${esc(e.reason)}</span>` : ''}`;
+  const line = e => `${e.ok ? '✅' : '❌'} ${timePT(e.at)} · ${ago(e.at)} · ${e.ok ? (e.dry ? 'dry run, ' : '') + fmt(e.steps) + ' steps' : esc(e.reason || 'failed')}${e.raw != null && !e.ok ? ` <span class="dim">(got "${esc(e.raw)}")</span>` : ''}${e.codeNote ? ` <span class="dim">· ${esc(e.codeNote)}</span>` : ''}${e.src === 'garmin' ? ' <span class="dim">· Garmin</span>' : e.src === 'android' ? ' <span class="dim">· Android</span>' : ''}${e.ok && e.reason ? ` <span class="dim">· ${esc(e.reason)}</span>` : ''}`;
   return `<div>${line(log[0])}</div>` + (log.length > 1 ? `<div class="dim" style="margin-top:6px">Earlier:<br>${log.slice(1).map(line).join('<br>')}</div>` : '');
 }
 function garminHtml(s) {
@@ -344,12 +348,35 @@ function garminHtml(s) {
       ${err ? `<div style="margin-top:6px">❌ Last attempt failed ${timePT(g.lastErrorAt)}: ${esc(g.lastError)}</div>` : ''}
     </div>`;
 }
+// Android: Chrome opens the companion app with the code filled in; if it isn't installed, the APK downloads instead.
+function androidLink() { return `intent://setup?c=${encodeURIComponent(code)}#Intent;scheme=pethostage;package=${ANDROID_PKG};S.browser_fallback_url=${encodeURIComponent(APK_URL)};end`; }
+function androidHtml(s) {
+  const a = s.android;
+  return `<div class="card" id="android">${a && a.lastSync
+      ? `<div>🤖 <b>Pet Hostage Sync is connected</b></div><div class="dim" style="margin-top:6px">Last sync ${timePT(a.lastSync)} · ${ago(a.lastSync)} · ${fmt(a.lastSteps)} steps</div>`
+      : `<div>🤖 <b>Android phone + Garmin?</b></div>`}
+    <div class="dim" style="margin-top:6px">Garmin Connect shares your steps with Health Connect, and the little Pet Hostage Sync app sends them here every ~15 minutes. No passwords, nothing to share.</div></div>
+    <ol class="guide">
+      <li><a class="btn" href="${APK_URL}" download>Download the app</a><br>Open it and allow <b>Install unknown apps</b> for your browser when asked.</li>
+      <li>In <b>Garmin Connect</b>: menu → Settings → <b>Health Connect</b> (or Connected apps), tap Connect and allow <b>Steps</b>.</li>
+      <li><a class="btn acc" href="${esc(androidLink())}">Set up Android sync</a><br>Opens the app with your code filled in. Tap <b>Allow steps</b>.</li>
+    </ol>
+    <p class="dim">Garmin's Health Connect sharing needs Android 14 or newer. The app also syncs around 11:50 PM; days are judged at midnight Pacific.</p>`;
+}
 function syncUrl() { return `${WORKER}/sync?code=${code}&steps=`; }
 function renderSync() {
   view.innerHTML = `
     <h2>LAST SYNC ATTEMPT</h2>
     <div class="card" id="synclog">${syncLogHtml(state)}</div>
     ${garminHtml(state)}
+    ${isAndroid ? `<h2>ANDROID SYNC</h2>${androidHtml(state)}
+    <div class="card"><div class="dim">Your sync code</div>
+      <div class="row" style="justify-content:space-between"><span class="big-code">${esc(code)}</span><button class="btn small" data-copy="${esc(code)}">Copy</button></div>
+      <div class="dim" style="margin-top:6px">If the button doesn't open the app, copy this and paste it there.</div></div>
+    <h2>TEST IT</h2>
+    <p><button class="btn" id="refresh">Check steps</button></p>
+    <div id="synctest" class="dim"></div>
+    <details class="more"><summary>iPhone instructions</summary>` : ''}
     <h2>${state.garmin && state.garmin.lastSync ? 'BACKUP: SHORTCUT SYNC' : 'SET UP STEP SYNC'}</h2>
     ${state.garmin && state.garmin.lastSync ? `<p class="dim">Only needed if Garmin sync stops working. A Shortcut sync can raise today's count but never lower what Garmin reported.</p>` : ''}
     <p class="dim">Your iPhone counts steps into Apple Health (Garmin steps land there too). A Shortcut sends today's total to The Raccoon. Build it once, then automate it.</p>
@@ -377,9 +404,9 @@ function renderSync() {
       <li>Repeat for a few daytime times (e.g. <b>12 PM, 3 PM, 6 PM, 9 PM</b>) so The Raccoon's nudges know how you're doing. One automation per time.</li>
     </ol>
     <p class="dim">The 11:30 PM sync is the one that matters: a day is judged at midnight Pacific with whatever steps were synced last.</p>
-    <h2>TEST IT</h2>
+    ${isAndroid ? '</details>' : `<h2>TEST IT</h2>
     <p><button class="btn" id="refresh">I ran it, check steps</button></p>
-    <div id="synctest" class="dim"></div>
+    <div id="synctest" class="dim"></div>`}
   `;
   view.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(b.dataset.copy); toast('Copied'); } catch { toast('Copy failed, long-press to select'); }
@@ -387,6 +414,7 @@ function renderSync() {
   $('#refresh').addEventListener('click', async () => {
     await refresh(true);
     $('#synclog').innerHTML = syncLogHtml(state);
+    if ($('#android')) $('#android').outerHTML = androidHtml(state).replace(/<\/div>\s*<ol[\s\S]*$/, '</div>');
     if ($('#garmin')) $('#garmin').outerHTML = garminHtml(state).replace(/^<h2>GARMIN<\/h2>\s*/, '');
     $('#synctest').textContent = state.lastSync ? `Last sync ${timePT(state.lastSync)} (${ago(state.lastSync)}): ${fmt(state.lastSteps)} steps.` : 'Nothing received yet.';
   });

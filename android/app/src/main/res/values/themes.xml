@@ -1,0 +1,18 @@
+<resources>
+    <style name="PH" />
+    <style name="Theme.PH" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/nav</item>
+        <item name="android:colorAccent">@color/acc</item>
+        <item name="android:textColor">@color/ink</item>
+        <item name="android:textColorHint">@color/dim</item>
+        <item name="android:fontFamily">@font/vt323</item>
+    </style>
+    <style name="PH.Title"><item name="android:fontFamily">@font/press_start</item><item name="android:textColor">@color/acc</item><item name="android:textSize">15sp</item><item name="android:shadowColor">#000000</item><item name="android:shadowDx">3</item><item name="android:shadowDy">3</item><item name="android:shadowRadius">0.01</item></style>
+    <style name="PH.H"><item name="android:fontFamily">@font/press_start</item><item name="android:textColor">@color/dim</item><item name="android:textSize">10sp</item><item name="android:layout_marginTop">18dp</item><item name="android:layout_marginBottom">8dp</item></style>
+    <style name="PH.Body"><item name="android:fontFamily">@font/vt323</item><item name="android:textColor">@color/ink</item><item name="android:textSize">21sp</item></style>
+    <style name="PH.Dim" parent="PH.Body"><item name="android:textColor">@color/dim</item><item name="android:textSize">18sp</item></style>
+    <style name="PH.Btn"><item name="android:fontFamily">@font/press_start</item><item name="android:textSize">11sp</item><item name="android:textColor">@color/ink</item><item name="android:background">@drawable/btn</item><item name="android:paddingTop">14dp</item><item name="android:paddingBottom">14dp</item><item name="android:paddingStart">14dp</item><item name="android:paddingEnd">14dp</item><item name="android:textAllCaps">false</item><item name="android:stateListAnimator">@null</item><item name="android:layout_marginTop">10dp</item></style>
+    <style name="PH.Btn.Acc"><item name="android:background">@drawable/btn_acc</item><item name="android:textColor">#1B1626</item></style>
+</resources>

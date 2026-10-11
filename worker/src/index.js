@@ -163,6 +163,9 @@ export default {
     if (path === '/sync') {
       const src = clip(url.searchParams.get('src') ?? body.src ?? null) || undefined; // 'garmin' = server-side Garmin job
       const isGarmin = src === 'garmin';
+      // The Android companion app reads Health Connect's deduped daily total (Garmin writes there too). Trusted like
+      // Garmin in one way: it can only ever raise a day's count, never lower it.
+      const isAndroid = src === 'android';
       const failure = url.searchParams.get('error') ?? body.error ?? null;
       if (isGarmin && failure != null) { // the Garmin job reports a failed attempt (reason only, never secrets)
         const reason = 'Garmin: ' + String(failure).slice(0, 160);
@@ -199,6 +202,10 @@ export default {
         stored = g.days[date];
         g.lastSync = Date.now(); g.lastSteps = stored; g.lastError = null; g.lastErrorAt = null;
         for (const k of Object.keys(g.days).sort().slice(0, -7)) delete g.days[k];
+      } else if (isAndroid) {
+        stored = Math.max(g.days[date] || 0, before, steps);
+        if (stored !== steps) note2 = `kept ${stored} (higher than the ${steps} Android sent)`;
+        st.android = { lastSync: Date.now(), lastSteps: steps, app: clip(url.searchParams.get('app') ?? body.app ?? null) };
       } else if (g.days[date] != null) {
         stored = Math.max(g.days[date], before, steps);
         if (stored !== steps) note2 = `kept ${stored} (Garmin is authoritative; shortcut sent ${steps})`;
