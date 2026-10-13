@@ -1,7 +1,8 @@
+import { maybeRevived, revivedVars } from './revived.js';
 import { drawScene, drawDeath, drawShelfPet, raccoon, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.4.8';
+const VERSION = 'v0.4.9';
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
 const APP_URL = 'https://silvertibby.github.io/pet-hostage/';
@@ -103,7 +104,7 @@ function cutout(text) {
 function stopAnim() { if (anim) cancelAnimationFrame(anim); anim = null; }
 let sceneT = 0, sceneReact = null;
 const isFinal = h => !!(h && (h.finalDay ?? (h.day >= h.need)));
-const sceneSt = () => { const h = state.hostage || {}; return { mood: state.mood, species: h.species, injuries: h.injuries, freed: !!h.todayMet, final: isFinal(h), react: sceneReact }; };
+const sceneSt = () => { const h = state.hostage || {}; return { mood: state.mood, species: h.species, injuries: h.injuries, deaths: h.deaths || 0, freed: !!h.todayMet, final: isFinal(h), react: sceneReact }; };
 function startScene(canvas) {
   const ctx = canvas.getContext('2d');
   const t0 = performance.now(); sceneReact = null;
@@ -161,14 +162,18 @@ const FINAL_LINES = {
 };
 function pickLine(who, mode, v) {
   const fin = mode === 'final'; if (fin) mode = 'behind';
+  const rv = mode === 'behind' && maybeRevived(who, v.species, v.deaths, fin); // revived pets remember (~60%)
+  if (rv) return fillLine(rv, v);
   const pool = [...(fin ? [...FINAL_LINES[who], ...FINAL_LINES[who]] : []), ...LINES[who][mode], ...((SPECIES_LINES[v.species] || {})[who]?.[mode] || [])], key = who + (fin ? 'final' : mode) + (v.species || '');
   let i; do { i = Math.floor(Math.random() * pool.length); } while (pool.length > 1 && i === lastLine[key]);
   lastLine[key] = i;
-  return pool[i].replace(/\{(\w+)\}/g, (_, k) => k === 'Dish' ? (v.dish[0].toUpperCase() + v.dish.slice(1)) : (v[k] ?? ''));
+  return fillLine(pool[i], v);
 }
+const fillLine = (s, v) => s.replace(/\{(\w+)\}/g, (_, k) => k === 'Dish' ? (v.dish[0].toUpperCase() + v.dish.slice(1)) : (v[k] ?? ''));
 function lineVars(extra = {}) {
   const h = state.hostage || {}, sp = extra.species || h.species || 'bunny';
   return { name: extra.name || h.name, species: sp, steps: fmt(state.todaySteps || 0), animal: speciesLabel(sp), dish: DISH[sp] || 'stew', item: ITEM[sp] || 'a hat', left: fmt(Math.max(0, (state.goal || GOAL) - (state.todaySteps || 0))), goal: fmt(state.goal || GOAL),
+    ...revivedVars(h.injuries, h.deaths || 0), deaths: extra.species ? 0 : (h.deaths || 0),
     day: h.day, need: h.need, togo: Math.max(0, (h.need || 0) - (h.streak || 0) - (h.todayMet ? 1 : 0)), re: extra.re || '' };
 }
 function attachTaps(canvas, getCtx, onReact, extra) {
@@ -226,13 +231,15 @@ function renderHome() {
     <details class="more"><summary>📈 History</summary>
       <div class="legend"><span>🏆 ${s.shelf.length} on the shelf</span><span>${s.stats.metDays} paid · ${s.stats.missedDays} missed</span></div>
       <div class="chart">${chart}</div>
-      <div class="legend"><span>${s.days[0].date.slice(5)}</span><span>today</span></div></details>
+      <div class="legend"><span>${s.days[0].date.slice(5)}</span><span>today</span></div>
+      ${(s.deathLog || []).length ? `<div class="legend">${s.deathLog.slice(0, 3).map(d => `<button class="btn small ghost" data-replay="${d.id}">☠ Replay ${esc(d.name)} ${fmtDate(d.date)}</button>`).join(' ')}</div>` : ''}</details>
     <details class="more"><summary>❓ The deal</summary>
       <p class="small">${esc(h.name)} the ${esc(speciesLabel(h.species))} (rung ${h.rung + 1}): ${h.need} days in a row: 10,000 steps a day, and 15,000 on the final day. Then ${esc(h.name)} goes on your shelf. Miss one and, well.${h.deaths ? ` Patched up after ${h.deaths} death${h.deaths > 1 ? 's' : ''} so far.` : ''}</p>
       <p class="small dim">Tap ${esc(h.name)} or The Raccoon to hear from them. Pull down to refresh.</p></details>
   `;
   startScene($('#scene')); noteAvatar($('#rac'));
   $('#gosetup')?.addEventListener('click', () => go('sync'));
+  view.querySelectorAll('[data-replay]').forEach(b => b.addEventListener('click', () => { const d = (state.deathLog || []).find(x => String(x.id) === b.dataset.replay); if (d && !deathPlaying) playDeath(d); }));
   $('#refreshbtn')?.addEventListener('click', () => doRefresh('button'));
   $('#pushbanner-on')?.addEventListener('click', e => enablePush(e, $('#pushbanner-msg'))); // permission prompt must come straight from this tap
   $('#syncnow')?.addEventListener('click', () => { location.href = phonePick() === 'android' ? androidLink() : 'shortcuts://run-shortcut?name=' + encodeURIComponent(SHORTCUT_NAME); });
@@ -304,6 +311,8 @@ function playDeath(d, freezeAt) {
   const p = (state.ladder || []).find(x => x.rung === d.rung) || {};
   const injBefore = (p.injuries || []).slice(0, Math.max(0, (d.deaths || 1) - 1)); // as it looked before this death
   const re = d.rekidnap;
+  const rp = (state.ladder || []).find(x => x.rung === re.rung) || {};
+  const reArt = { same: !!re.same, species: re.species || rp.species || d.species, injuries: re.same ? [...injBefore, d.type] : (rp.injuries || []) };
   const msg = `${d.name} ${DEATH_TEXT[d.type] || 'met a cartoon end'}. ` + (re.same ? `I stitched him back together. ${re.need} days in a row. Again.` : `So I took ${re.name} back off your shelf. ${re.need} days. Same as before.`);
   ov.innerHTML = `<div class="ovbox"><h2>☠ ${fmtDate(d.date)}: YOU MISSED A DAY</h2><div class="scenewrap"><canvas id="dscene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas></div>
     <div class="note" id="dnote" style="visibility:hidden"><canvas class="px" id="drac" width="30" height="28"></canvas><div class="from">From: The Raccoon</div><div class="cut">${cutout(msg)}</div></div>
@@ -315,7 +324,7 @@ function playDeath(d, freezeAt) {
   const show = () => { $('#dnote').style.visibility = 'visible'; $('#dok').style.visibility = 'visible'; };
   const loop = now => {
     const t = freezeAt != null ? freezeAt : (now - t0) / 1000;
-    drawDeath(ctx, { species: d.species, injuries: injBefore, type: d.type }, Math.min(t, DEATH_LEN + 30));
+    drawDeath(ctx, { species: d.species, injuries: injBefore, type: d.type, re: reArt }, Math.min(t, DEATH_LEN + 30));
     if (t > DEATH_LEN - 1.2 || freezeAt >= DEATH_LEN - 1.2) show();
     if (freezeAt == null && $('#dscene')) raf = requestAnimationFrame(loop);
   };
@@ -702,6 +711,7 @@ function demoState(m) {
   if (m === 'nosync') { rung = 0; streak = 0; inj = {}; todaySteps = 0; hour = 10; mood = 'happy'; }
   if (m === 'death' || m === 'rekidnap') { rung = 1; streak = 0; inj = { 0: ['pop'], 1: [], 2: ['catapult', qs.get('type') || 'pop'] }; todaySteps = 840; hour = 9; mood = 'happy';
     lastDeath = { id: 3, date: day(-1), rung: 2, name: 'Acorn', species: 'squirrel', type: qs.get('type') || 'pop', deaths: 2, rekidnap: { rung: 1, name: 'Nugget', species: 'hamster', need: 5, same: false } }; }
+  if (lastDeath && qs.has('same')) lastDeath.rekidnap = { rung: 2, name: 'Acorn', species: 'squirrel', need: 7, same: true };
   if (qs.has('rung')) rung = Math.max(0, Math.min(sp.length - 1, +qs.get('rung') || 0));
   if (m === 'final' || m === 'finalpaid') { if (!qs.has('rung')) rung = 0; streak = need(rung) - 1; todaySteps = m === 'final' ? 9420 : 15230; mood = m === 'final' ? 'worried' : 'happy'; hour = m === 'final' ? 18 : 21; }
   const pet = r => ({ rung: r, name: nm[r], species: sp[r], need: need(r), deaths: (inj[r] || []).length, injuries: inj[r] || [], rescuedOn: r < rung ? day(-30 + r * 9) : null, rescues: 1 });

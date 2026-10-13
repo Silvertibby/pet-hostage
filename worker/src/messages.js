@@ -121,7 +121,10 @@ export const TAUNT_FINAL = [
   "{name}'s final day. I've been looking forward to this one. {left} steps. Tick tock.",
   "Fifteen thousand, or {name} becomes tonight's special. You're at {steps}.",
 ];
-export function nudgeText(voice, slot, v) {
+import { maybeRevived } from './revived.js';
+export function nudgeText(voice, slot, v, rand = Math.random) {
+  const rv = maybeRevived(voice === 'pet' ? 'pet' : 'raccoon', v.species, v.deaths | 0, !!v.final, rand); // revived pets: ~60%
+  if (rv) return fill(rv, v);
   if (v.final && Math.random() < 0.6) return fill(pick(voice === 'pet' ? PLEAD_FINAL : TAUNT_FINAL), v);
   const set = [...(voice === 'pet' ? PLEAD : TAUNT)[slot], ...((voice === 'pet' ? PLEAD_SP : TAUNT_SP)[v.species] || [])];
   return fill(pick(set), v);

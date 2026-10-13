@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.4.9 (2026-10-12)
+- Pets that have been through things now remember. So does The Raccoon.
+
 ## v0.4.7 (2026-10-11)
 - Clearer iPhone Shortcut steps: every setting spelled out, plus how to let Shortcuts read your steps.
 

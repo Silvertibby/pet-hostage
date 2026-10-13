@@ -463,6 +463,7 @@ function drawFreed(ctx, st, t) {
   const ax = w.x + 13 + (w.dir < 0 ? 10 : 0), ay = y + 36; // ankle (left or right foot depending on facing)
   chain(ctx, RAC_X + RACCOON_PAW.x, RAC_Y + RACCOON_PAW.y, ax, Math.min(ay, 92), 80);
   if (sx !== 1 || sy !== 1) blitScaled(ctx, g, w.x, y, sx, sy, { flipX: w.dir < 0 }); else blit(ctx, g, w.x, y, { flipX: w.dir < 0 });
+  if (st.final && (st.deaths || 0) > 0) taped(ctx, g, w.x, Math.round(y + g.h * (1 - sy)), w.dir < 0); // revived + 15k banked: head taped back on
   px(ctx, ax - 2, Math.min(ay, 92) - 1, 5, 2, '#8a8f9c'); // ankle cuff
   px(ctx, RAC_X + RACCOON_PAW.x - 1, RAC_Y + RACCOON_PAW.y - 1, 3, 3, '#8a8f9c'); // chain end in his paw
 }
@@ -502,7 +503,54 @@ function winch(ctx, x, y, t) { px(ctx, x - 3, y - 3, 7, 7, '#6a4a32'); px(ctx, x
 function petAt(ctx, st, t, x, y, opts = {}) {
   const mood = st.mood === 'scared' ? 'scared' : 'worried', pr = reactAmt(st, 'pet', t);
   const shake = (Math.sin(t * 17) > 0.7 ? 1 : 0) + (pr ? (Math.sin(t * 30) > 0 ? 1 : -1) : 0);
-  blit(ctx, critter(st.species || 'bunny', mood, t, st.injuries, opts), Math.round(x + shake), Math.round(y - pr * 4), { flipX: !!opts.flip });
+  const g = critter(st.species || 'bunny', mood, t, st.injuries, opts), X = Math.round(x + shake), Y = Math.round(y - pr * 4);
+  if ((st.deaths || 0) > 0) unstitched(ctx, g, X, Y, t, st.deaths, !!opts.flip); else blit(ctx, g, X, Y, { flipX: !!opts.flip });
+}
+// v0.4.9: a pet that died before, in its final-day peril: the stitched neck comes half undone. Hinged on the left,
+// the body sags away on the right, stuffing peeks out, stitches pop and fly, a loose thread swings. Cute-grim, no gore.
+const NECK = 27, THREAD = '#c4405e';
+const hash = (a, b) => { let h = (a * 374761393 + b * 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+function unstitched(ctx, g, X, Y, t, deaths, flip) {
+  const wob = Math.max(0, Math.sin(t * 2.6)), open = 2.4 + Math.min(3, deaths) * 0.6 + wob * 1.8;
+  const gap = x => Math.round(open * Math.max(0, Math.min(1, (x - 11) / 15)) ** 0.8);
+  const sx = x => X + (flip ? g.w - 1 - x : x);
+  const lean = (wob > 0.5 ? 1 : 0) * (flip ? 1 : -1); // the head slides toward the hinge side as the split opens
+  ctx.save(); ctx.globalAlpha = g.alpha ?? 1;
+  for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) {
+    const c = g.a[y * g.w + x]; if (!c) continue;
+    ctx.fillStyle = g.pal[c] || c; ctx.fillRect(sx(x) + (y < NECK ? lean : 0), Y + y + (y < NECK ? 0 : gap(x)), 1, 1);
+  }
+  for (let x = 10; x <= 26; x++) { // stuffing showing through the split
+    const n = gap(x); if (!n || !g.a[NECK * g.w + x]) continue;
+    for (let k = 0; k < n; k++) { ctx.fillStyle = (x + k) % 3 === 0 ? '#e6d8bd' : '#fff6ea'; ctx.fillRect(sx(x), Y + NECK + k, 1, 1); }
+  }
+  const cyc = Math.floor(t * 1.5);
+  ctx.fillStyle = THREAD;
+  for (let x = 11; x <= 25; x += 3) { // stretched stitches; some have popped this beat
+    const n = gap(x); if (n >= 2 && hash(x, cyc) < 0.35) continue;
+    for (let k = -1; k <= n; k++) ctx.fillRect(sx(x), Y + NECK + k, 1, 1);
+  }
+  for (let i = 0; i < 2; i++) { // popped stitches flying off
+    const u = t * 1.1 + i * 0.5, p = u % 1, x0 = 13 + Math.floor(hash(i, Math.floor(u)) * 12), dir = i ? 1 : -1;
+    const fx = x0 + p * 7 * dir, fy = NECK - p * 11 + p * p * 15;
+    ctx.globalAlpha = (g.alpha ?? 1) * (1 - p);
+    for (const [dx, dy] of [[0, 0], [1, 1], [-1, 1], [1, -1], [-1, -1]]) ctx.fillRect(sx(Math.round(fx + dx)), Y + Math.round(fy + dy), 1, 1);
+  }
+  ctx.globalAlpha = g.alpha ?? 1;
+  const x0 = 26, y0 = NECK + gap(26), ex = x0 + 2 + Math.sin(t * 4) * 3, ey = y0 + 7; // loose thread
+  for (let i = 0; i <= 8; i++) { const u = i / 8; ctx.fillRect(sx(Math.round(x0 + (ex - x0) * u + Math.sin(u * 3) * 0.6)), Y + Math.round(y0 + (ey - y0) * u), 1, 1); }
+  ctx.restore();
+}
+// relief: the head is taped back on (masking tape round the neck, a little X, a dangling tab)
+function taped(ctx, g, X, Y, flip) {
+  const sx = x => X + (flip ? g.w - 1 - x : x);
+  for (let x = 9; x <= 27; x++) {
+    if (!g.a[NECK * g.w + x]) continue;
+    ctx.fillStyle = '#efe3c2'; ctx.fillRect(sx(x), Y + NECK - 1, 1, 2);
+    ctx.fillStyle = '#c9b98e'; ctx.fillRect(sx(x), Y + NECK + 1, 1, 1);
+  }
+  ctx.fillStyle = '#c9b98e'; for (const [x, y] of [[16, -2], [17, -1], [18, 0], [19, 1], [19, -2], [18, -1], [17, 0], [16, 1]]) ctx.fillRect(sx(x), Y + NECK + y, 1, 1);
+  ctx.fillStyle = '#efe3c2'; ctx.fillRect(sx(25), Y + NECK + 2, 2, 2); ctx.fillRect(sx(26), Y + NECK + 4, 1, 1);
 }
 function racWithPaw(ctx, st, t, pose) { const rr = drawRaccoon(ctx, st, t, pose); const [qx, qy] = racPaw(pose, t); return [RAC_X + qx + (rr ? (Math.sin(t * 40) > 0 ? 1 : -1) : 0), RAC_Y + qy - Math.round(rr * 4)]; }
 function recipeCard(ctx, t) {
@@ -671,12 +719,12 @@ export function drawScene(ctx, st, t) {
 }
 
 // Death animation (DEATH_LEN seconds): caged and nervous -> cartoon death -> little ghost floats up.
-export const DEATH_LEN = 5.2;
+export const DEATH_LEN = 8; // v0.4.9: + the raccoon's plunger, + revival / re-kidnap phase
 export function drawDeath(ctx, d, t) {
   ctx.save(); ctx.translate(-VIEW_X, -VIEW_Y);
   room(ctx, t, t > 3.2);
   const sp = d.species, inj = d.injuries || [], X = PET_X, Y = 54;
-  const A = 1.0, B = 3.4; // phase boundaries
+  const A = 1.0, B = 3.4, C = 5.4; // phase boundaries: walk-in, execution, ghost, revival/re-kidnap
   if (t < A) { // nervous in the cage, raccoon walks up
     blit(ctx, critter(sp, 'scared', t, inj), X + (Math.sin(t * 30) > 0 ? 1 : 0), Y);
     cage(ctx, CAGE_X, 46, 56, 47);
@@ -685,6 +733,12 @@ export function drawDeath(ctx, d, t) {
     const u = t - A;
     cage(ctx, CAGE_X, 46, 56, 47, 1);
     blit(ctx, raccoonBody(t, u < 0.4 ? 'smug' : 'glee'), RAC_X, RAC_Y);
+    { // he does it himself: a big red plunger box, wired to the cage, pushed down with gusto
+      const bx = RAC_X - 9, by = RAC_Y + 38, down = u > 0.25 ? 3 : Math.round(u / 0.25 * 1);
+      pline(ctx, bx, by + 4, X + 30, 88, '#2a2230'); px(ctx, bx - 4, by, 9, 7, '#8a2a2a'); px(ctx, bx - 4, by, 9, 1, '#c04040');
+      px(ctx, bx, by - 6 + down, 1, 6 - down, '#8a8f9c'); px(ctx, bx - 3, by - 7 + down, 7, 2, '#c5cad6');
+      if (u > 0.25 && u < 0.5) pxText(ctx, 'K', bx - 8, by - 12, '#ffe27a', 1);
+    }
     if (d.type === 'anvil') {
       const drop = Math.min(1, u / 0.45), ay = -20 + drop * drop * (Y + 24 - 18 - -20);
       if (drop < 1) { blit(ctx, critter(sp, 'scared', t, inj), X, Y); anvil(ctx, X + 3, ay); }
@@ -725,13 +779,30 @@ export function drawDeath(ctx, d, t) {
         if (v < 1.5) pxText(ctx, 'ZAP!', X + 2, Y - 14, '#ffe27a', 2);
       }
     }
-  } else { // ghost floats up; little tombstone
+  } else if (t < C || !d.re) { // ghost floats up; little tombstone
     const u = t - B;
     tomb(ctx, X + 24, 74);
     blit(ctx, raccoonBody(t, 'glee'), RAC_X, RAC_Y);
     const gy = Y - u * 14;
     blit(ctx, critter(sp, 'ghost', t), X + 14, gy + Math.sin(t * 2) * 2, { alpha: Math.max(0.15, 1 - u * 0.25) });
     pxText(ctx, 'RIP', 19, 58, '#cfe9fb', 2);
+  } else { // revival: stitched back together (same pet) or the next one dragged into the cage
+    const u = t - C, re = d.re;
+    if (re.same) {
+      const g = critter(sp, u < 1.4 ? 'dead' : 'worried', t, re.injuries || inj);
+      blit(ctx, g, X, Y);
+      if (u < 1.4) { // ghost sinks back in, needle zigzags along the neck
+        blit(ctx, critter(sp, 'ghost', t), X, Y - 14 + u * 10, { alpha: Math.max(0, 0.7 - u * 0.5) });
+        const nx = X + 11 + (u / 1.4) * 14, ny = Y + 27 + (Math.floor(u * 12) % 2 ? -2 : 2);
+        pline(ctx, X + 11, Y + 27, nx, ny, '#c4405e'); px(ctx, nx, ny - 3, 1, 4, '#d8dce6'); px(ctx, nx, ny - 4, 1, 1, '#ffffff');
+      } else if (u < 2) stars(ctx, X + 18, Y + 6, u, 9);
+      cage(ctx, CAGE_X, 46, 56, 47);
+      blit(ctx, raccoonBody(t, 'smug'), RAC_X, RAC_Y);
+    } else {
+      const k = Math.min(1, u / 1.2), rx = Math.round(RAC_X + 30 * (1 - k)); // he hauls the next one in from the right
+      if (k < 1) { blit(ctx, critter(re.species, 'scared', t, re.injuries || []), Math.round(lerp(RAC_X + 14, X, k)), Y); cage(ctx, CAGE_X, 46, 56, 47, 1); blit(ctx, raccoonBody(t, 'walk'), rx, RAC_Y); }
+      else { blit(ctx, critter(re.species, 'worried', t, re.injuries || []), X, Y); cage(ctx, CAGE_X, 46, 56, 47); blit(ctx, raccoonBody(t, 'smug'), RAC_X, RAC_Y); }
+    }
   }
   ctx.restore();
 }

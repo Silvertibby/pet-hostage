@@ -1,6 +1,7 @@
 import { RULES, localParts, newState, migrate, settle, view, petAt, needFor, goalToday, DEATH_TEXT } from './game.js';
 import { note, nudgeText, DISH, ITEM, PET_EMOJI } from './messages.js';
 import { sendPush } from './push.js';
+import { revivedVars } from './revived.js';
 
 // Multi-player: one KV key per player, "player:<CODE>". The old single-player key "state" is migrated once.
 const PKEY = c => 'player:' + c;
@@ -308,6 +309,6 @@ export function planNudge(st, np) {
   const voice = (dayCoin(st.code, np.date) + idx) % 2 === 0 ? 'pet' : 'raccoon'; // one of each per day
   const h = st.hostage, p = petAt(st, h.rung), need = needFor(h.rung);
   const v = { name: p.name, species: p.species, animal: p.species === 'panda' ? 'panda cub' : p.species, steps: steps.toLocaleString('en-US'), left: (goal - steps).toLocaleString('en-US'), goal: goal.toLocaleString('en-US'),
-    dish: DISH[p.species] || 'stew', item: ITEM[p.species] || 'a hat', day: h.streak + 1, need, final: h.streak + 1 >= need };
+    dish: DISH[p.species] || 'stew', item: ITEM[p.species] || 'a hat', day: h.streak + 1, need, final: h.streak + 1 >= need, ...revivedVars(p.injuries, p.deaths || 0), deaths: p.deaths || 0 };
   return { id: n.id, voice, title: voice === 'pet' ? `${PET_EMOJI[p.species] || '🐾'} ${p.name}` : '🦝 The Raccoon', body: nudgeText(voice, n.slot, v) };
 }
