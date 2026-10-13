@@ -518,7 +518,7 @@ function unstitched(ctx, g, X, Y, t, deaths, flip) {
   let lo = g.w, hi = -1;
   for (let x = 0; x < g.w; x++) if (g.a[NECK * g.w + x]) { lo = Math.min(lo, x); hi = Math.max(hi, x); }
   const span = Math.max(1, hi - lo), swing = Math.sin(t * 1.8) * 0.4; // tied to the rope's swing
-  const max = 2 + Math.min(3, deaths) * 0.3 + swing; // ~2..3.3 px at the right edge
+  const max = 3.6 + Math.min(3, deaths) * 0.6 + swing; // ~4 px base, up to ~5.8 with deaths, at the right edge
   const gap = x => Math.max(0, Math.round(max * Math.max(0, (x - lo) / span) ** 1.3));
   ctx.save(); ctx.globalAlpha = g.alpha ?? 1;
   for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) {
