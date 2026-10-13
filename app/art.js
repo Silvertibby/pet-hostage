@@ -511,31 +511,33 @@ function petAt(ctx, st, t, x, y, opts = {}) {
 const NECK = 27, THREAD = '#c4405e';
 const hash = (a, b) => { let h = (a * 374761393 + b * 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 function unstitched(ctx, g, X, Y, t, deaths, flip) {
-  const NECK = 28; // one row of chin fur stays on the head so the gap never merges with a wailing mouth
-  const wob = Math.sin(t * 2.6), open = Math.round(4 + Math.min(3, deaths) * 0.6 + Math.max(0, wob) * 1.4); // 5..7 px: clear at phone size, still cute
-  const up = Math.ceil(open / 2), Yh = Y - up; // the rope hoists the head a bit, the body sags the rest
+  // v0.4.11: a hinge. Fully attached on the left; the seam peels open toward the right (0px -> ~2-3px),
+  // as if gravity is tearing the body off the stitches from the right first (body tilts clockwise round the left neck point).
+  const NECK = 28;
   const sx = x => X + (flip ? g.w - 1 - x : x);
-  const sway = Math.round(wob * 0.8); // the body swings a little under the head
-  ctx.save(); ctx.globalAlpha = g.alpha ?? 1;
   let lo = g.w, hi = -1;
   for (let x = 0; x < g.w; x++) if (g.a[NECK * g.w + x]) { lo = Math.min(lo, x); hi = Math.max(hi, x); }
+  const span = Math.max(1, hi - lo), swing = Math.sin(t * 1.8) * 0.4; // tied to the rope's swing
+  const max = 2 + Math.min(3, deaths) * 0.3 + swing; // ~2..3.3 px at the right edge
+  const gap = x => Math.max(0, Math.round(max * Math.max(0, (x - lo) / span) ** 1.3));
+  ctx.save(); ctx.globalAlpha = g.alpha ?? 1;
   for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) {
     const c = g.a[y * g.w + x]; if (!c) continue;
-    ctx.fillStyle = g.pal[c] || c; ctx.fillRect(sx(x) + (y < NECK ? 0 : sway), Yh + y + (y < NECK ? 0 : open), 1, 1); // head hangs from the rope by the ears, body sags below
+    ctx.fillStyle = g.pal[c] || c; ctx.fillRect(sx(x), Y + y + (y < NECK ? 0 : gap(x)), 1, 1);
   }
-  if (hi > lo) {
-    const a = lo + 2, b = hi - 2; // dark gap, rounded ends, fluffy stuffing tufts at the edges
-    // the gap itself is see-through: the wall shows between head and body
-    ctx.fillStyle = '#fff6ea'; for (const x of [a, a + 1, b - 1, b]) { ctx.fillRect(sx(x), Yh + NECK, 1, 1); ctx.fillRect(sx(x) + sway, Yh + NECK + open - 1, 1, 1); }
-    ctx.fillStyle = THREAD; const cyc = Math.floor(t * 1.2);
-    const xs = [a + Math.round((b - a) * 0.22), Math.round((a + b) / 2), b - Math.round((b - a) * 0.22)];
-    xs.forEach((x, i) => { if (i === 1 && hash(x, cyc) < 0.3) return; // the middle one keeps popping and getting re-tied
-      for (let k = -1; k <= open; k++) ctx.fillRect(sx(x) + (k > open / 2 ? sway : 0), Yh + NECK + k, 1, 1); ctx.fillRect(sx(x) - 1, Yh + NECK - 1, 3, 1); ctx.fillRect(sx(x) - 1 + sway, Yh + NECK + open, 3, 1); });
-    const x0 = b, y0 = NECK + Math.floor(open / 2), ex = x0 + 3 + Math.sin(t * 4) * 3, ey = y0 + 8; // loose thread swinging
-    for (let i = 0; i <= 9; i++) { const u = i / 9; ctx.fillRect(sx(Math.round(x0 + (ex - x0) * u + Math.sin(u * 3) * 0.6)), Yh + Math.round(y0 + (ey - y0) * u), 1, 1); }
-    const p = (t * 1.1) % 1, fx = (a + b) / 2 + p * 8, fy = NECK - p * 10 + p * p * 14; ctx.globalAlpha = (g.alpha ?? 1) * (1 - p); // a popped stitch flies off
-    for (const [dx, dy] of [[0, 0], [1, 1], [-1, 1], [1, -1], [-1, -1]]) ctx.fillRect(sx(Math.round(fx + dx)), Yh + Math.round(fy + dy), 1, 1);
-  }
+  ctx.fillStyle = '#fff6ea'; // a tuft of stuffing where the tear is widest
+  if (hi > lo) { const x = hi - 1, n = gap(x); if (n >= 2) ctx.fillRect(sx(x), Y + NECK + n - 1, 1, 1); }
+  ctx.fillStyle = THREAD;
+  const cyc = Math.floor(t * 1.2);
+  [Math.round(lo + span * 0.62), Math.round(lo + span * 0.86)].forEach((x, i) => {
+    const n = gap(x); if (n < 1) return;
+    if (i === 1 && hash(x, cyc) < 0.35) return; // this one keeps popping
+    for (let k = -1; k <= n; k++) ctx.fillRect(sx(x), Y + NECK + k, 1, 1);
+  });
+  { const p = (t * 1.1) % 1, fx = lo + span * 0.86 + p * 6, fy = NECK - p * 9 + p * p * 13; // popped stitch flying off
+    ctx.globalAlpha = (g.alpha ?? 1) * (1 - p); for (const [dx, dy] of [[0, 0], [1, 1], [-1, 1], [1, -1], [-1, -1]]) ctx.fillRect(sx(Math.round(fx + dx)), Y + Math.round(fy + dy), 1, 1); ctx.globalAlpha = g.alpha ?? 1; }
+  if (hi > lo) { const x0 = hi, y0 = NECK + Math.floor(gap(hi) / 2), ex = x0 + 2 + Math.sin(t * 4) * 2.5, ey = y0 + 7; // loose thread
+    for (let i = 0; i <= 8; i++) { const u = i / 8; ctx.fillRect(sx(Math.round(x0 + (ex - x0) * u + Math.sin(u * 3) * 0.6)), Y + Math.round(y0 + (ey - y0) * u), 1, 1); } }
   ctx.restore();
 }
 // relief: the head is taped back on (masking tape round the neck, a little X, a dangling tab)
