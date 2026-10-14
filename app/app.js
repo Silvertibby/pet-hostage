@@ -2,7 +2,7 @@ import { maybeRevived, revivedVars } from './revived.js';
 import { drawScene, drawDeath, drawShelfPet, raccoon, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.4.12';
+const VERSION = 'v0.4.13';
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
 const APP_URL = 'https://silvertibby.github.io/pet-hostage/';
@@ -392,32 +392,35 @@ function watchPick() {
 }
 function recipeHtml(w) {
   const open = state.lastSync ? '' : ' open';
-  const src = w === 'garmin' ? `<li><b>Source is Connect</b> (Garmin's app, so iPhone steps aren't counted twice)</li>` : '';
-  const tip = {
-    apple: `<li>Total much higher than the Health app (iPhone + Watch counted twice)? Change Group by to <b>Day</b>.</li>`, none: '',
-    garmin: '',
-    other: `<li>Total higher than the Health app? Add <b>Source is</b> your watch's app.</li>`,
+  // v0.4.13: a Source filter is REQUIRED for every watch: Find Health Samples returns iPhone + watch samples, and Sum adds both.
+  const src = {
+    apple: `<b>Source is</b> your Apple Watch (e.g. "Stephanie's Apple Watch")`,
+    garmin: `<b>Source is Connect</b> (Garmin's app)`,
+    other: `<b>Source is</b> your watch's app (e.g. Fitbit, Samsung Health)`,
+    none: `<b>Source is</b> your iPhone`,
   }[w];
+  const dev = { apple: 'your Apple Watch', garmin: 'Garmin Connect', other: "your watch's app", none: 'the Health app' }[w];
   return `
     ${w === 'garmin' ? `<details class="more"${open}><summary>0. Garmin → Apple Health</summary>
     <ol class="guide"><li>In <b>Garmin Connect</b>: menu → Settings → Connected Apps → <b>Apple Health</b>. Turn it on and allow <b>Steps</b>.</li></ol></details>` : ''}
+    ${w === 'other' ? `<details class="more"${open}><summary>0. Watch → Apple Health</summary>
+    <ol class="guide"><li>In your watch's app, turn on syncing to <b>Apple Health</b> and allow <b>Steps</b>.</li></ol></details>` : ''}
     <details class="more"${open}><summary>1. Build the shortcut</summary>
     <ol class="guide">
       <li>Shortcuts app → <b>+</b> → name it <b>${SHORTCUT_NAME}</b> (exact name, so the Sync button can find it).</li>
       <li>Add <b>Find Health Samples</b> and set, top to bottom:
-        <ul class="guide"><li><b>Type is Steps</b></li><li><b>Start Date is Today</b></li>${src}<li>Unit: <b>count</b></li><li>Group by: <b>None</b></li><li>Sort by: <b>None</b></li><li>Limit: <b>off</b></li></ul></li>
+        <ul class="guide"><li><b>Type is Steps</b></li><li><b>Start Date is Today</b></li><li>Tap <b>Add Filter</b>, then set it to ${src}. <b>Required</b>: without it your iPhone's steps are added on top.</li><li>Unit: <b>count</b></li><li>Group by: <b>None</b> (Fill Missing: <b>off</b>, if shown)</li><li>Sort by: <b>None</b></li><li>Limit: <b>off</b></li></ul></li>
       <li>Add <b>Calculate Statistics</b> → <b>Sum</b>.</li>
-      <li>Add <b>Get Contents of URL</b>: paste your sync URL, then right after <b>steps=</b> insert the Calculate Statistics result (shows as <b>Sum</b> or <b>Statistics Result</b>).</li>
-      <li>Before the first run, let Shortcuts read Steps: tap <b>Allow</b> when iOS asks. Skipped it? Health app → your picture → <b>Apps</b> (or Data Access &amp; Devices) → <b>Shortcuts</b> → turn on <b>Steps</b>.</li>
+      <li>Add <b>Get Contents of URL</b> (Method: GET): paste your sync URL, then right after <b>steps=</b> insert the Calculate Statistics result (shows as <b>Sum</b> or <b>Statistics Result</b>).</li>
+      <li>Let Shortcuts read Steps: tap <b>Allow</b> when iOS asks. Skipped it? Health app → your picture → <b>Apps</b> (or Data Access &amp; Devices) → <b>Shortcuts</b> → turn on <b>Steps</b>.</li>
       <li>Tap ▶︎ once. Allow <b>workers.dev</b>.</li>
-    </ol>
-    <p class="dim">Got 0 steps but Health shows steps? Shortcuts can't read Steps; turn it on as above.</p>
-    ${tip ? `<ul class="guide dim">${tip}</ul>` : ''}</details>
+      <li><b>Check it:</b> in Pet Hostage, tap <b>Check steps</b>. Today's count should match ${dev}. Much higher? Fix the Source filter. 0? Turn on Steps for Shortcuts (above).</li>
+    </ol></details>
     <details class="more"${open}><summary>2. Run it automatically</summary>
     <ol class="guide">
       <li>Shortcuts → <b>Automation</b> → <b>+</b> → <b>Time of Day</b>.</li>
       <li><b>11:50 PM</b>, Daily, <b>Run Immediately</b> (older iOS: turn off <b>Ask Before Running</b>). Pick <b>${SHORTCUT_NAME}</b>.</li>
-      <li>Add a few more the same way, e.g. <b>12, 3, 6, 9 PM</b>${w === 'apple' ? '. Watch steps reach your iPhone fast, so these stay current' : ''}.</li>
+      <li>Add a few more the same way, e.g. <b>12, 3, 6, 9 PM</b>.</li>
     </ol>
     <p class="dim">Days end at midnight Pacific. Health is locked while your iPhone is locked, so a run can miss; tap Sync before bed to be safe.</p></details>`;
 }
