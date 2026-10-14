@@ -2,7 +2,7 @@ import { maybeRevived, revivedVars } from './revived.js';
 import { drawScene, drawDeath, drawShelfPet, raccoon, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.5.0';
+const VERSION = 'v0.5.1';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
@@ -315,17 +315,14 @@ function renderFriends() {
   const mine = state.friendId, l = loadFriends();
   view.innerHTML = `
     <h2>Friends</h2>
-    <div class="card"><div class="dim">Your friend ID (safe to share; it's not your sync code)</div>
-      <div class="code big">${esc(mine || '…')}</div>
-      <p class="row"><button class="btn acc" id="fshare">Share invite link</button><button class="btn ghost small" data-copy="${esc(mine ? friendLink(mine) : '')}">Copy link</button></p></div>
+    <div class="card"><p><button class="btn acc" id="finvite" ${mine ? '' : 'disabled'}>👥 Invite a friend</button></p>
+      <div class="dim small">Sends a link that adds you as their friend (and gets them started if they're new).</div>
+      <div class="dim small" style="margin-top:6px">Your friend ID: <b>${esc(mine || '…')}</b> (public, not your sync code)</div></div>
     <div class="card"><div class="dim">Add a friend by ID</div>
       <div class="row nowrap"><input id="fid" type="text" class="field" placeholder="e.g. K7PQ2M" autocapitalize="characters" autocomplete="off" maxlength="12"><button class="btn" id="fadd">Add</button></div></div>
-    <div id="flist">${l.length ? `<div class="dim">Loading…</div>` : `<p class="dim">No friends yet. Share your link, or type their friend ID.</p>`}</div>`;
+    <div id="flist">${l.length ? `<div class="dim">Loading…</div>` : `<p class="dim">No friends yet. Invite one, or type their friend ID.</p>`}</div>`;
   wireCopy(view);
-  $('#fshare').addEventListener('click', async () => {
-    const url = friendLink(mine), text = `Add me on Pet Hostage. My friend ID is ${mine}.`;
-    if (navigator.share) { try { await navigator.share({ title: 'Pet Hostage', text, url }); } catch { } } else { await navigator.clipboard?.writeText(url).catch(() => {}); toast('Link copied.'); }
-  });
+  $('#finvite').addEventListener('click', inviteFriend);
   const add = async () => { if (await addFriend($('#fid').value)) renderFriends(); };
   $('#fadd').addEventListener('click', add); $('#fid').addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
   if (!l.length) return;
@@ -435,11 +432,9 @@ function renderShelf() {
     <p class="dim small">Miss a day and the current hostage dies. Then The Raccoon takes the last pet on this shelf back, and you rescue it again with its original day count.</p>
     <h2>THE LADDER</h2>
     <div class="pgrid ladder">${cards(ladder)}</div>
-    <p><button class="btn small" id="share2">Share with a friend</button> <span class="dim small">They get their own ladder.</span></p>
     <h2>OBITUARIES</h2>
     <div class="card">${(s.deathLog || []).length ? s.deathLog.map(d => `<div class="grave"><span>🪦</span><span><b>${esc(d.name)}</b> <span class="dim">${fmtDate(d.date)} · ${esc(DEATH_TEXT[d.type] || '')}. ${d.rekidnap.same ? 'Stitched back up.' : esc(d.rekidnap.name) + ' re-kidnapped.'}</span></span></div>`).join('') : '<span class="dim">Nobody has died. Yet.</span>'}</div>
   `;
-  $('#share2').addEventListener('click', shareApp);
   animateShelf();
 }
 
@@ -518,7 +513,7 @@ function androidHtml(s, w = 'garmin') {
       ${share}
       <li><a class="btn acc" href="${esc(androidLink())}">Set up Android sync</a><br>Opens the app with your code filled in. Tap <b>Allow steps</b>.</li>
     </ol>
-    <p class="dim">Code: <b>${esc(code)}</b> <button class="btn small ghost" data-copy="${esc(code)}">Copy</button> (paste it in the app if the button doesn't open it). Days end at midnight Pacific.</p></details>`;
+    <p class="dim">🔒 Private code: <b>${esc(code)}</b> <button class="btn small ghost" data-copy="${esc(code)}">Copy code (setup only)</button> (paste it in the Sync app if the button doesn't open it). Days end at midnight Pacific.</p></details>`;
 }
 function syncUrl() { return `${WORKER}/sync?code=${code}&steps=`; }
 
@@ -572,9 +567,9 @@ function recipeHtml(w) {
 function iphoneHtml(w) {
   return `${benLike() ? `<p class="dim">Backup only: Garmin syncs on its own (above). A Shortcut can raise today's count, never lower it.</p>` : ''}
     <div class="card">
-      <div class="dim">Your sync URL (has your code <b>${esc(code)}</b> in it)</div>
+      <div class="dim">🔒 Your private sync URL (has your secret code <b>${esc(code)}</b>). For your Shortcut only; don't send it to friends.</div>
       <div class="code" id="surl">${esc(syncUrl())}</div>
-      <p><button class="btn acc" data-copy="${esc(syncUrl())}">Copy sync URL</button></p>
+      <p><button class="btn acc" data-copy="${esc(syncUrl())}">🔒 Copy sync URL (setup only)</button></p>
     </div>
     ${recipeHtml(w)}`;
 }
@@ -647,13 +642,13 @@ function renderSettings() {
     </div>
     <h2>PLAY WITH A FRIEND</h2>
     <div class="card">
-      <p class="dim">Send a friend the app link. They get their own raccoon, their own ladder and their own code. Your pets stay yours.</p>
-      <p><button class="btn acc" id="share">Share with a friend</button></p>
+      <p class="dim">Friends get their own raccoon, ladder and code. Your pets stay yours. Invites live in the Friends tab.</p>
+      <p><button class="btn" id="share">👥 Go to Friends</button></p>
     </div>
     <h2>YOUR CODE</h2>
     <div class="card">
-      <div class="row" style="justify-content:space-between"><span class="big-code">${esc(code)}</span><button class="btn small" id="copycode">Copy</button></div>
-      <p class="dim">Keep this somewhere safe. If the home-screen app is ever deleted or forgets you, open the app, tap <b>Restore with code</b>, and type it in. Your Shortcut uses it too.</p>
+      <div class="row" style="justify-content:space-between"><span class="big-code">${esc(code)}</span><button class="btn small ghost" id="copycode">🔒 Copy code (backup)</button></div>
+      <p class="dim">Private: don't send it to friends (use Invite a friend instead). Keep it somewhere safe. If the home-screen app is ever deleted or forgets you, open the app, tap <b>Restore with code</b>, and type it in. Your Shortcut uses it too.</p>
       <label for="rcode">Restore a different code on this device</label>
       <div class="row"><input type="text" id="rcode" maxlength="20" placeholder="e.g. 3YS267ZCSA" autocapitalize="characters" autocomplete="off" style="flex:1;width:auto"><button class="btn" id="rgo">Restore</button></div>
       <div id="rmsg" class="dim" style="margin-top:6px"></div>
@@ -664,7 +659,7 @@ function renderSettings() {
     try { state = await api('/settings', { name: $('#pname').value }); toast('Saved. The Raccoon has updated his notes.'); } catch (e) { toast('Save failed: ' + e.message); }
   });
   $('#pushon').addEventListener('click', enablePush);
-  $('#share').addEventListener('click', shareApp);
+  $('#share').addEventListener('click', () => go('friends'));
   $('#copycode').addEventListener('click', async () => { try { await navigator.clipboard.writeText(code); toast('Code copied'); } catch { toast('Copy failed, long-press to select'); } });
   $('#rgo').addEventListener('click', () => restoreCode($('#rcode').value, $('#rmsg')));
   $('#pushtest').addEventListener('click', async () => {
@@ -694,10 +689,12 @@ async function enablePush(e, msgEl) {
 }
 
 // ---- multi-player helpers ----
-async function shareApp() {
-  const data = { title: 'Pet Hostage', text: 'A raccoon in a fedora took a bunny hostage. The ransom is 10,000 steps a day. Get your own hostage:', url: APP_URL };
+// v0.5.1: the ONE invite action. Share sheet with the ?friend= link (it also onboards new players); falls back to copying it.
+async function inviteFriend() {
+  const id = state && state.friendId; if (!id) { toast('Your friend ID is not ready yet. Pull to refresh.'); return; }
+  const url = friendLink(id), data = { title: 'Pet Hostage', text: 'A raccoon took my pet hostage. Add me as a friend on Pet Hostage:', url };
   try { if (navigator.share) { await navigator.share(data); return; } } catch (e) { if (e.name === 'AbortError') return; }
-  try { await navigator.clipboard.writeText(APP_URL); toast('Link copied. Send it to a friend!'); } catch { toast(APP_URL, 6000); }
+  try { await navigator.clipboard.writeText(url); toast('Invite link copied. Send it to a friend!'); } catch { toast(url, 6000); }
 }
 function setCode(c) {
   if (code && code !== c) { const old = JSON.parse(localStorage.getItem('ph.oldCodes') || '[]'); if (!old.includes(code)) localStorage.setItem('ph.oldCodes', JSON.stringify([code, ...old].slice(0, 5))); }

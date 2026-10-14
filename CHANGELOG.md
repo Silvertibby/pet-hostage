@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.5.1 (2026-10-14)
+- One clear "Invite a friend" button. Private codes are labeled as private.
+
 ## v0.5.0 (2026-10-14)
 - Friends: share your friend ID and peek at each other's pets.
 - Spare Steps: steps over the goal are saved up. Miss a day and they're gone.
