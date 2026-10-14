@@ -14,7 +14,7 @@ nav button { flex:1; max-width: 160px; background:none; border:0; color: var(--d
 nav button span { font-size: 16px; }
 nav button.on { color: var(--ink); }
 canvas.px { image-rendering: pixelated; image-rendering: crisp-edges; display:block; }
-#scene { width: 100%; aspect-ratio: 100/88; border: 3px solid #000; box-shadow: 0 0 0 2px #3e3256; border-radius: 4px; background:#000; }
+#scene, #fscene { width: 100%; aspect-ratio: 100/88; border: 3px solid #000; box-shadow: 0 0 0 2px #3e3256; border-radius: 4px; background:#000; }
 .status { display:flex; justify-content:space-between; align-items:center; margin: 4px 0 8px; gap: 8px; }
 .status .name { font-family:'Press Start 2P', monospace; font-size: 12px; }
 .status .stage { color: var(--dim); font-size: 18px; text-align:right; }
@@ -107,7 +107,7 @@ label { display:block; margin: 10px 0 4px; color: var(--dim); }
 
 /* v0.4.0 home: big scene, one readout, the rest tucked away */
 .scenewrap.big { margin: 0 -14px; }
-.scenewrap.big #scene { border-left: 0; border-right: 0; border-radius: 0; box-shadow: 0 2px 0 #3e3256, 0 -2px 0 #3e3256; }
+.scenewrap.big #scene, .scenewrap.big #fscene { border-left: 0; border-right: 0; border-radius: 0; box-shadow: 0 2px 0 #3e3256, 0 -2px 0 #3e3256; }
 .hudname { position: absolute; left: 10px; top: 8px; font-family: 'Press Start 2P', monospace; font-size: 11px; color: #fffaf0; text-shadow: 2px 2px 0 #000; pointer-events: none; }
 .quest .qhead { align-items: center; gap: 10px; justify-content: flex-start; }
 .quest .dpips { margin: 0; flex: 1; }
@@ -127,3 +127,17 @@ details.more .note { padding-left: 10px; margin-top: 8px; min-height: 0; }
 .seg button { flex: 1 1 auto; white-space: normal; font-family:'Press Start 2P', monospace; font-size: 9px; line-height: 1.4; padding: 9px 8px; background: #120e1a; color: var(--dim); border: 3px solid #000; border-radius: 2px; cursor: pointer; }
 .seg button.on { background: var(--acc); color: #111; box-shadow: 2px 2px 0 #000; }
 .seg button.off { opacity: .35; text-decoration: line-through; }
+/* v0.5.0 bank, pause, friends */
+.card.bank { margin-top: 10px; }
+.card.bank .btn[disabled] { opacity: .45; }
+.soon { margin-top: 6px; border-top: 1px dashed #4a3e60; padding-top: 6px; }
+.banklog { list-style: none; padding: 0; margin: 6px 0 0; font-size: 17px; }
+.banklog li { display: flex; justify-content: space-between; color: var(--dim); }
+.banklog .pos { color: var(--good); } .banklog .neg { color: var(--bad); }
+.chart div.paused { background: repeating-linear-gradient(0deg,#8fb3ff 0 3px,#5a74b0 3px 6px); height: 100% !important; opacity: .7; }
+.code.big { font-family: 'Press Start 2P', monospace; font-size: 18px; letter-spacing: 3px; margin: 8px 0; }
+.flist { display: flex; flex-direction: column; gap: 8px; }
+.frow { display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; text-align: left; background: var(--panel); color: var(--ink); border: 2px solid #3e3354; border-radius: 4px; padding: 8px 10px; font: inherit; width: 100%; }
+.frow .ficon { font-size: 26px; } .frow .fsteps { text-align: right; }
+.row.nowrap .field { flex: 1; }
+#fscene { cursor: default; }

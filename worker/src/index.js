@@ -1,4 +1,4 @@
-import { RULES, localParts, newState, migrate, settle, view, petAt, needFor, goalToday, DEATH_TEXT } from './game.js';
+import { RULES, localParts, newState, migrate, settle, view, petAt, needFor, goalToday, DEATH_TEXT, normalize, buyPause, publicView } from './game.js';
 import { note, nudgeText, DISH, ITEM, PET_EMOJI } from './messages.js';
 import { sendPush } from './push.js';
 import { revivedVars } from './revived.js';
@@ -26,10 +26,29 @@ const normCode = c => (c || '').toString().trim().toUpperCase().replace(/[^A-Z0-
 const load = async (env, code) => {
   if (!code) return null;
   const s = await env.PH.get(PKEY(code)); if (!s) return null;
-  const st = JSON.parse(s);
-  if (st.v !== 2) { const m = migrate(st, localParts().date); await env.PH.put(PKEY(code), JSON.stringify(m)); return m; }
+  let st = JSON.parse(s);
+  if (st.v !== 2) { st = migrate(st, localParts().date); await env.PH.put(PKEY(code), JSON.stringify(st)); }
+  normalize(st);
+  if (!st.friendId) await assignFriendId(env, st);
   return st;
 };
+// v0.5.0: a public friend ID, separate from the secret sync code. Index: fid:<ID> -> code.
+const FKEY = id => 'fid:' + id;
+const normFid = id => (id || '').toString().trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+async function assignFriendId(env, st) {
+  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let id; do { id = [...crypto.getRandomValues(new Uint8Array(6))].map(x => alphabet[x % alphabet.length]).join(''); } while (await env.PH.get(FKEY(id)));
+  st.friendId = id;
+  await env.PH.put(FKEY(id), st.code);
+  await env.PH.put(PKEY(st.code), JSON.stringify(st)); // only adds the friendId field
+}
+async function loadFriend(env, id) {
+  id = normFid(id); if (!id) return null;
+  const c = await env.PH.get(FKEY(id)); if (!c) return null;
+  const st = await load(env, c); if (!st || st.friendId !== id) return null;
+  settle(st, localParts().date); // read-only: settled in memory for an up-to-date view, never saved here
+  return publicView(st);
+}
 const save = (env, st) => env.PH.put(PKEY(st.code), JSON.stringify(st));
 // One-time move of the single-player "state" key to player:<its code>. A copy stays under legacy:state.
 let legacyChecked = false;
@@ -117,7 +136,7 @@ async function readBody(req) {
   return body;
 }
 
-const ROUTES = new Set(['/state', '/sync', '/settings', '/subscribe', '/sync-log/clear-test', '/unsubscribe', '/test-nudge', '/seen-death']);
+const ROUTES = new Set(['/state', '/sync', '/settings', '/subscribe', '/sync-log/clear-test', '/unsubscribe', '/test-nudge', '/seen-death', '/pause']);
 const SYNC_LOG_MAX = 10;
 function logSync(st, entry) {
   st.syncLog = [{ at: Date.now(), ...entry }, ...(st.syncLog || [])].slice(0, SYNC_LOG_MAX);
@@ -143,6 +162,15 @@ export default {
       return json({ code: st.code, state: view(st) });
     }
 
+    if (path === '/friend') { // read-only, by public friend ID; no code needed or revealed
+      const f = await loadFriend(env, url.searchParams.get('id'));
+      return f ? json(f) : json({ error: 'unknown friend ID' }, 404);
+    }
+    if (path === '/friends') {
+      const ids = [...new Set((url.searchParams.get('ids') || '').split(',').map(normFid).filter(Boolean))].slice(0, 50);
+      const list = await Promise.all(ids.map(async id => (await loadFriend(env, id)) || { friendId: id, missing: true }));
+      return json({ friends: list });
+    }
     if (!ROUTES.has(path)) return json({ error: 'not found' }, 404); // unknown paths: 404 before any code lookup
     const body = await readBody(req);
     const code = normCode(url.searchParams.get('code') || body.code);
@@ -261,6 +289,13 @@ export default {
       const r = await push(env, st, '🦝 The Raccoon', note('test', vars(st)), 'ph-test');
       await save(env, st); return json({ ok: r.ok, status: r.status, detail: r.text || undefined }, r.ok ? 200 : 502);
     }
+    if (path === '/pause') { // Raccoon Pause: needs an explicit confirm flag from the app's dialog
+      if (body.confirm !== true) return json({ error: 'confirm required' }, 400);
+      const r = buyPause(st, today);
+      if (!r.ok) return json({ error: r.error, state: view(st) }, 409);
+      await save(env, st); console.log('pause', st.code, today);
+      return json({ ok: true, state: view(st) });
+    }
     if (path === '/seen-death') { // the app played the death animation; don't replay it on other devices
       const id = parseInt(body.id, 10);
       if (Number.isFinite(id) && id > (st.deathSeen || 0) && id <= st.deathCount) st.deathSeen = id;
@@ -302,6 +337,7 @@ function dayCoin(code, date) { let h = 2166136261; for (const ch of code + date)
 export function planNudge(st, np) {
   const steps = st.days[np.date] || 0, goal = goalToday(st);
   if (steps >= goal) return null; // banked: no nagging
+  if (st.paused && st.paused[np.date]) return null; // paused: today doesn't count, so no nagging
   const mins = np.hour * 60 + np.minute, sent = st.sent[np.date] || [];
   const idx = NUDGES2.findIndex(n => mins >= n.at && mins < n.at + NUDGE_WINDOW && !sent.includes(n.id));
   if (idx < 0) return null;

@@ -361,7 +361,7 @@ function split(g, row) { // [top, bottom] copies of a sprite cut at a row
   return [top, bot];
 }
 // Tiny 3x5 pixel font for sound effects.
-const FONT = { A: '010101111101101', B: '110101110101110', E: '111100110100111', H: '101101111101101', I: '111010010010111', K: '101101110101101', N: '110101101101101', O: '111101101101111', P: '110101110100100', R: '110101110101101', W: '101101101111101', Z: '111001010100111', '!': '010010010000010', ' ': '000000000000000' };
+const FONT = { U: '101101101101111', S: '111100111001111', D: '110101101101110', L: '100100100100111', C: '111100100100111', A: '010101111101101', B: '110101110101110', E: '111100110100111', H: '101101111101101', I: '111010010010111', K: '101101110101101', N: '110101101101101', O: '111101101101111', P: '110101110100100', R: '110101110101101', W: '101101101111101', Z: '111001010100111', '!': '010010010000010', ' ': '000000000000000' };
 export function pxText(ctx, str, x, y, c, s = 1, shadow = '#000') {
   const draw = (ox, oy, col) => { ctx.fillStyle = col; let cx = ox; for (const ch of str) { const f = FONT[ch] || FONT[' ']; for (let i = 0; i < 15; i++) if (f[i] === '1') ctx.fillRect(cx + (i % 3) * s, oy + Math.floor(i / 3) * s, s, s); cx += 4 * s; } };
   if (shadow) draw(Math.round(x) + s, Math.round(y) + s, shadow); draw(Math.round(x), Math.round(y), c);
@@ -702,6 +702,7 @@ function drawPeril(ctx, st, t) {
 
 export function drawScene(ctx, st, t) {
   ctx.save(); ctx.translate(-VIEW_X, -VIEW_Y);
+  if (st.paused) { drawPaused(ctx, st, t); ctx.restore(); return; }
   if (st.freed) { drawFreed(ctx, st, t); ctx.restore(); return; }
   if (st.final) { drawPeril(ctx, st, t); ctx.restore(); return; }
   const mood = st.mood;
@@ -715,6 +716,27 @@ export function drawScene(ctx, st, t) {
   // behind on steps: smug, rubbing his paws and leaning at the cage. Otherwise he just loiters.
   drawRaccoon(ctx, st, t, mood === 'worried' || mood === 'scared' ? 'smug' : 'idle');
   ctx.restore();
+}
+
+// v0.5.0 Raccoon Pause: the day is bought off. He counts the Spare Steps into his sack; the cage is shut for the day.
+function drawPaused(ctx, st, t) {
+  room(ctx, t, false);
+  const b = critter(st.species || 'bunny', 'happy', t, st.injuries);
+  blit(ctx, b, PET_X, 54 - Math.abs(Math.sin(t * 1.5)) * 1.5);
+  cage(ctx, CAGE_X, 46, 56, 47);
+  // a little sign on the cage
+  px(ctx, CAGE_X + 13, 40, 30, 11, '#5e3a20'); px(ctx, CAGE_X + 14, 41, 28, 9, '#e8d6a8'); pline(ctx, CAGE_X + 18, 40, CAGE_X + 28, 34, '#4e2e1a'); pline(ctx, CAGE_X + 38, 40, CAGE_X + 28, 34, '#4e2e1a');
+  pxText(ctx, 'PAUSED', CAGE_X + 17, 43, '#8a2a2a', 1, null);
+  if (Math.floor(t * 1.2) % 2) pxText(ctx, 'Z', PET_X + 34, 50 - (t * 6) % 6, '#cfe9fb', 1);
+  drawRaccoon(ctx, st, t, 'glee');
+  // his money sack, by his paw, getting fed coins
+  const sx = RAC_X - 6, sy = RAC_Y + 30;
+  px(ctx, sx - 1, sy, 12, 12, '#8a6a3a'); px(ctx, sx, sy - 1, 10, 13, '#a7824c'); px(ctx, sx + 2, sy - 3, 6, 3, '#7a5a2a'); px(ctx, sx + 3, sy - 4, 4, 1, '#c4405e');
+  px(ctx, sx + 3, sy + 4, 1, 5, '#ffe27a'); px(ctx, sx + 2, sy + 4, 3, 1, '#ffe27a'); px(ctx, sx + 2, sy + 6, 3, 1, '#ffe27a'); px(ctx, sx + 2, sy + 8, 3, 1, '#ffe27a'); // $-ish
+  for (let i = 0; i < 3; i++) { // coins hop from the cage into the sack
+    const p = (t * 0.9 + i / 3) % 1, x0 = CAGE_X + 50, x1 = sx + 5, x = x0 + (x1 - x0) * p, y = 60 - Math.sin(p * Math.PI) * 18 + p * (sy - 64);
+    px(ctx, x - 1, y - 1, 3, 3, '#ffe27a'); px(ctx, x, y, 1, 1, '#c99a2e');
+  }
 }
 
 // Death animation (DEATH_LEN seconds): caged and nervous -> cartoon death -> little ghost floats up.

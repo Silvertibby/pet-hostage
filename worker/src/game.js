@@ -7,6 +7,8 @@ export const RULES = {
   TZ: 'America/Vancouver',
   HISTORY_DAYS: 60,
   DEATH_LOG_MAX: 30,
+  PAUSE_COST: 30000,    // v0.5.0: Spare Steps for a Raccoon Pause (today doesn't count)
+  BANK_LOG_MAX: 30,
 };
 // The ladder. After the last animal it loops with "II", "III"... (and keeps the +2 days).
 export const ANIMALS = [
@@ -63,7 +65,7 @@ function kidnap(st, rung, date) {
 
 export function newState(code, today) {
   const st = { v: 2, code, started: today, pets: [], hostage: null, days: {}, lastSync: null, lastSteps: null, sub: null, sent: {}, events: [],
-    syncLog: [], deathCount: 0, deathSeen: 0, lastDeath: null, deathLog: [], bestRung: 0, stats: { metDays: 0, missedDays: 0, rescues: 0 } };
+    syncLog: [], bank: 0, bankLog: [], paused: {}, deathCount: 0, deathSeen: 0, lastDeath: null, deathLog: [], bestRung: 0, stats: { metDays: 0, missedDays: 0, rescues: 0 } };
   kidnap(st, 0, today);
   return st;
 }
@@ -84,14 +86,42 @@ export function migrate(old, today) {
 // {kind:'day', date, steps, met, rung, name, streak, need}
 // {kind:'rescue', date, rung, name, species, next:{rung,name,species,need}}
 // {kind:'death', date, steps, rung, name, species, type, deaths, rekidnap:{rung,name,species,need,same}}
+// v0.5.0: Spare Steps. Older players start at 0 (no backfill).
+export function normalize(st) {
+  if (typeof st.bank !== 'number') st.bank = 0;
+  if (!Array.isArray(st.bankLog)) st.bankLog = [];
+  if (!st.paused || typeof st.paused !== 'object') st.paused = {};
+  return st;
+}
+function bankMove(st, date, kind, amount) {
+  st.bank = Math.max(0, st.bank + amount);
+  st.bankLog = [{ date, kind, amount, bal: st.bank }, ...st.bankLog].slice(0, RULES.BANK_LOG_MAX);
+}
+// Raccoon Pause: today (PT) won't count at all. Paid up front, irreversible, one per day, only before today closes.
+export function buyPause(st, today) {
+  normalize(st);
+  if (st.paused[today]) return { ok: false, error: 'already paused today' };
+  if (today <= st.hostage.settledThrough) return { ok: false, error: 'today is already closed' };
+  if (st.bank < RULES.PAUSE_COST) return { ok: false, error: 'not enough Spare Steps' };
+  bankMove(st, today, 'pause', -RULES.PAUSE_COST);
+  st.paused[today] = true;
+  return { ok: true };
+}
+
 export function settle(st, today) {
+  normalize(st);
   const events = []; const h = st.hostage;
   let d = addDays(h.settledThrough, 1);
   while (d < today) {
     const r = st.hostage.rung, p = petAt(st, r), need = needFor(r);
+    if (st.paused[d]) { // bought a pause: no progress, no miss, no death
+      events.push({ kind: 'paused', date: d, steps: st.days[d] || 0, rung: r, name: p.name });
+      st.hostage.settledThrough = d; d = addDays(d, 1); continue;
+    }
     const goal = goalFor(st.hostage.streak, need), steps = st.days[d] || 0, met = steps >= goal;
     if (met) {
       st.hostage.streak++; st.stats.metDays++;
+      if (steps > goal) bankMove(st, d, 'earn', steps - goal);
       events.push({ kind: 'day', date: d, steps, goal, met, rung: r, name: p.name, streak: st.hostage.streak, need });
       if (st.hostage.streak >= need) {
         p.rescuedOn = d; p.rescues++; st.stats.rescues++;
@@ -103,6 +133,7 @@ export function settle(st, today) {
     } else { // every day counts, including the first (no free starting day)
       const type = deathTypeFor(r, p.deaths);
       p.deaths++; p.injuries.push(type); st.stats.missedDays++;
+      if (st.bank > 0) bankMove(st, d, 'reset', -st.bank); // a death empties the whole bank
       const back = Math.max(0, r - 1);
       kidnap(st, back, addDays(d, 1));
       const b = petAt(st, back);
@@ -116,6 +147,7 @@ export function settle(st, today) {
     st.hostage.settledThrough = d;
     d = addDays(d, 1);
   }
+  for (const k of Object.keys(st.paused)) if (k < addDays(today, -RULES.HISTORY_DAYS)) delete st.paused[k];
   const keys = Object.keys(st.days).sort();
   while (keys.length > RULES.HISTORY_DAYS) delete st.days[keys.shift()];
   if (events.length) st.events = [...(st.events || []), ...events].slice(-20);
@@ -123,6 +155,7 @@ export function settle(st, today) {
 }
 
 export function mood(st, np) {
+  if (st.paused && st.paused[np.date]) return 'happy';
   const steps = st.days[np.date] || 0, prog = steps / goalToday(st);
   if (prog >= 1) return 'happy';
   if (np.hour >= 21) return 'scared';
@@ -136,10 +169,12 @@ const petView = (st, r) => { const p = petAt(st, r); return { rung: r, name: p.n
 export function view(st, now = Date.now()) {
   const np = localParts(now);
   const days = [];
-  for (let i = 13; i >= 0; i--) { const d = addDays(np.date, -i); days.push({ date: d, steps: st.days[d] ?? null }); }
+  normalize(st);
+  for (let i = 13; i >= 0; i--) { const d = addDays(np.date, -i); days.push({ date: d, steps: st.days[d] ?? null, paused: !!st.paused[d] }); }
   const h = st.hostage, todaySteps = st.days[np.date] || 0, goal = goalToday(st);
   const hostage = { ...petView(st, h.rung), streak: h.streak, since: h.since, todayMet: todaySteps >= goal, finalDay: isFinalDay(h.streak, needFor(h.rung)), goal };
   hostage.day = h.streak + 1; // today's day number toward rescue
+  hostage.paused = !!st.paused[np.date];
   const shelf = []; for (let r = 0; r < h.rung; r++) shelf.push(petView(st, r));
   const top = Math.max(st.bestRung, h.rung) + 1, ladder = [];
   for (let r = 0; r <= Math.max(top, ANIMALS.length - 1); r++) {
@@ -154,6 +189,7 @@ export function view(st, now = Date.now()) {
     lastDeath: st.lastDeath, deathSeen: st.deathSeen || 0, deathLog: (st.deathLog || []).slice(0, 10),
     stats: st.stats, bestRung: st.bestRung, started: st.started,
     push: !!st.sub, events: (st.events || []).slice(-5),
+    bank: st.bank, bankLog: st.bankLog.slice(0, 10), pauseCost: RULES.PAUSE_COST, pausedToday: !!st.paused[np.date], friendId: st.friendId || null,
     code: st.code, syncLog: (st.syncLog || []).slice(0, 5),
     garmin: st.garmin ? { lastSync: st.garmin.lastSync || null, lastSteps: st.garmin.lastSteps ?? null, lastError: st.garmin.lastError || null, lastErrorAt: st.garmin.lastErrorAt || null } : null,
     android: st.android ? { lastSync: st.android.lastSync || null, lastSteps: st.android.lastSteps ?? null, app: st.android.app || null } : null,
@@ -161,4 +197,13 @@ export function view(st, now = Date.now()) {
     pet: { name: hostage.name, born: h.since, alive: true, died: null, peril: 0, streak: h.streak, bestStreak: h.streak, metDays: st.stats.metDays, missedDays: st.stats.missedDays },
     perilLabel: `Day ${hostage.day} of ${hostage.need}`, deathAt: 1, graveyard: [],
   };
+}
+
+// v0.5.0: what a friend may see. Never includes the sync code, logs, push sub or bank details.
+export function publicView(st, now = Date.now()) {
+  normalize(st);
+  const np = localParts(now), h = st.hostage, p = petAt(st, h.rung), need = needFor(h.rung), goal = goalToday(st), todaySteps = st.days[np.date] || 0;
+  return { friendId: st.friendId, today: np.date, hour: np.hour, name: p.name, species: p.species, rung: h.rung, need, day: h.streak + 1, streak: h.streak,
+    goal, todaySteps, todayMet: todaySteps >= goal, finalDay: isFinalDay(h.streak, need), paused: !!st.paused[np.date], mood: mood(st, np),
+    deaths: p.deaths, injuries: p.injuries, shelf: h.rung, lastSync: st.lastSync };
 }

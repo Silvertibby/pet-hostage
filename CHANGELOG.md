@@ -1,5 +1,10 @@
 # Pet Hostage changelog
 
+## v0.5.0 (2026-10-14)
+- Friends: share your friend ID and peek at each other's pets.
+- Spare Steps: steps over the goal are saved up. Miss a day and they're gone.
+- Raccoon Pause: pay Spare Steps to make today not count.
+
 ## v0.4.9 (2026-10-12)
 - Pets that have been through things now remember. So does The Raccoon.
 

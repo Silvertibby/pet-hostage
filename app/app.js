@@ -2,7 +2,8 @@ import { maybeRevived, revivedVars } from './revived.js';
 import { drawScene, drawDeath, drawShelfPet, raccoon, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.4.13';
+const VERSION = 'v0.5.0';
+const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
 const APP_URL = 'https://silvertibby.github.io/pet-hostage/';
@@ -104,7 +105,7 @@ function cutout(text) {
 function stopAnim() { if (anim) cancelAnimationFrame(anim); anim = null; }
 let sceneT = 0, sceneReact = null;
 const isFinal = h => !!(h && (h.finalDay ?? (h.day >= h.need)));
-const sceneSt = () => { const h = state.hostage || {}; return { mood: state.mood, species: h.species, injuries: h.injuries, deaths: h.deaths || 0, freed: !!h.todayMet, final: isFinal(h), react: sceneReact }; };
+const sceneSt = () => { const h = state.hostage || {}; return { mood: state.mood, species: h.species, injuries: h.injuries, deaths: h.deaths || 0, freed: !!h.todayMet, final: isFinal(h), paused: !!(h.paused || state.pausedToday), react: sceneReact }; };
 function startScene(canvas) {
   const ctx = canvas.getContext('2d');
   const t0 = performance.now(); sceneReact = null;
@@ -213,10 +214,11 @@ function renderHome() {
   const pips = Array.from({ length: h.need }, (_, i) => `<span class="dpip ${i < h.streak ? 'on' : i === h.streak ? (h.todayMet ? 'on today' : 'today') : ''}"></span>`).join('');
   const maxSteps = Math.max(s.goal * 1.3, ...s.days.map(d => d.steps || 0));
   const chart = s.days.map(d => {
-    const cls = d.steps == null ? (d.date < s.started || d.date === s.today ? '' : 'none') : (d.steps >= s.goal ? 'met' : d.date === s.today ? '' : 'miss');
+    const cls = d.paused ? 'paused' : d.steps == null ? (d.date < s.started || d.date === s.today ? '' : 'none') : (d.steps >= s.goal ? 'met' : d.date === s.today ? '' : 'miss');
     return `<div class="${cls} ${d.date === s.today ? 'today' : ''}" style="height:${Math.round(100 * (d.steps || 0) / maxSteps)}%" title="${d.date}: ${d.steps ?? 'no data'}"></div>`;
   }).join('');
-  const tag = h.todayMet ? (h.day >= h.need ? '🎉 rescue at midnight' : '✓ banked') : isFinal(h) ? '🔥 final day' : '';
+  const paused = !!(h.paused || s.pausedToday);
+  const tag = paused ? '⏸ paused' : h.todayMet ? (h.day >= h.need ? '🎉 rescue at midnight' : '✓ banked') : isFinal(h) ? '🔥 final day' : '';
   view.innerHTML = `
     <div class="scenewrap big"><canvas id="scene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas>
       <div class="hudname">${esc(h.name)}</div></div>
@@ -225,6 +227,7 @@ function renderHome() {
     <div class="bar ${prog >= 1 ? 'done' : ''}">${Array.from({ length: BAR_SEGMENTS }, (_, i) => `<i class="${i < filled ? 'f' : ''}"></i>`).join('')}</div>
     <div class="sync"><span>${s.lastSync ? `Synced ${ago(s.lastSync)}` : `<span class="hint">No steps synced yet</span>`} <span id="upd" class="upd">${updLabel()}</span></span>
       <span class="row nowrap">${s.lastSync ? `<button class="btn small ghost" id="syncnow">Sync</button>` : `<button class="btn small acc" id="gosetup">Set up sync</button>`}<button class="btn small ghost" id="refreshbtn" aria-label="Refresh">↻</button></span></div>
+    ${bankHtml(s, paused)}
     ${s.push ? '' : pushBanner(h)}
     <details class="more"><summary><canvas class="px" id="rac" width="30" height="28"></canvas>Ransom note</summary>
       <div class="note"><div class="cut">${cutout(homeNote(s))}</div></div></details>
@@ -232,6 +235,7 @@ function renderHome() {
       <div class="legend"><span>🏆 ${s.shelf.length} on the shelf</span><span>${s.stats.metDays} paid · ${s.stats.missedDays} missed</span></div>
       <div class="chart">${chart}</div>
       <div class="legend"><span>${s.days[0].date.slice(5)}</span><span>today</span></div>
+      ${bankHistoryHtml(s)}
       ${(s.deathLog || []).length ? `<div class="legend">${s.deathLog.slice(0, 3).map(d => `<button class="btn small ghost" data-replay="${d.id}">☠ Replay ${esc(d.name)} ${fmtDate(d.date)}</button>`).join(' ')}</div>` : ''}</details>
     <details class="more"><summary>❓ The deal</summary>
       <p class="small">${esc(h.name)} the ${esc(speciesLabel(h.species))} (rung ${h.rung + 1}): ${h.need} days in a row: 10,000 steps a day, and 15,000 on the final day. Then ${esc(h.name)} goes on your shelf. Miss one and, well.${h.deaths ? ` Patched up after ${h.deaths} death${h.deaths > 1 ? 's' : ''} so far.` : ''}</p>
@@ -239,10 +243,151 @@ function renderHome() {
   `;
   startScene($('#scene')); noteAvatar($('#rac'));
   $('#gosetup')?.addEventListener('click', () => go('sync'));
+  $('#pausebtn')?.addEventListener('click', confirmPause);
   view.querySelectorAll('[data-replay]').forEach(b => b.addEventListener('click', () => { const d = (state.deathLog || []).find(x => String(x.id) === b.dataset.replay); if (d && !deathPlaying) playDeath(d); }));
   $('#refreshbtn')?.addEventListener('click', () => doRefresh('button'));
   $('#pushbanner-on')?.addEventListener('click', e => enablePush(e, $('#pushbanner-msg'))); // permission prompt must come straight from this tap
   $('#syncnow')?.addEventListener('click', () => { location.href = phonePick() === 'android' ? androidLink() : 'shortcuts://run-shortcut?name=' + encodeURIComponent(SHORTCUT_NAME); });
+}
+
+// ---- v0.5.0: Spare Steps (bank) + Raccoon Pause ----
+const BANK_ICON = '👟';
+function bankHtml(s, paused) {
+  const bal = s.bank || 0, cost = s.pauseCost || PAUSE_COST, can = bal >= cost && !paused;
+  return `<div class="card bank"><div class="row nowrap" style="justify-content:space-between">
+      <span>${BANK_ICON} Spare Steps <b>${fmt(bal)}</b></span>
+      ${paused ? `<span class="tag">⏸ today is paused</span>` : `<button class="btn small ${can ? 'acc' : 'ghost'}" id="pausebtn" ${can ? '' : 'disabled'}>⏸ Pause today · ${fmt(cost)}</button>`}</div>
+    <div class="dim small">${paused ? `Today doesn't count: no progress, no miss. Back to normal tomorrow.` : `Steps over each day's goal are saved here. A missed day empties it.${can ? '' : ` Pause needs ${fmt(cost)}.`}`}</div>
+    <div class="soon dim small">🎩 Raccoon's shop: coming soon</div></div>`;
+}
+const BANK_KIND = { earn: 'saved', pause: '⏸ paused', reset: '☠ emptied' };
+function bankHistoryHtml(s) {
+  const log = s.bankLog || [];
+  return `<div class="legend"><span>${BANK_ICON} Spare Steps: <b>${fmt(s.bank || 0)}</b></span><span>${(s.days || []).filter(d => d.paused).length ? '⏸ = paused day' : ''}</span></div>
+    ${log.length ? `<ul class="banklog">${log.slice(0, 6).map(e => `<li><span>${fmtDate(e.date)} · ${BANK_KIND[e.kind] || e.kind}</span><span class="${e.amount < 0 ? 'neg' : 'pos'}">${e.amount > 0 ? '+' : ''}${fmt(e.amount)}</span></li>`).join('')}</ul>` : ''}`;
+}
+function confirmPause() {
+  const s = state, cost = s.pauseCost || PAUSE_COST, ov = $('#overlay'); ov.hidden = false;
+  ov.innerHTML = `<div class="ovbox"><h2>⏸ Raccoon Pause</h2>
+    <p>Pay <b>${fmt(cost)}</b> Spare Steps and today won't count at all: no progress, no miss, no death. You pick up tomorrow where you left off.</p>
+    <p class="dim small">Only for today (until midnight PT). Can't be undone. One per day.</p>
+    <p>You have <b>${fmt(s.bank)}</b>. After: <b>${fmt(s.bank - cost)}</b>.</p>
+    <div class="row" style="justify-content:space-between"><button class="btn ghost" id="pcancel">Cancel</button><button class="btn acc" id="pok">Pay ${fmt(cost)}</button></div></div>`;
+  const close = () => { ov.hidden = true; ov.innerHTML = ''; };
+  $('#pcancel').addEventListener('click', close);
+  $('#pok').addEventListener('click', async e => {
+    e.target.disabled = true;
+    if (DEMO) { state.bank -= cost; state.pausedToday = true; state.hostage.paused = true; state.days[state.days.length - 1].paused = true; close(); render(); return; }
+    try { const r = await api('/pause', { confirm: true }); state = adoptCode(r.state); close(); render(); toast('Paid. Today is paused.'); }
+    catch (err) { close(); if (err.body && err.body.state) { state = err.body.state; render(); } toast(err.message === 'already paused today' ? 'Today is already paused.' : err.message === 'not enough Spare Steps' ? 'Not enough Spare Steps.' : "Couldn't pause: " + err.message); }
+  });
+}
+
+// ---- v0.5.0: Friends. Public friend IDs only (never a sync code). The list + nicknames live on this device. ----
+let friendOpen = null, friendCache = {};
+const loadFriends = () => { try { return JSON.parse(localStorage.getItem('ph.friends') || '[]').filter(f => f && f.id); } catch { return []; } };
+const saveFriends = l => localStorage.setItem('ph.friends', JSON.stringify(l));
+const normFid = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+const friendLink = id => APP_URL + '?friend=' + id;
+const PET_ICON = { bunny: '🐰', hamster: '🐹', squirrel: '🐿️', hedgehog: '🦔', kitten: '🐱', duckling: '🐥', piglet: '🐷', panda: '🐼', capybara: '🦫' };
+function friendStatus(f) {
+  if (f.paused) return '⏸ paused today';
+  if (f.todayMet) return f.finalDay ? '🎉 rescue at midnight' : '✓ safe today';
+  return f.finalDay ? '🔥 final day' : f.mood === 'scared' ? '😱 in danger' : '⏳ walking';
+}
+async function fetchFriends(ids) {
+  if (!ids.length) return [];
+  if (DEMO) return ids.map(id => demoFriend(id));
+  const r = await api('/friends?ids=' + ids.join(','));
+  for (const f of r.friends) friendCache[f.friendId] = f;
+  return r.friends;
+}
+async function addFriend(raw) {
+  const id = normFid(raw);
+  if (!id) { toast('Type a friend ID.'); return false; }
+  if (state && id === state.friendId) { toast("That's your own ID."); return false; }
+  const l = loadFriends(); if (l.some(f => f.id === id)) { toast('Already a friend.'); return false; }
+  try { const f = DEMO ? demoFriend(id) : await api('/friend?id=' + id); friendCache[id] = f; l.push({ id, nick: '' }); saveFriends(l); toast(`Added ${f.name}'s human.`); return true; }
+  catch (e) { toast(e.status === 404 ? `No player with friend ID ${id}.` : "Couldn't reach The Raccoon."); return false; }
+}
+function renderFriends() {
+  stopAnim();
+  const mine = state.friendId, l = loadFriends();
+  view.innerHTML = `
+    <h2>Friends</h2>
+    <div class="card"><div class="dim">Your friend ID (safe to share; it's not your sync code)</div>
+      <div class="code big">${esc(mine || '…')}</div>
+      <p class="row"><button class="btn acc" id="fshare">Share invite link</button><button class="btn ghost small" data-copy="${esc(mine ? friendLink(mine) : '')}">Copy link</button></p></div>
+    <div class="card"><div class="dim">Add a friend by ID</div>
+      <div class="row nowrap"><input id="fid" type="text" class="field" placeholder="e.g. K7PQ2M" autocapitalize="characters" autocomplete="off" maxlength="12"><button class="btn" id="fadd">Add</button></div></div>
+    <div id="flist">${l.length ? `<div class="dim">Loading…</div>` : `<p class="dim">No friends yet. Share your link, or type their friend ID.</p>`}</div>`;
+  wireCopy(view);
+  $('#fshare').addEventListener('click', async () => {
+    const url = friendLink(mine), text = `Add me on Pet Hostage. My friend ID is ${mine}.`;
+    if (navigator.share) { try { await navigator.share({ title: 'Pet Hostage', text, url }); } catch { } } else { await navigator.clipboard?.writeText(url).catch(() => {}); toast('Link copied.'); }
+  });
+  const add = async () => { if (await addFriend($('#fid').value)) renderFriends(); };
+  $('#fadd').addEventListener('click', add); $('#fid').addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+  if (!l.length) return;
+  fetchFriends(l.map(f => f.id)).then(list => {
+    if (tab !== 'friends' || !$('#flist')) return;
+    const by = Object.fromEntries(list.map(f => [f.friendId, f]));
+    $('#flist').innerHTML = `<div class="flist">${l.map(x => { const f = by[x.id] || { missing: true };
+      return f.missing ? `<div class="frow dim"><span>❔</span><span><b>${esc(x.nick || x.id)}</b><br>not found</span><span></span></div>`
+        : `<button class="frow" data-friend="${x.id}"><span class="ficon">${PET_ICON[f.species] || '🐾'}</span><span><b>${esc(x.nick || f.name)}</b>${x.nick ? ` <span class="dim">(${esc(f.name)})</span>` : ''}<br><span class="dim">Day ${f.day}/${f.need} · ${friendStatus(f)}</span></span><span class="fsteps"><b>${fmt(f.todaySteps)}</b><br><span class="dim">/ ${fmt(f.goal)}</span></span></button>`; }).join('')}</div>`;
+    view.querySelectorAll('[data-friend]').forEach(b => b.addEventListener('click', () => { friendOpen = b.dataset.friend; go('friend'); }));
+  }).catch(() => { if ($('#flist')) $('#flist').innerHTML = `<p class="dim">Couldn't load friends. Pull to refresh.</p>`; });
+}
+function renderFriendView(id) {
+  stopAnim();
+  const x = loadFriends().find(f => f.id === id) || { id, nick: '' };
+  const draw = f => {
+    const prog = Math.min(1, f.todaySteps / f.goal), filled = Math.floor(prog * BAR_SEGMENTS);
+    const pips = Array.from({ length: f.need }, (_, i) => `<span class="dpip ${i < f.streak ? 'on' : i === f.streak ? (f.todayMet ? 'on today' : 'today') : ''}"></span>`).join('');
+    view.innerHTML = `
+      <p><button class="btn small ghost" id="fback">← Friends</button></p>
+      <div class="scenewrap big"><canvas id="fscene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas><div class="hudname">${esc(f.name)}</div></div>
+      <div class="quest"><div class="qhead"><b>Day ${f.day}/${f.need}</b><div class="dpips">${pips}</div><span class="tag">${friendStatus(f)}</span></div></div>
+      <div class="steps"><b>${fmt(f.todaySteps)}</b><span>/ ${fmt(f.goal)}</span></div>
+      <div class="bar ${prog >= 1 ? 'done' : ''}">${Array.from({ length: BAR_SEGMENTS }, (_, i) => `<i class="${i < filled ? 'f' : ''}"></i>`).join('')}</div>
+      <div class="card small">${x.nick ? `<b>${esc(x.nick)}</b>'s` : 'Their'} ${esc(speciesLabel(f.species))}, rung ${f.rung + 1} · ${f.shelf} on the shelf${f.deaths ? ` · patched up after ${f.deaths} death${f.deaths > 1 ? 's' : ''}` : ''}${f.lastSync ? ` · synced ${ago(f.lastSync)}` : ''}<br><span class="dim">View only.</span></div>
+      <details class="more"><summary>Nickname</summary><div class="row nowrap"><input id="fnick" type="text" class="field" maxlength="24" placeholder="${esc(f.name)}'s human" value="${esc(x.nick || '')}"><button class="btn small" id="fnicksave">Save</button></div>
+        <p><button class="btn small ghost" id="fremove">Remove friend</button></p></details>`;
+    const ctx = $('#fscene').getContext('2d'), t0 = performance.now(), canvas = $('#fscene');
+    const fst = { mood: f.mood, species: f.species, injuries: f.injuries, deaths: f.deaths || 0, freed: !!f.todayMet, final: !!f.finalDay, paused: !!f.paused };
+    const loop = now => { if (!canvas.isConnected) return; drawScene(ctx, fst, qs.has('t') ? +qs.get('t') : (now - t0) / 1000); anim = requestAnimationFrame(loop); };
+    anim = requestAnimationFrame(loop);
+    $('#fback').addEventListener('click', () => go('friends'));
+    $('#fnicksave').addEventListener('click', () => { const l = loadFriends(), e = l.find(z => z.id === id); if (e) { e.nick = $('#fnick').value.trim().slice(0, 24); saveFriends(l); toast('Saved.'); draw(f); } });
+    $('#fremove').addEventListener('click', () => { if (!confirm('Remove this friend from your list?')) return; saveFriends(loadFriends().filter(z => z.id !== id)); go('friends'); });
+  };
+  if (friendCache[id]) draw(friendCache[id]); else view.innerHTML = `<p class="dim">Loading…</p>`;
+  (DEMO ? Promise.resolve(demoFriend(id)) : api('/friend?id=' + id)).then(f => { friendCache[id] = f; if (tab === 'friend' && friendOpen === id) draw(f); })
+    .catch(() => { if (!friendCache[id]) view.innerHTML = `<p><button class="btn small ghost" id="fback">← Friends</button></p><p class="dim">Couldn't load this friend.</p>`; $('#fback')?.addEventListener('click', () => go('friends')); });
+}
+// ?friend=ID from a share link: ask once, then drop it from the URL
+function offerFriendFromLink() {
+  const id = normFid(qs.get('friend') || localStorage.getItem('ph.pendingFriend'));
+  localStorage.removeItem('ph.pendingFriend');
+  if (!id || !state) return;
+  const u = new URL(location.href); u.searchParams.delete('friend'); history.replaceState(null, '', u);
+  if (id === state.friendId || loadFriends().some(f => f.id === id)) { tab = 'friends'; render(); return; }
+  (DEMO ? Promise.resolve(demoFriend(id)) : api('/friend?id=' + id)).then(f => {
+    const ov = $('#overlay'); ov.hidden = false;
+    ov.innerHTML = `<div class="ovbox"><h2>👥 Add friend?</h2><p>Their pet: <b>${esc(f.name)}</b> the ${esc(speciesLabel(f.species))}, day ${f.day}/${f.need}.</p>
+      <div class="row" style="justify-content:space-between"><button class="btn ghost" id="fno">No thanks</button><button class="btn acc" id="fyes">Add friend</button></div></div>`;
+    const close = () => { ov.hidden = true; ov.innerHTML = ''; };
+    $('#fno').addEventListener('click', close);
+    $('#fyes').addEventListener('click', async () => { close(); if (await addFriend(id)) go('friends'); });
+  }).catch(() => toast(`No player with friend ID ${id}.`));
+}
+function demoFriend(id) {
+  const D = { BEN123: { name: 'Nugget', species: 'hamster', rung: 1, need: 5, streak: 2, todaySteps: 12450, mood: 'happy', deaths: 0, injuries: [] },
+    STEPH1: { name: 'Chompsky', species: 'bunny', rung: 0, need: 3, streak: 2, todaySteps: 9120, mood: 'worried', deaths: 0, injuries: [] },
+    BRO777: { name: 'Chompsky', species: 'bunny', rung: 0, need: 3, streak: 1, todaySteps: 4300, mood: 'scared', deaths: 1, injuries: ['pop'] },
+    NAPPER: { name: 'Acorn', species: 'squirrel', rung: 2, need: 7, streak: 4, todaySteps: 2100, mood: 'happy', deaths: 1, injuries: ['catapult'], paused: true } };
+  const b = D[id] || D.STEPH1, finalDay = b.streak + 1 >= b.need, goal = finalDay ? FINAL_GOAL : GOAL;
+  return { friendId: id, ...b, day: b.streak + 1, goal, finalDay, todayMet: b.todaySteps >= goal, paused: !!b.paused, shelf: b.rung, lastSync: Date.now() - 14 * 60000 };
 }
 
 // Notifications are off: a big banner so the hostage can beg (and the raccoon can taunt) twice a day.
@@ -607,8 +752,8 @@ function welcomeScene() {
 function render() {
   stopAnim();
   $('#tabs').hidden = !state;
-  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
-  if (tab === 'sync') renderSync(); else if (tab === 'settings') renderSettings(); else if (tab === 'shelf') renderShelf(); else renderHome();
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === (tab === 'friend' ? 'friends' : tab)));
+  if (tab === 'friends') renderFriends(); else if (tab === 'friend') renderFriendView(friendOpen); else if (tab === 'sync') renderSync(); else if (tab === 'settings') renderSettings(); else if (tab === 'shelf') renderShelf(); else renderHome();
   maybePlayDeath();
 }
 function go(t) { tab = t; render(); window.scrollTo(0, 0); }
@@ -711,6 +856,7 @@ function demoState(m) {
   let rung = 2, streak = 2, inj = { 0: ['pop'], 1: [], 2: ['catapult'] }, todaySteps = 6120, hour = 18, mood = 'worried', lastDeath = null;
   if (m === 'happy') { todaySteps = 10342; mood = 'happy'; hour = 20; }
   if (m === 'stitched') { rung = 0; streak = 1; inj = { 0: ['pop', 'anvil', 'catapult', 'zap'] }; todaySteps = 10120; mood = 'happy'; hour = 20; }
+  if (m === 'paused') { todaySteps = 2100; mood = 'happy'; }
   if (m === 'nosync') { rung = 0; streak = 0; inj = {}; todaySteps = 0; hour = 10; mood = 'happy'; }
   if (m === 'death' || m === 'rekidnap') { rung = 1; streak = 0; inj = { 0: ['pop'], 1: [], 2: ['catapult', qs.get('type') || 'pop'] }; todaySteps = 840; hour = 9; mood = 'happy';
     lastDeath = { id: 3, date: day(-1), rung: 2, name: 'Acorn', species: 'squirrel', type: qs.get('type') || 'pop', deaths: 2, rekidnap: { rung: 1, name: 'Nugget', species: 'hamster', need: 5, same: false } }; }
@@ -720,15 +866,17 @@ function demoState(m) {
   const pet = r => ({ rung: r, name: nm[r], species: sp[r], need: need(r), deaths: (inj[r] || []).length, injuries: inj[r] || [], rescuedOn: r < rung ? day(-30 + r * 9) : null, rescues: 1 });
   const shelf = Array.from({ length: rung }, (_, r) => pet(r));
   const goal = streak + 1 >= need(rung) ? FINAL_GOAL : GOAL;
-  const hostage = { ...pet(rung), streak, since: day(-streak), todayMet: todaySteps >= goal, day: streak + 1, finalDay: streak + 1 >= need(rung), goal };
+  const hostage = { ...pet(rung), streak, since: day(-streak), todayMet: todaySteps >= goal, day: streak + 1, finalDay: streak + 1 >= need(rung), goal, paused: m === 'paused' };
   const top = Math.max(rung, m === 'death' ? 2 : rung) + 1;
   const ladder = Array.from({ length: sp.length }, (_, r) => ({ rung: r, need: need(r), species: sp[r], name: nm[r], known: r <= top - 1 || m === 'lineup', status: r < rung ? 'rescued' : r === rung ? 'hostage' : 'locked', deaths: (inj[r] || []).length, injuries: inj[r] || [] }));
   return {
     v: 2, today, hour, goal, todaySteps, lastSync: m === 'nosync' ? null : Date.now() - 23 * 60000, lastSteps: todaySteps, started: day(-40),
     hostage, shelf, ladder, mood, lastDeath, deathSeen: 0,
     deathLog: [lastDeath, { id: 2, date: day(-21), rung: 2, name: 'Acorn', species: 'squirrel', type: 'catapult', rekidnap: { name: 'Nugget', same: false } }, { id: 1, date: day(-33), rung: 0, name: 'Chompsky', species: 'bunny', type: 'pop', rekidnap: { name: 'Chompsky', same: true } }].filter(Boolean),
+    bank: m === 'bank' || m === 'paused' ? (m === 'paused' ? 11200 : 41200) : 2350, pauseCost: PAUSE_COST, pausedToday: m === 'paused', friendId: 'DEMO42',
+    bankLog: [{ date: day(-1), kind: 'earn', amount: 2900, bal: 41200 }, { date: day(-2), kind: 'earn', amount: 4100, bal: 38300 }, { date: day(-4), kind: 'pause', amount: -30000, bal: 34200 }, { date: day(-5), kind: 'earn', amount: 5300, bal: 64200 }],
     stats: { metDays: 27, missedDays: 3, rescues: 4 }, push: !qs.has('nopush'),
-    days: Array.from({ length: 14 }, (_, i) => ({ date: day(i - 13), steps: i === 13 ? (todaySteps || null) : (m === 'nosync' ? null : hist[i]) })),
+    days: Array.from({ length: 14 }, (_, i) => ({ date: day(i - 13), paused: i === 9 || (m === 'paused' && i === 13), steps: i === 13 ? (todaySteps || null) : (m === 'nosync' ? null : hist[i]) })),
   };
 }
 
@@ -747,11 +895,17 @@ async function boot() {
     if (DEMO === 'welcome' || DEMO === 'lost') { renderWelcome(DEMO === 'lost' ? 'K7PQ2MXW9A' : null); return; }
     code = 'DEMO123456'; state = demoState(DEMO); if (qs.has('garmin')) state.garmin = { lastSync: Date.now() - 9 * 60000, lastSteps: state.todaySteps, lastError: null, lastErrorAt: null }; tab = qs.get('tab') || (DEMO === 'lineup' ? 'shelf' : 'home'); render();
     if (DEMO === 'death') playDeath(state.lastDeath, qs.has('f') ? +qs.get('f') : undefined);
+    if (qs.get('friends')) saveFriends(qs.get('friends').split(',').map(id => ({ id, nick: id === 'BEN123' ? 'Ben' : '' }))); if (qs.get('friends') && tab === 'friends') render();
+    if (qs.get('fview')) { friendOpen = qs.get('fview'); tab = 'friend'; render(); }
+    if (qs.has('pauseask')) confirmPause();
+    if (qs.has('friend')) offerFriendFromLink();
     if (qs.has('tap')) setTimeout(() => window.__tap(qs.get('tap')), 1200);
     return;
   }
+  if (qs.get('friend')) localStorage.setItem('ph.pendingFriend', qs.get('friend')); // survives the welcome/claim flow
   rememberInUrl();
   await boot2();
+  offerFriendFromLink();
   setupPull();
   setInterval(() => { if (state && document.visibilityState === 'visible' && tab === 'home' && !refreshing) doRefresh('auto'); }, REFRESH_MS);
   document.addEventListener('visibilitychange', onReturnOnce);
