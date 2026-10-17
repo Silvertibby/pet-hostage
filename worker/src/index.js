@@ -28,7 +28,9 @@ const load = async (env, code) => {
   const s = await env.PH.get(PKEY(code)); if (!s) return null;
   let st = JSON.parse(s);
   if (st.v !== 2) { st = migrate(st, localParts().date); await env.PH.put(PKEY(code), JSON.stringify(st)); }
+  const needsBosses = !(st.hostage && Array.isArray(st.hostage.bosses));
   normalize(st);
+  if (needsBosses) await env.PH.put(PKEY(code), JSON.stringify(st)); // v0.5.2: lock in the remaining mini-boss days once
   if (!st.friendId) await assignFriendId(env, st);
   return st;
 };
