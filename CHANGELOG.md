@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.5.2 (2026-10-17)
+- Longer rescues now have mini-boss days: 15,000 steps, marked with a glowing square.
+
 ## v0.5.1 (2026-10-14)
 - One clear "Invite a friend" button. Private codes are labeled as private.
 

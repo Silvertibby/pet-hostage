@@ -2,7 +2,7 @@ import { maybeRevived, revivedVars } from './revived.js';
 import { drawScene, drawDeath, drawShelfPet, raccoon, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.5.1';
+const VERSION = 'v0.5.2';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
@@ -105,7 +105,14 @@ function cutout(text) {
 function stopAnim() { if (anim) cancelAnimationFrame(anim); anim = null; }
 let sceneT = 0, sceneReact = null;
 const isFinal = h => !!(h && (h.finalDay ?? (h.day >= h.need)));
-const sceneSt = () => { const h = state.hostage || {}; return { mood: state.mood, species: h.species, injuries: h.injuries, deaths: h.deaths || 0, freed: !!h.todayMet, final: isFinal(h), paused: !!(h.paused || state.pausedToday), react: sceneReact }; };
+const isBoss = h => !!(h && h.bossToday && !isFinal(h)); // v0.5.2 mini-boss day: a 15k day mid-run
+// day squares; 15k days (mini-bosses + the final day) are highlighted
+function pipsHtml(h) {
+  const bosses = h.bosses || [];
+  return Array.from({ length: h.need }, (_, i) => { const d = i + 1, boss = d === h.need ? 'boss final' : bosses.includes(d) ? 'boss' : '';
+    return `<span class="dpip ${boss} ${i < h.streak ? 'on' : i === h.streak ? (h.todayMet ? 'on today' : 'today') : ''}" title="Day ${d}${boss ? ': 15,000' : ''}"></span>`; }).join('');
+}
+const sceneSt = () => { const h = state.hostage || {}; return { mood: state.mood, species: h.species, injuries: h.injuries, deaths: h.deaths || 0, freed: !!h.todayMet, final: isFinal(h) || isBoss(h), paused: !!(h.paused || state.pausedToday), react: sceneReact }; };
 function startScene(canvas) {
   const ctx = canvas.getContext('2d');
   const t0 = performance.now(); sceneReact = null;
@@ -116,7 +123,7 @@ function startScene(canvas) {
     anim = requestAnimationFrame(loop);
   };
   anim = requestAnimationFrame(loop);
-  attachTaps(canvas, () => ({ st: sceneSt(), t: sceneT, mode: state.hostage.todayMet ? 'banked' : isFinal(state.hostage) ? 'final' : 'behind' }), who => { sceneReact = { who, at: sceneT }; });
+  attachTaps(canvas, () => ({ st: sceneSt(), t: sceneT, mode: state.hostage.todayMet ? 'banked' : isFinal(state.hostage) ? 'final' : isBoss(state.hostage) ? 'boss' : 'behind' }), who => { sceneReact = { who, at: sceneT }; });
 }
 
 // ---- tap the pet / the raccoon: speech bubbles ----
@@ -161,11 +168,18 @@ const FINAL_LINES = {
     "{steps}? On the LAST day? Bold.", "I wore my good apron for this.", "Fifteen thousand. Call it a service charge.",
     "Don't mind me. Just checking the temperature.", "You were doing so well. Shame about today."],
 };
+// v0.5.2: mini-boss days (15k mid-run). Generic on purpose: no spoilers about what comes later.
+const BOSS_LINES = {
+  pet: ['Big day today. {goal} big. {left} to go!', 'Why is today harder? Nobody told me today was harder!', "It's a 15k day. I believe in you. Loudly.",
+    "He brought out the fancy equipment today. Walk, please.", 'Extra steps today. Extra cuddles later. Deal?', 'Today counts double scary. {left} more!'],
+  raccoon: ['Surprise! Today costs {goal}.', 'Special menu today. Very special.', "Fine print, page two: today's a big one.",
+    '{left} steps? On a day like this? Cute.', 'I saved my best gadget for today.', 'Midweek treat. For me.'],
+};
 function pickLine(who, mode, v) {
-  const fin = mode === 'final'; if (fin) mode = 'behind';
+  const fin = mode === 'final', boss = mode === 'boss'; if (fin || boss) mode = 'behind';
   const rv = mode === 'behind' && maybeRevived(who, v.species, v.deaths, fin); // revived pets remember (~60%)
   if (rv) return fillLine(rv, v);
-  const pool = [...(fin ? [...FINAL_LINES[who], ...FINAL_LINES[who]] : []), ...LINES[who][mode], ...((SPECIES_LINES[v.species] || {})[who]?.[mode] || [])], key = who + (fin ? 'final' : mode) + (v.species || '');
+  const pool = [...(fin ? [...FINAL_LINES[who], ...FINAL_LINES[who]] : []), ...(boss ? [...BOSS_LINES[who], ...BOSS_LINES[who]] : []), ...LINES[who][mode], ...((SPECIES_LINES[v.species] || {})[who]?.[mode] || [])], key = who + (fin ? 'final' : boss ? 'boss' : mode) + (v.species || '');
   let i; do { i = Math.floor(Math.random() * pool.length); } while (pool.length > 1 && i === lastLine[key]);
   lastLine[key] = i;
   return fillLine(pool[i], v);
@@ -211,14 +225,14 @@ function renderHome() {
   const s = state, h = s.hostage;
   const prog = Math.min(1, s.todaySteps / s.goal);
   const filled = Math.floor(prog * BAR_SEGMENTS);
-  const pips = Array.from({ length: h.need }, (_, i) => `<span class="dpip ${i < h.streak ? 'on' : i === h.streak ? (h.todayMet ? 'on today' : 'today') : ''}"></span>`).join('');
+  const pips = pipsHtml(h);
   const maxSteps = Math.max(s.goal * 1.3, ...s.days.map(d => d.steps || 0));
   const chart = s.days.map(d => {
-    const cls = d.paused ? 'paused' : d.steps == null ? (d.date < s.started || d.date === s.today ? '' : 'none') : (d.steps >= s.goal ? 'met' : d.date === s.today ? '' : 'miss');
-    return `<div class="${cls} ${d.date === s.today ? 'today' : ''}" style="height:${Math.round(100 * (d.steps || 0) / maxSteps)}%" title="${d.date}: ${d.steps ?? 'no data'}"></div>`;
+    const cls = d.paused ? 'paused' : d.steps == null ? (d.date < s.started || d.date === s.today ? '' : 'none') : (d.steps >= (d.goal || s.baseGoal || GOAL) ? 'met' : d.date === s.today ? '' : 'miss');
+    return `<div class="${cls} ${d.date === s.today ? 'today' : ''} ${(d.goal || 0) > (s.baseGoal || GOAL) ? 'boss' : ''}" style="height:${Math.round(100 * (d.steps || 0) / maxSteps)}%" title="${d.date}: ${d.steps ?? 'no data'}${(d.goal || 0) > (s.baseGoal || GOAL) ? ' (15k day)' : ''}"></div>`;
   }).join('');
   const paused = !!(h.paused || s.pausedToday);
-  const tag = paused ? '⏸ paused' : h.todayMet ? (h.day >= h.need ? '🎉 rescue at midnight' : '✓ banked') : isFinal(h) ? '🔥 final day' : '';
+  const tag = paused ? '⏸ paused' : h.todayMet ? (h.day >= h.need ? '🎉 rescue at midnight' : '✓ banked') : isFinal(h) ? '🔥 final day · 15k' : isBoss(h) ? '⚔️ mini-boss · 15k' : '';
   view.innerHTML = `
     <div class="scenewrap big"><canvas id="scene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas>
       <div class="hudname">${esc(h.name)}</div></div>
@@ -292,8 +306,8 @@ const friendLink = id => APP_URL + '?friend=' + id;
 const PET_ICON = { bunny: '🐰', hamster: '🐹', squirrel: '🐿️', hedgehog: '🦔', kitten: '🐱', duckling: '🐥', piglet: '🐷', panda: '🐼', capybara: '🦫' };
 function friendStatus(f) {
   if (f.paused) return '⏸ paused today';
-  if (f.todayMet) return f.finalDay ? '🎉 rescue at midnight' : '✓ safe today';
-  return f.finalDay ? '🔥 final day' : f.mood === 'scared' ? '😱 in danger' : '⏳ walking';
+  if (f.todayMet) return f.finalDay ? '🎉 rescue at midnight' : f.bossToday ? '⚔️ mini-boss beaten' : '✓ safe today';
+  return f.finalDay ? '🔥 final day · 15k' : f.bossToday ? '⚔️ mini-boss · 15k' : f.mood === 'scared' ? '😱 in danger' : '⏳ walking';
 }
 async function fetchFriends(ids) {
   if (!ids.length) return [];
@@ -340,7 +354,7 @@ function renderFriendView(id) {
   const x = loadFriends().find(f => f.id === id) || { id, nick: '' };
   const draw = f => {
     const prog = Math.min(1, f.todaySteps / f.goal), filled = Math.floor(prog * BAR_SEGMENTS);
-    const pips = Array.from({ length: f.need }, (_, i) => `<span class="dpip ${i < f.streak ? 'on' : i === f.streak ? (f.todayMet ? 'on today' : 'today') : ''}"></span>`).join('');
+    const pips = pipsHtml(f);
     view.innerHTML = `
       <p><button class="btn small ghost" id="fback">← Friends</button></p>
       <div class="scenewrap big"><canvas id="fscene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas><div class="hudname">${esc(f.name)}</div></div>
@@ -351,7 +365,7 @@ function renderFriendView(id) {
       <details class="more"><summary>Nickname</summary><div class="row nowrap"><input id="fnick" type="text" class="field" maxlength="24" placeholder="${esc(f.name)}'s human" value="${esc(x.nick || '')}"><button class="btn small" id="fnicksave">Save</button></div>
         <p><button class="btn small ghost" id="fremove">Remove friend</button></p></details>`;
     const ctx = $('#fscene').getContext('2d'), t0 = performance.now(), canvas = $('#fscene');
-    const fst = { mood: f.mood, species: f.species, injuries: f.injuries, deaths: f.deaths || 0, freed: !!f.todayMet, final: !!f.finalDay, paused: !!f.paused };
+    const fst = { mood: f.mood, species: f.species, injuries: f.injuries, deaths: f.deaths || 0, freed: !!f.todayMet, final: !!f.finalDay || !!f.bossToday, paused: !!f.paused };
     const loop = now => { if (!canvas.isConnected) return; drawScene(ctx, fst, qs.has('t') ? +qs.get('t') : (now - t0) / 1000); anim = requestAnimationFrame(loop); };
     anim = requestAnimationFrame(loop);
     $('#fback').addEventListener('click', () => go('friends'));
@@ -378,13 +392,14 @@ function offerFriendFromLink() {
     $('#fyes').addEventListener('click', async () => { close(); if (await addFriend(id)) go('friends'); });
   }).catch(() => toast(`No player with friend ID ${id}.`));
 }
+function demoBosses(rung) { const n = 3 + 2 * rung, k = rung < 2 ? 0 : Math.floor((n - 4) / 3), o = []; for (let i = 1; i <= k; i++) { const d = Math.min(n - 2, Math.max(2, Math.round(1 + i * (n - 1) / (k + 1)))); if (!o.includes(d)) o.push(d); } return o; }
 function demoFriend(id) {
   const D = { BEN123: { name: 'Nugget', species: 'hamster', rung: 1, need: 5, streak: 2, todaySteps: 12450, mood: 'happy', deaths: 0, injuries: [] },
     STEPH1: { name: 'Chompsky', species: 'bunny', rung: 0, need: 3, streak: 2, todaySteps: 9120, mood: 'worried', deaths: 0, injuries: [] },
     BRO777: { name: 'Chompsky', species: 'bunny', rung: 0, need: 3, streak: 1, todaySteps: 4300, mood: 'scared', deaths: 1, injuries: ['pop'] },
     NAPPER: { name: 'Acorn', species: 'squirrel', rung: 2, need: 7, streak: 4, todaySteps: 2100, mood: 'happy', deaths: 1, injuries: ['catapult'], paused: true } };
-  const b = D[id] || D.STEPH1, finalDay = b.streak + 1 >= b.need, goal = finalDay ? FINAL_GOAL : GOAL;
-  return { friendId: id, ...b, day: b.streak + 1, goal, finalDay, todayMet: b.todaySteps >= goal, paused: !!b.paused, shelf: b.rung, lastSync: Date.now() - 14 * 60000 };
+  const b = D[id] || D.STEPH1, finalDay = b.streak + 1 >= b.need, bosses = demoBosses(b.rung), bossToday = !finalDay && bosses.includes(b.streak + 1), goal = finalDay || bossToday ? FINAL_GOAL : GOAL;
+  return { friendId: id, ...b, day: b.streak + 1, goal, finalDay, bosses, bossToday, todayMet: b.todaySteps >= goal, paused: !!b.paused, shelf: b.rung, lastSync: Date.now() - 14 * 60000 };
 }
 
 // Notifications are off: a big banner so the hostage can beg (and the raccoon can taunt) twice a day.
@@ -862,8 +877,10 @@ function demoState(m) {
   if (m === 'final' || m === 'finalpaid') { if (!qs.has('rung')) rung = 0; streak = need(rung) - 1; todaySteps = m === 'final' ? 9420 : 15230; mood = m === 'final' ? 'worried' : 'happy'; hour = m === 'final' ? 18 : 21; }
   const pet = r => ({ rung: r, name: nm[r], species: sp[r], need: need(r), deaths: (inj[r] || []).length, injuries: inj[r] || [], rescuedOn: r < rung ? day(-30 + r * 9) : null, rescues: 1 });
   const shelf = Array.from({ length: rung }, (_, r) => pet(r));
-  const goal = streak + 1 >= need(rung) ? FINAL_GOAL : GOAL;
-  const hostage = { ...pet(rung), streak, since: day(-streak), todayMet: todaySteps >= goal, day: streak + 1, finalDay: streak + 1 >= need(rung), goal, paused: m === 'paused' };
+  if (m === 'boss') { if (!qs.has('rung')) rung = 4; streak = +(qs.get('streak') || 7); todaySteps = 8800; mood = 'worried'; hour = 17; }
+  const bosses = demoBosses(rung), bossToday = streak + 1 < need(rung) && bosses.includes(streak + 1);
+  const goal = streak + 1 >= need(rung) || bossToday ? FINAL_GOAL : GOAL;
+  const hostage = { ...pet(rung), streak, since: day(-streak), todayMet: todaySteps >= goal, day: streak + 1, finalDay: streak + 1 >= need(rung), goal, paused: m === 'paused', bosses, bossToday };
   const top = Math.max(rung, m === 'death' ? 2 : rung) + 1;
   const ladder = Array.from({ length: sp.length }, (_, r) => ({ rung: r, need: need(r), species: sp[r], name: nm[r], known: r <= top - 1 || m === 'lineup', status: r < rung ? 'rescued' : r === rung ? 'hostage' : 'locked', deaths: (inj[r] || []).length, injuries: inj[r] || [] }));
   return {
@@ -873,7 +890,7 @@ function demoState(m) {
     bank: m === 'bank' || m === 'paused' ? (m === 'paused' ? 11200 : 41200) : 2350, pauseCost: PAUSE_COST, pausedToday: m === 'paused', friendId: 'DEMO42',
     bankLog: [{ date: day(-1), kind: 'earn', amount: 2900, bal: 41200 }, { date: day(-2), kind: 'earn', amount: 4100, bal: 38300 }, { date: day(-4), kind: 'pause', amount: -30000, bal: 34200 }, { date: day(-5), kind: 'earn', amount: 5300, bal: 64200 }],
     stats: { metDays: 27, missedDays: 3, rescues: 4 }, push: !qs.has('nopush'),
-    days: Array.from({ length: 14 }, (_, i) => ({ date: day(i - 13), paused: i === 9 || (m === 'paused' && i === 13), steps: i === 13 ? (todaySteps || null) : (m === 'nosync' ? null : hist[i]) })),
+    baseGoal: GOAL, days: Array.from({ length: 14 }, (_, i) => ({ date: day(i - 13), goal: i === 13 ? goal : m === 'boss' && i === 9 ? FINAL_GOAL : GOAL, paused: m !== 'boss' && (i === 9 || (m === 'paused' && i === 13)), steps: i === 13 ? (todaySteps || null) : (m === 'nosync' ? null : hist[i]) })),
   };
 }
 

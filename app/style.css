@@ -141,3 +141,8 @@ details.more .note { padding-left: 10px; margin-top: 8px; min-height: 0; }
 .frow .ficon { font-size: 26px; } .frow .fsteps { text-align: right; }
 .row.nowrap .field { flex: 1; }
 #fscene { cursor: default; }
+/* v0.5.2: 15k days (mini-bosses + final) glow red/gold */
+.dpip.boss { border-color: #ffb347; box-shadow: 0 0 0 1px #c4405e, 0 0 6px 1px rgba(255,140,60,.75); background: #4a2430; }
+.dpip.boss.on { background: var(--good); }
+.dpip.boss.today { outline-color: #ffe27a; }
+.chart div.boss { box-shadow: 0 0 0 2px #ffb347, 0 0 6px rgba(255,140,60,.7); }

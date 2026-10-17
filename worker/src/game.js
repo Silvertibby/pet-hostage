@@ -35,8 +35,20 @@ const ROMAN = ['', '', ' II', ' III', ' IV', ' V', ' VI', ' VII', ' VIII', ' IX'
 export const needFor = rung => RULES.BASE_DAYS + RULES.STEP_DAYS * rung;
 // The goal for the hostage's next unsettled day: day (streak+1) of need. The final day is the 15k challenge.
 export const isFinalDay = (streak, need) => streak + 1 >= need;
-export const goalFor = (streak, need) => isFinalDay(streak, need) ? RULES.FINAL_GOAL : RULES.GOAL;
-export const goalToday = st => goalFor(st.hostage.streak, needFor(st.hostage.rung));
+// v0.5.2 mini-bosses: from Acorn (rung 2, 7 days) on, floor((days-4)/3) extra 15k days, spread evenly,
+// never day 1 and never the day before the final day. The final day stays the 15k boss.
+export const MINIBOSS_FROM_RUNG = 2;
+export function bossDaysFor(rung) {
+  const n = needFor(rung); if (rung < MINIBOSS_FROM_RUNG) return [];
+  const k = Math.floor((n - 4) / 3), out = [];
+  for (let i = 1; i <= k; i++) { const d = Math.min(n - 2, Math.max(2, Math.round(1 + i * (n - 1) / (k + 1)))); if (!out.includes(d)) out.push(d); }
+  return out;
+}
+// the run's mini-boss days; older runs (pre-v0.5.2) only get the ones still ahead (set at migration)
+export const runBosses = h => Array.isArray(h.bosses) ? h.bosses : bossDaysFor(h.rung);
+export const isBossDay = (h, day) => runBosses(h).includes(day);
+export const goalFor = (streak, need, bosses = []) => isFinalDay(streak, need) || bosses.includes(streak + 1) ? RULES.FINAL_GOAL : RULES.GOAL;
+export const goalToday = st => goalFor(st.hostage.streak, needFor(st.hostage.rung), runBosses(st.hostage));
 export function animalFor(rung) {
   const a = ANIMALS[rung % ANIMALS.length], lap = Math.floor(rung / ANIMALS.length) + 1;
   return { species: a.species, name: a.name + (ROMAN[lap] ?? ' #' + lap) };
@@ -60,7 +72,7 @@ export function petAt(st, rung) {
 function kidnap(st, rung, date) {
   const p = petAt(st, rung);
   p.rescuedOn = null; if (!p.firstKidnapped) p.firstKidnapped = date;
-  st.hostage = { rung, streak: 0, since: date, settledThrough: st.hostage ? st.hostage.settledThrough : addDays(date, -1) };
+  st.hostage = { rung, streak: 0, since: date, settledThrough: st.hostage ? st.hostage.settledThrough : addDays(date, -1), bosses: bossDaysFor(rung) };
 }
 
 export function newState(code, today) {
@@ -87,10 +99,17 @@ export function migrate(old, today) {
 // {kind:'rescue', date, rung, name, species, next:{rung,name,species,need}}
 // {kind:'death', date, steps, rung, name, species, type, deaths, rekidnap:{rung,name,species,need,same}}
 // v0.5.0: Spare Steps. Older players start at 0 (no backfill).
-export function normalize(st) {
+export function normalize(st, today = localParts().date) {
   if (typeof st.bank !== 'number') st.bank = 0;
   if (!Array.isArray(st.bankLog)) st.bankLog = [];
   if (!st.paused || typeof st.paused !== 'object') st.paused = {};
+  if (!st.dayGoals || typeof st.dayGoals !== 'object') st.dayGoals = {};
+  // v0.5.2 migration: a run already in progress keeps today and every closed day as they were; only days after today can be mini-bosses
+  if (st.hostage && !Array.isArray(st.hostage.bosses)) {
+    let open = 0; for (let d = addDays(st.hostage.settledThrough, 1); d <= today && open < 400; d = addDays(d, 1)) open++; // unsettled days incl. today
+    const lastLocked = st.hostage.streak + Math.max(1, open); // the furthest day number that could be today
+    st.hostage.bosses = bossDaysFor(st.hostage.rung).filter(d => d > lastLocked);
+  }
   return st;
 }
 function bankMove(st, date, kind, amount) {
@@ -109,7 +128,7 @@ export function buyPause(st, today) {
 }
 
 export function settle(st, today) {
-  normalize(st);
+  normalize(st, today);
   const events = []; const h = st.hostage;
   let d = addDays(h.settledThrough, 1);
   while (d < today) {
@@ -118,7 +137,8 @@ export function settle(st, today) {
       events.push({ kind: 'paused', date: d, steps: st.days[d] || 0, rung: r, name: p.name });
       st.hostage.settledThrough = d; d = addDays(d, 1); continue;
     }
-    const goal = goalFor(st.hostage.streak, need), steps = st.days[d] || 0, met = steps >= goal;
+    const goal = goalFor(st.hostage.streak, need, runBosses(st.hostage)), steps = st.days[d] || 0, met = steps >= goal;
+    st.dayGoals[d] = goal; // what that day asked for (history shows 15k days)
     if (met) {
       st.hostage.streak++; st.stats.metDays++;
       if (steps > goal) bankMove(st, d, 'earn', steps - goal);
@@ -147,6 +167,7 @@ export function settle(st, today) {
     st.hostage.settledThrough = d;
     d = addDays(d, 1);
   }
+  for (const k of Object.keys(st.dayGoals)) if (k < addDays(today, -RULES.HISTORY_DAYS)) delete st.dayGoals[k];
   for (const k of Object.keys(st.paused)) if (k < addDays(today, -RULES.HISTORY_DAYS)) delete st.paused[k];
   const keys = Object.keys(st.days).sort();
   while (keys.length > RULES.HISTORY_DAYS) delete st.days[keys.shift()];
@@ -170,11 +191,12 @@ export function view(st, now = Date.now()) {
   const np = localParts(now);
   const days = [];
   normalize(st);
-  for (let i = 13; i >= 0; i--) { const d = addDays(np.date, -i); days.push({ date: d, steps: st.days[d] ?? null, paused: !!st.paused[d] }); }
+  for (let i = 13; i >= 0; i--) { const d = addDays(np.date, -i); days.push({ date: d, steps: st.days[d] ?? null, paused: !!st.paused[d], goal: d === np.date ? goalToday(st) : (st.dayGoals[d] ?? null) }); }
   const h = st.hostage, todaySteps = st.days[np.date] || 0, goal = goalToday(st);
   const hostage = { ...petView(st, h.rung), streak: h.streak, since: h.since, todayMet: todaySteps >= goal, finalDay: isFinalDay(h.streak, needFor(h.rung)), goal };
   hostage.day = h.streak + 1; // today's day number toward rescue
   hostage.paused = !!st.paused[np.date];
+  hostage.bosses = runBosses(h); hostage.bossToday = isBossDay(h, hostage.day) && !hostage.finalDay;
   const shelf = []; for (let r = 0; r < h.rung; r++) shelf.push(petView(st, r));
   const top = Math.max(st.bestRung, h.rung) + 1, ladder = [];
   for (let r = 0; r <= Math.max(top, ANIMALS.length - 1); r++) {
@@ -205,5 +227,5 @@ export function publicView(st, now = Date.now()) {
   const np = localParts(now), h = st.hostage, p = petAt(st, h.rung), need = needFor(h.rung), goal = goalToday(st), todaySteps = st.days[np.date] || 0;
   return { friendId: st.friendId, today: np.date, hour: np.hour, name: p.name, species: p.species, rung: h.rung, need, day: h.streak + 1, streak: h.streak,
     goal, todaySteps, todayMet: todaySteps >= goal, finalDay: isFinalDay(h.streak, need), paused: !!st.paused[np.date], mood: mood(st, np),
-    deaths: p.deaths, injuries: p.injuries, shelf: h.rung, lastSync: st.lastSync };
+    deaths: p.deaths, injuries: p.injuries, shelf: h.rung, lastSync: st.lastSync, bosses: runBosses(h), bossToday: isBossDay(h, h.streak + 1) && !isFinalDay(h.streak, need) };
 }
