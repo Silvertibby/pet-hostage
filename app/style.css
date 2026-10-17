@@ -148,7 +148,7 @@ details.more .note { padding-left: 10px; margin-top: 8px; min-height: 0; }
 .chart div.boss { box-shadow: 0 0 0 2px #ffb347, 0 0 6px rgba(255,140,60,.7); }
 /* v0.5.3 Raccoon Shop */
 .shoptop { display: grid; grid-template-columns: 102px 1fr; gap: 12px; align-items: center; }
-#spreview { width: 102px; height: 144px; background: radial-gradient(#3a3050, #1b1626 70%); border: 2px solid #3e3354; border-radius: 4px; }
+#spreview { width: 102px; height: 186px; background: radial-gradient(#3a3050, #1b1626 70%); border: 2px solid #3e3354; border-radius: 4px; }
 #slotseg { flex-wrap: wrap; } #slotseg button { flex: 1 1 45%; font-size: 12px; padding: 6px 4px; }
 .sact { margin-top: 8px; font-size: 18px; } .sact .btn { margin-top: 4px; }
 .stier { margin: 10px 0 4px; }
@@ -174,3 +174,7 @@ canvas.sicon { width: calc(var(--iw, 10) * 3px); height: calc(var(--ih, 10) * 3p
 .rw { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 4px; font-size: 11px; color: var(--dim); min-height: 26px; }
 .rw canvas { width: calc(var(--iw, 10) * 3px); height: calc(var(--ih, 10) * 3px); max-width: 60%; image-rendering: pixelated; }
 .rw.got { color: var(--good); }
+.fidrow { justify-content: space-between; margin-top: 6px; }
+/* v0.5.6: tall items (stovepipe) scale down to fit their tile instead of stretching it */
+canvas.sicon { height: min(calc(var(--ih, 10) * 3px), 48px); width: auto; max-width: 100%; }
+.rw canvas { height: min(calc(var(--ih, 10) * 3px), 30px); width: auto; max-width: 60%; }

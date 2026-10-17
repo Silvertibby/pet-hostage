@@ -1,5 +1,9 @@
 # Pet Hostage changelog
 
+## v0.5.6 (2026-10-17)
+- Friends: 📋 copy button for your friend ID; Invite also copies the link.
+- The top hat is now a tall stovepipe.
+
 ## v0.5.5 (2026-10-17)
 - Rescue rewards: free outfit styles for the raccoon at each rescue milestone (top hat at 3), shown as silhouettes on the ladder.
 - Shop styles (hat, shades, neck, face, lapel, paw). Lighter, icon-first UI everywhere.

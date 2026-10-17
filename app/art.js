@@ -264,6 +264,20 @@ function lookPal(slot, t, off = 0) {
   if (c.anim === 'rainbow') { const h = (t * 80 + off * 40) % 360; return [hsl(h, 85, 58), hsl(h, 80, 40), hsl((h + 40) % 360, 95, 75)]; }
   return c.hex;
 }
+// v0.5.6 stovepipe top hat: ~20px crown that rises above the 30x28 head. The part above row 0 goes in g.top
+// (a grid drawn just above the sprite by blit), so no sprite/body coordinates move.
+const TOPHAT_EXT = 12;
+function tallHat(g) {
+  const E = TOPHAT_EXT, t = grid(g.w, g.h + E);
+  rect(t, 11, E - 11, 9, 20, 'f'); rect(t, 10, E - 11, 11, 1, 'f'); // crown, slightly flared lip on top
+  rect(t, 11, E + 5, 9, 3, 'F'); // band
+  rect(t, 12, E - 10, 1, 14, 'Q'); rect(t, 13, E - 10, 1, 2, 'Q'); // shine
+  rect(t, 4, E + 8, 23, 1, 'f'); rect(t, 5, E + 9, 21, 1, 'F'); // brim
+  outline(t, 'k');
+  const top = grid(g.w, E);
+  for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) { const c = t.a[y * t.w + x]; if (!c) continue; if (y < E) top.a[y * top.w + x] = c; else set(g, x, y - E, c); }
+  top.x = 0; top.y = -E; g.top = top;
+}
 // The kidnapper: a raccoon in a fedora with shifty eyes.
 export function raccoon(t, look = 0, annoyed = false) {
   const g = grid(30, 28);
@@ -283,7 +297,7 @@ export function raccoon(t, look = 0, annoyed = false) {
   for (let x = 13; x <= 19; x++) set(g, x, 23 - (x > 16 ? (x - 16) * 0.4 : 0), 'k'); // smirk
   const sty = LOOK.styles || {}, hs = sty.hat || 'fedora', gs = sty.glasses || 'shades';
   if (sty.face === 'mustache') pat2(g, 9, 20, ['n..nn...nn..n', '.nnnnn.nnnnn.']); // v0.5.4 rescue rewards
-  if (hs === 'tophat') layer(g, l => { rect(l, 11, 1, 9, 8, 'f'); rect(l, 10, 1, 11, 1, 'f'); rect(l, 11, 6, 9, 2, 'F'); rect(l, 12, 1, 1, 4, 'Q'); rect(l, 5, 9, 21, 1, 'f'); set(l, 4, 8, 'f'); set(l, 26, 8, 'f'); }, 'k');
+  if (hs === 'tophat') tallHat(g);
   else if (hs === 'bowler') layer(g, l => { ell(l, 15, 7.5, 7.6, 6, 'f'); for (let y = 8; y < 14; y++) for (let x = 0; x < 30; x++) set(l, x, y, null);
     rect(l, 8, 6, 15, 1, 'F'); set(l, 11, 3, 'Q'); set(l, 12, 2, 'Q'); set(l, 10, 4, 'Q'); rect(l, 5, 8, 21, 1, 'f'); rect(l, 6, 9, 19, 1, 'F'); }, 'k');
   else if (hs === 'crown') layer(g, l => { rect(l, 8, 6, 15, 3, 'f'); rect(l, 8, 8, 15, 1, 'F');
@@ -307,6 +321,7 @@ export function raccoon(t, look = 0, annoyed = false) {
     ...(gs === 'monocle' ? { g: '#e8b830', G: '#fff0a0' } : gs === 'aviator' ? { g: '#3c4a68', G: '#9ab8ff' } : {}),
     ...(hat ? { f: hat[0], F: hat[1], Q: hat[2] } : {}), ...(gl ? { g: gl[0], G: gl[2] } : {}) };
   g.alpha = 1;
+  if (g.top) { g.top.pal = g.pal; g.top.alpha = 1; }
   return g;
 }
 
@@ -358,6 +373,7 @@ export function raccoonBody(t, pose = 'idle', opts = {}) {
   const head = raccoon(t, opts.look ?? (pose === 'smug' || pose === 'leash' || pose === 'stir' || pose === 'crank' || pose === 'recipe' || walk ? -1 : 0), sulk);
   const hx = 2 - lean, hy = 1 + by + (sulk ? 1 : 0);
   for (let y = 0; y < head.h; y++) for (let x = 0; x < head.w; x++) { const c = head.a[y * head.w + x]; if (c) set(g, x + hx, y + hy, c); }
+  if (head.top) { const tp = grid(g.w, head.top.h); for (let y = 0; y < tp.h; y++) for (let x = 0; x < head.w; x++) { const c = head.top.a[y * head.w + x]; if (c) set(tp, x + hx, y, c); } tp.x = 0; tp.y = hy + head.top.y; g.top = tp; }
   const bsty = LOOK.styles || {}, ny = 26 + by + (sulk ? 1 : 0);
   if (bsty.bowtie === 'scarf') { const bx = 14 - lean; rect(g, bx - 3, ny, 12, 2, 'r'); for (let x = bx - 3; x < bx + 9; x++) set(g, x, ny + 1, x % 2 ? 'R' : 'r');
     for (let y = ny + 2; y < ny + 8; y++) { set(g, bx + 5, y, 'r'); set(g, bx + 6, y, 'R'); } set(g, bx + 5, ny + 8, 'R'); set(g, bx + 6, ny + 8, 'r'); }
@@ -367,11 +383,20 @@ export function raccoonBody(t, pose = 'idle', opts = {}) {
   if (sulk) for (let x = 13; x <= 19; x++) { set(g, x + hx, 22 + hy, null); set(g, x + hx, 23 + hy, x === 13 || x === 19 ? 'k' : null); set(g, x + hx, 22 + hy, x > 13 && x < 19 ? 'k' : 'm'); } // flat frown
   const coat = lookPal('shirt', t, 1), bow = lookPal('bowtie', t, 3);
   g.pal = { ...head.pal, c: '#4a3858', C: '#33263f', r: '#d8405e', R: '#a02a46', y: '#ffd84a', p: '#ff6fa8', v: '#3e9a4a', w: '#8a5a3a', W: '#e8b830', ...(coat ? { c: coat[0], C: coat[1] } : {}), ...(bow ? { r: bow[0], R: bow[1] } : {}) };
+  if (g.top) { g.top.pal = g.pal; g.top.alpha = 1; }
   g.alpha = 1;
   return g;
 }
 function pat2(g, x, y, rows) { rows.forEach((r, j) => { for (let i = 0; i < r.length; i++) if (r[i] !== '.') set(g, x + i, y + j, r[i]); }); }
 
+// a sprite + its overflow (g.top) as one plain grid, E rows taller
+function flatten(g, E) {
+  if (!E && !g.top) return g;
+  const f = grid(g.w, g.h + E); f.pal = g.pal; f.alpha = g.alpha;
+  for (let i = 0; i < g.a.length; i++) if (g.a[i]) f.a[i + E * g.w] = g.a[i];
+  if (g.top) for (let y = 0; y < g.top.h; y++) for (let x = 0; x < g.top.w; x++) { const c = g.top.a[y * g.top.w + x]; if (c) set(f, x + g.top.x, y + g.top.y + E, c); }
+  return f;
+}
 // v0.5.4: one outfit item on its own (shop tiles, shelf rewards): the pixels it adds to the raccoon, cropped. dark = silhouette.
 const HEAD_SLOTS = ['hat', 'glasses', 'face'];
 export function itemSprite(slot, style, color, dark = false, t = 0) {
@@ -380,6 +405,7 @@ export function itemSprite(slot, style, color, dark = false, t = 0) {
   const draw = lk => { LOOK = lk; return head ? raccoon(t, 0) : raccoonBody(t, 'idle'); };
   let a, b;
   try { b = draw({ styles: { [slot]: 'none' } }); a = draw({ styles: { [slot]: style }, ...(c ? { [slot]: c } : {}) }); } finally { LOOK = prev; }
+  const E = a.top ? Math.max(0, -a.top.y) : 0; a = flatten(a, E); b = flatten(b, E);
   let x0 = a.w, y0 = a.h, x1 = -1, y1 = -1;
   for (let y = 0; y < a.h; y++) for (let x = 0; x < a.w; x++) { const i = y * a.w + x; if (a.a[i] && a.a[i] !== b.a[i]) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); } }
   if (x1 < 0) return null;
@@ -389,6 +415,7 @@ export function itemSprite(slot, style, color, dark = false, t = 0) {
   g.alpha = 1; return g;
 }
 export function blit(ctx, g, ox, oy, opt = {}) {
+  if (g.top && !opt.flipY) blit(ctx, g.top, ox + g.top.x, oy + g.top.y, opt);
   ctx.save(); ctx.globalAlpha = (opt.alpha ?? 1) * (g.alpha ?? 1);
   for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) {
     const c = g.a[y * g.w + x]; if (!c) continue;

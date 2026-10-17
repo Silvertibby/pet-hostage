@@ -3,7 +3,7 @@ import { VILLAINS, SLOTS, COLORS, TIERS, colorById, owns, REWARDS, STYLE_INFO, s
 import { drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, itemSprite, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.5.5';
+const VERSION = 'v0.5.6';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
@@ -220,7 +220,14 @@ window.__tap = (who) => { // demo/screenshot helper: tap the centre of the pet o
   const hb = hitBoxes(s, sceneT)[who], r = c.getBoundingClientRect();
   c.dispatchEvent(new MouseEvent('click', { clientX: r.left + (hb.x + hb.w / 2) / VIEW_W * r.width, clientY: r.top + (hb.y + hb.h / 2) / VIEW_H * r.height, bubbles: true }));
 };
-function noteAvatar(canvas) { blit(canvas.getContext('2d'), raccoon(0, -1), 0, 0); }
+// head avatar: a tall hat is shrunk to fit the small canvas instead of being cut off
+function noteAvatar(canvas) {
+  const g = raccoon(0, -1), E = g.top ? -g.top.y : 0, ctx = canvas.getContext('2d');
+  if (!E) { blit(ctx, g, 0, 0); return; }
+  const off = document.createElement('canvas'); off.width = g.w; off.height = g.h + E; blit(off.getContext('2d'), g, 0, E);
+  const k = canvas.height / off.height, w = Math.round(off.width * k); ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(off, Math.round((canvas.width - w) / 2), 0, w, canvas.height);
+}
 
 function renderHome() {
   const s = state, h = s.hostage;
@@ -327,14 +334,14 @@ function renderShop() {
   view.innerHTML = `
     <p class="row" style="justify-content:space-between"><button class="btn small ghost" id="sback">←</button><span>👟 <b>${fmt(bank)}</b></span></p>
     <h2>${esc(v.shop.toUpperCase())}</h2>
-    <div class="shoptop"><canvas id="spreview" class="px" width="34" height="48"></canvas>
+    <div class="shoptop"><canvas id="spreview" class="px" width="34" height="62"></canvas>
       <div><div class="seg icons" id="slotseg">${tabs.map(sl => `<button class="${sl === shopSlot ? 'on' : ''}" data-slot="${sl}" title="${esc(SLOTS[sl].label)}">${SLOTS[sl].icon}</button>`).join('')}</div>
       <div class="sact">${action}</div></div></div>
     ${styles.length > 1 ? `<div class="sgrid">${styles.map(styleTile).join('')}</div>` : ''}
     ${colorSlot ? Object.keys(TIERS).map((t, i) => { const cs = COLORS.filter(x => x.tier === t); return cs.length ? `<div class="sgrid">${i ? '' : `<button class="scell ${!eq[shopSlot] ? 'on' : ''} ${pick === 'default' ? 'sel' : ''}" data-color="default" title="Default"><span class="swatch none"></span><span class="ssub">${!eq[shopSlot] ? '✓' : ''}</span></button>`}${cs.map(cell).join('')}</div>` : ''; }).join('') : ''}`;
   drawItemIcons(view, colorSlot ? preview : eq);
   const cv = $('#spreview'), ctx = cv.getContext('2d'), t0 = performance.now();
-  const loop = now => { if (!cv.isConnected) return; const t = qs.has('t') ? +qs.get('t') + (now - t0) / 1000 : (now - t0) / 1000; ctx.clearRect(0, 0, 34, 48); setRaccoonLook(preview); blit(ctx, raccoonBody(t, 'idle'), 0, 0); setRaccoonLook(myLook()); anim = requestAnimationFrame(loop); };
+  const loop = now => { if (!cv.isConnected) return; const t = qs.has('t') ? +qs.get('t') + (now - t0) / 1000 : (now - t0) / 1000; ctx.clearRect(0, 0, 34, 62); setRaccoonLook(preview); blit(ctx, raccoonBody(t, 'idle'), 0, 14); setRaccoonLook(myLook()); anim = requestAnimationFrame(loop); };
   anim = requestAnimationFrame(loop);
   $('#sback').addEventListener('click', () => { shopPick = null; go('home'); });
   view.querySelectorAll('[data-slot]').forEach(b => b.addEventListener('click', () => { shopSlot = b.dataset.slot; shopPick = null; render(); }));
@@ -406,12 +413,13 @@ function renderFriends() {
   view.innerHTML = `
     <h2>Friends</h2>
     <div class="card"><p><button class="btn acc" id="finvite" ${mine ? '' : 'disabled'}>👥 Invite a friend</button></p>
-      <div class="dim small">ID <b>${esc(mine || '…')}</b></div></div>
+      <div class="row nowrap fidrow"><span class="dim small">ID <b>${esc(mine || '…')}</b></span>${mine ? `<button class="btn small ghost" id="fidcopy" aria-label="Copy friend ID" title="Copy friend ID">📋</button>` : ''}</div></div>
     <div class="card">
       <div class="row nowrap"><input id="fid" type="text" class="field" placeholder="Friend ID" autocapitalize="characters" autocomplete="off" maxlength="12"><button class="btn" id="fadd">Add</button></div></div>
     <div id="flist">${l.length ? `<div class="dim">Loading…</div>` : ''}</div>`;
   wireCopy(view);
   $('#finvite').addEventListener('click', inviteFriend);
+  $('#fidcopy')?.addEventListener('click', () => copyText(mine, '📋 Copied'));
   const add = async () => { if (await addFriend($('#fid').value)) renderFriends(); };
   $('#fadd').addEventListener('click', add); $('#fid').addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
   if (!l.length) return;
@@ -788,11 +796,22 @@ async function enablePush(e, msgEl) {
 
 // ---- multi-player helpers ----
 // v0.5.1: the ONE invite action. Share sheet with the ?friend= link (it also onboards new players); falls back to copying it.
+async function copyText(text, msg) {
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch {
+    try { const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); } catch { ok = false; }
+  }
+  if (msg) toast(ok ? msg : text, ok ? 1600 : 6000);
+  return ok;
+}
 async function inviteFriend() {
   const id = state && state.friendId; if (!id) { toast('Your friend ID is not ready yet. Pull to refresh.'); return; }
   const url = friendLink(id), data = { title: 'Pet Hostage', text: 'A raccoon took my pet hostage. Add me as a friend on Pet Hostage:', url };
-  try { if (navigator.share) { await navigator.share(data); return; } } catch (e) { if (e.name === 'AbortError') return; }
-  try { await navigator.clipboard.writeText(url); toast('Invite link copied. Send it to a friend!'); } catch { toast(url, 6000); }
+  // v0.5.6: the link always goes on the clipboard too. Both calls start inside the tap (Safari needs share() there).
+  const cp = copyText(url, null);
+  let shared = null; try { if (navigator.share) shared = navigator.share(data); } catch { shared = null; }
+  const copied = await cp; toast(copied ? '📋 Link copied' : url, copied ? 1600 : 6000);
+  if (shared) try { await shared; } catch { /* closed or failed: the link is still copied */ }
 }
 function setCode(c) {
   if (code && code !== c) { const old = JSON.parse(localStorage.getItem('ph.oldCodes') || '[]'); if (!old.includes(code)) localStorage.setItem('ph.oldCodes', JSON.stringify([code, ...old].slice(0, 5))); }
@@ -987,7 +1006,7 @@ async function boot2() {
   else renderOffline();
 }
 async function boot() {
-  blit($('#ptrrac').getContext('2d'), raccoon(0, -1), 0, 0);
+  noteAvatar($('#ptrrac'));
   if ('serviceWorker' in navigator && !DEMO) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => { swReg = r; r.update().catch(() => {}); }).catch(() => {});
   if (DEMO && qs.has('spin')) setTimeout(() => spinner(true, 'Checking with The Raccoon…'), 50);
   if (DEMO) {
