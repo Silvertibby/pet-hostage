@@ -18,3 +18,7 @@ Tips
 - Days end at midnight **Pacific time**. Make sure your watch has synced to Garmin Connect before then. The sync app can only send what Garmin has handed over.
 - Steps look behind? Open Garmin Connect so your watch syncs, then open Pet Hostage Sync and tap **Sync now**.
 - If the phone keeps killing it: Settings → Apps → Pet Hostage Sync → Battery → **Unrestricted**.
+
+## Fitbit instead of Garmin
+
+Same steps, but share Fitbit steps from **Google Health** (Connections → Partner apps → Sync your favorite health apps) and put Google Health at the top of Health Connect → Data sources and priority. Full steps: [../FITBIT-SETUP.md](../FITBIT-SETUP.md).

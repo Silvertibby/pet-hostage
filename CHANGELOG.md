@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.5.4 (2026-10-17)
+- Step sync: Fitbit is now a choice, with setup steps for iPhone and Android.
+
 ## v0.5.3 (2026-10-17)
 - The Raccoon Shop: spend Spare Steps to dress up your kidnapper. Items are yours forever.
 

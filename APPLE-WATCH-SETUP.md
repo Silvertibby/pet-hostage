@@ -32,4 +32,5 @@ You get your own pet and raccoon. A small Shortcut sends your daily step total f
 Good to know
 - Days end at midnight Pacific time.
 - iPhone locks Health data while the phone is locked, so an automatic run can occasionally miss. Tapping Sync on the Pet Hostage home screen before bed is a safe habit.
-- Other watch (Fitbit, Samsung, etc.)? Same steps, but first turn on Apple Health syncing in your watch's app, and in step 4 set Source is your watch's app.
+- Fitbit? See [FITBIT-SETUP.md](FITBIT-SETUP.md).
+- Other watch (Samsung, etc.)? Same steps, but first turn on Apple Health syncing in your watch's app, and in step 4 set Source is your watch's app.

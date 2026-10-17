@@ -3,7 +3,7 @@ import { VILLAINS, SLOTS, COLORS, TIERS, colorById, owns } from './shop.js';
 import { drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.5.3';
+const VERSION = 'v0.5.4';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
@@ -583,9 +583,12 @@ function garminHtml(s) {
 function androidLink() { return `intent://setup?c=${encodeURIComponent(code)}#Intent;scheme=pethostage;package=${ANDROID_PKG};S.browser_fallback_url=${encodeURIComponent(APK_URL)};end`; }
 function androidHtml(s, w = 'garmin') {
   const a = s.android;
-  const share = w === 'garmin'
+  const share = w === 'fitbit'
+    ? `<li>Get your <b>Fitbit</b> steps into <b>Health Connect</b>: open <b>Google Health</b> (it replaced the Fitbit app) → <b>Connections</b> → <b>Partner apps</b> → <b>Sync your favorite health apps</b> → <b>Set up</b> → <b>Accept</b>, pick <b>Steps</b> and tap <b>Allow</b> (also allow background access).</li>
+      <li>Count Fitbit first: phone Settings → <b>Health Connect</b> → <b>Data and access</b> (or Manage data) → <b>Activity</b> → <b>Data sources and priority</b>. Drag <b>Google Health</b> to the top. Health Connect counts overlapping steps once, from the top app.</li>`
+    : w === 'garmin'
     ? `<li>In <b>Garmin Connect</b>: menu → Settings → <b>Health Connect</b> (or Connected apps), tap Connect and allow <b>Steps</b>. Needs Android 14+.</li>`
-    : `<li>Make sure ${w === 'none' ? 'the app that counts your steps' : 'your watch\'s app'} (<b>Samsung Health</b>, <b>Fitbit</b>, Google Fit…) shares <b>Steps</b> with <b>Health Connect</b>: in that app's settings, or phone Settings → Health Connect → App permissions.</li>`;
+    : `<li>Make sure ${w === 'none' ? 'the app that counts your steps' : 'your watch\'s app'} (<b>Samsung Health</b>, Google Fit…) shares <b>Steps</b> with <b>Health Connect</b>: in that app's settings, or phone Settings → Health Connect → App permissions.</li>`;
   return `<div class="card" id="android">${a && a.lastSync
       ? `<div><b>Pet Hostage Sync is connected</b></div><div class="dim" style="margin-top:6px">Last sync ${timePT(a.lastSync)} · ${ago(a.lastSync)} · ${fmt(a.lastSteps)} steps</div>`
       : `<div class="dim">A small app reads your steps from Health Connect and sends them here every ~15 min. No passwords.</div>`}</div>
@@ -593,7 +596,7 @@ function androidHtml(s, w = 'garmin') {
     <ol class="guide">
       <li><a class="btn" href="${APK_URL}" download>Download the app</a><br>Open it and allow <b>Install unknown apps</b> when asked.</li>
       ${share}
-      <li><a class="btn acc" href="${esc(androidLink())}">Set up Android sync</a><br>Opens the app with your code filled in. Tap <b>Allow steps</b>.</li>
+      <li><a class="btn acc" href="${esc(androidLink())}">Set up Android sync</a><br>Opens the app with your code filled in. Tap <b>Allow steps</b>.</li>${w === 'fitbit' ? `<li><b>Check it:</b> tap <b>Sync now</b>, then <b>Check steps</b> in Pet Hostage. Today's count should match your Fitbit. Lower? Move Google Health to the top (step above) and open Google Health to sync your Fitbit.</li>` : ''}
     </ol>
     <p class="dim">🔒 Private code: <b>${esc(code)}</b> <button class="btn small ghost" data-copy="${esc(code)}">Copy code (setup only)</button> (paste it in the Sync app if the button doesn't open it). Days end at midnight Pacific.</p></details>`;
 }
@@ -602,7 +605,7 @@ function syncUrl() { return `${WORKER}/sync?code=${code}&steps=`; }
 // ---- Step sync setup: pick phone + watch, show only that recipe ----
 // No shareable iCloud shortcut exists (they can't be made from Linux), so iPhone players build it; the sync URL carries their code.
 const PHONES = [['iphone', 'iPhone'], ['android', 'Android']];
-const WATCHES = [['apple', 'Apple Watch'], ['garmin', 'Garmin'], ['none', 'No watch'], ['other', 'Other (Fitbit, Samsung…)']];
+const WATCHES = [['apple', 'Apple Watch'], ['garmin', 'Garmin'], ['fitbit', 'Fitbit'], ['none', 'No watch'], ['other', 'Other (Samsung…)']];
 const benLike = () => !!(state.garmin && state.garmin.lastSync); // direct Garmin server sync = Ben's player
 function phonePick() {
   const q = qs.get('phone') || (qs.get('android') != null ? 'android' : null); if (PHONES.some(p => p[0] === q)) return q;
@@ -618,13 +621,18 @@ function recipeHtml(w) {
   const src = {
     apple: `<b>Source is</b> your Apple Watch (e.g. "Stephanie's Apple Watch")`,
     garmin: `<b>Source is Connect</b> (Garmin's app)`,
-    other: `<b>Source is</b> your watch's app (e.g. Fitbit, Samsung Health)`,
+    fitbit: `<b>Source is Google Health</b> (or whatever name your Fitbit steps show under in Health → Steps → Data Sources &amp; Access)`,
+    other: `<b>Source is</b> your watch's app (e.g. Samsung Health)`,
     none: `<b>Source is</b> your iPhone`,
   }[w];
-  const dev = { apple: 'your Apple Watch', garmin: 'Garmin Connect', other: "your watch's app", none: 'the Health app' }[w];
+  const dev = { apple: 'your Apple Watch', garmin: 'Garmin Connect', fitbit: 'your Fitbit', other: "your watch's app", none: 'the Health app' }[w];
   return `
     ${w === 'garmin' ? `<details class="more"${open}><summary>0. Garmin → Apple Health</summary>
     <ol class="guide"><li>In <b>Garmin Connect</b>: menu → Settings → Connected Apps → <b>Apple Health</b>. Turn it on and allow <b>Steps</b>.</li></ol></details>` : ''}
+    ${w === 'fitbit' ? `<details class="more"${open}><summary>0. Fitbit → Apple Health</summary>
+    <ol class="guide"><li>Update the <b>Google Health</b> app (it replaced the Fitbit app; v5.05 or newer).</li>
+      <li>Sign in with your <b>Google account</b> (your Fitbit account moves to Google).</li>
+      <li><b>Connections</b> → <b>Apps and services</b> → <b>Apple Health</b> → <b>Get started</b> → <b>Agree</b>, then allow <b>Steps</b>.</li></ol></details>` : ''}
     ${w === 'other' ? `<details class="more"${open}><summary>0. Watch → Apple Health</summary>
     <ol class="guide"><li>In your watch's app, turn on syncing to <b>Apple Health</b> and allow <b>Steps</b>.</li></ol></details>` : ''}
     <details class="more"${open}><summary>1. Build the shortcut</summary>
@@ -644,7 +652,7 @@ function recipeHtml(w) {
       <li><b>11:50 PM</b>, Daily, <b>Run Immediately</b> (older iOS: turn off <b>Ask Before Running</b>). Pick <b>${SHORTCUT_NAME}</b>.</li>
       <li>Add a few more the same way, e.g. <b>12, 3, 6, 9 PM</b>.</li>
     </ol>
-    <p class="dim">Days end at midnight Pacific. Health is locked while your iPhone is locked, so a run can miss; tap Sync before bed to be safe.</p></details>`;
+    <p class="dim">Days end at midnight Pacific. Health is locked while your iPhone is locked, so a run can miss; tap Sync before bed to be safe.${w === 'fitbit' ? ' Fitbit tip: open <b>Google Health</b> before bed so your latest steps reach Apple Health first.' : ''}</p></details>`;
 }
 function iphoneHtml(w) {
   return `${benLike() ? `<p class="dim">Backup only: Garmin syncs on its own (above). A Shortcut can raise today's count, never lower it.</p>` : ''}
