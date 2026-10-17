@@ -1,8 +1,9 @@
 import { maybeRevived, revivedVars } from './revived.js';
-import { drawScene, drawDeath, drawShelfPet, raccoon, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
+import { VILLAINS, SLOTS, COLORS, TIERS, colorById, owns } from './shop.js';
+import { drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.5.2';
+const VERSION = 'v0.5.3';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
@@ -258,6 +259,7 @@ function renderHome() {
   startScene($('#scene')); noteAvatar($('#rac'));
   $('#gosetup')?.addEventListener('click', () => go('sync'));
   $('#pausebtn')?.addEventListener('click', confirmPause);
+  $('#goshop')?.addEventListener('click', () => go('shop'));
   view.querySelectorAll('[data-replay]').forEach(b => b.addEventListener('click', () => { const d = (state.deathLog || []).find(x => String(x.id) === b.dataset.replay); if (d && !deathPlaying) playDeath(d); }));
   $('#refreshbtn')?.addEventListener('click', () => doRefresh('button'));
   $('#pushbanner-on')?.addEventListener('click', e => enablePush(e, $('#pushbanner-msg'))); // permission prompt must come straight from this tap
@@ -272,9 +274,9 @@ function bankHtml(s, paused) {
       <span>${BANK_ICON} Spare Steps <b>${fmt(bal)}</b></span>
       ${paused ? `<span class="tag">⏸ today is paused</span>` : `<button class="btn small ${can ? 'acc' : 'ghost'}" id="pausebtn" ${can ? '' : 'disabled'}>⏸ Pause today · ${fmt(cost)}</button>`}</div>
     <div class="dim small">${paused ? `Today doesn't count: no progress, no miss. Back to normal tomorrow.` : `Steps over each day's goal are saved here. A missed day empties it.${can ? '' : ` Pause needs ${fmt(cost)}.`}`}</div>
-    <div class="soon dim small">🎩 Raccoon's shop: coming soon</div></div>`;
+    <div class="soon"><button class="btn small" id="goshop">🛍 Raccoon Shop</button> <span class="dim small">Dress up your kidnapper. Items are yours forever.</span></div></div>`;
 }
-const BANK_KIND = { earn: 'saved', pause: '⏸ paused', reset: '☠ emptied' };
+const BANK_KIND = { earn: 'saved', pause: '⏸ paused', reset: '☠ emptied', shop: '🛍 shop' };
 function bankHistoryHtml(s) {
   const log = s.bankLog || [];
   return `<div class="legend"><span>${BANK_ICON} Spare Steps: <b>${fmt(s.bank || 0)}</b></span><span>${(s.days || []).filter(d => d.paused).length ? '⏸ = paused day' : ''}</span></div>
@@ -294,6 +296,65 @@ function confirmPause() {
     if (DEMO) { state.bank -= cost; state.pausedToday = true; state.hostage.paused = true; state.days[state.days.length - 1].paused = true; close(); render(); return; }
     try { const r = await api('/pause', { confirm: true }); state = adoptCode(r.state); close(); render(); toast('Paid. Today is paused.'); }
     catch (err) { close(); if (err.body && err.body.state) { state = err.body.state; render(); } toast(err.message === 'already paused today' ? 'Today is already paused.' : err.message === 'not enough Spare Steps' ? 'Not enough Spare Steps.' : "Couldn't pause: " + err.message); }
+  });
+}
+
+// ---- v0.5.3: Raccoon Shop (per villain; only the raccoon for now). The worker owns prices, balance and ownership. ----
+const VILLAIN = 'raccoon';
+const myLook = () => (state && state.cosmetics && state.cosmetics.equipped && state.cosmetics.equipped[VILLAIN]) || {};
+let shopSlot = 'shirt', shopPick = null; // the swatch being looked at (try-on preview)
+const swatchCss = c => c.anim === 'gold' ? 'swatch gold' : c.anim === 'rainbow' ? 'swatch rainbow' : 'swatch';
+function renderShop() {
+  const v = VILLAINS[VILLAIN], cos = state.cosmetics || { owned: {}, equipped: {} }, eq = myLook(), shelf = state.hostage.rung, bank = state.bank || 0;
+  const pick = shopPick && shopPick.slot === shopSlot ? shopPick.color : (eq[shopSlot] || 'default');
+  const preview = { ...eq }; if (pick === 'default') delete preview[shopSlot]; else preview[shopSlot] = pick;
+  const cell = c => {
+    const own = owns(cos, VILLAIN, shopSlot, c.id), on = eq[shopSlot] === c.id, locked = !own && shelf < (c.needShelf || 0);
+    const sub = on ? '✓ wearing' : own ? 'owned' : locked ? `🔒 ${c.needShelf} rescued` : fmt(c.price);
+    return `<button class="scell ${on ? 'on' : ''} ${own ? 'own' : ''} ${locked ? 'locked' : ''} ${pick === c.id ? 'sel' : ''}" data-color="${c.id}">
+      <span class="${swatchCss(c)}" style="background:${c.hex[0]}"></span><span class="sname">${esc(c.label)}</span><span class="ssub">${sub}</span></button>`;
+  };
+  const tiers = Object.keys(TIERS).map(t => { const cs = COLORS.filter(c => c.tier === t); return cs.length ? `<div class="stier dim small">${TIERS[t]}</div><div class="sgrid">${cs.map(cell).join('')}</div>` : ''; }).join('');
+  const c = colorById(pick), own = c && owns(cos, VILLAIN, shopSlot, c.id), on = c ? eq[shopSlot] === c.id : !eq[shopSlot];
+  const locked = c && !own && shelf < (c.needShelf || 0);
+  const action = !c ? (on ? `<span class="dim">Default look</span>` : `<button class="btn acc" id="sact" data-do="default">Wear default</button>`)
+    : own ? (on ? `<button class="btn ghost" id="sact" data-do="default">Take off</button>` : `<button class="btn acc" id="sact" data-do="wear">Wear</button>`)
+    : locked ? `<span class="dim">🔒 Rescue ${c.needShelf} pets to unlock (you have ${shelf})</span>`
+    : `<button class="btn acc" id="sact" data-do="buy" ${bank >= c.price ? '' : 'disabled'}>Buy · ${fmt(c.price)}</button>${bank >= c.price ? '' : ` <span class="dim small">need ${fmt(c.price - bank)} more</span>`}`;
+  view.innerHTML = `
+    <p class="row" style="justify-content:space-between"><button class="btn small ghost" id="sback">← Hostage</button><span>👟 <b>${fmt(bank)}</b> Spare Steps</span></p>
+    <h2>${esc(v.shop.toUpperCase())}</h2>
+    <div class="shoptop"><canvas id="spreview" class="px" width="34" height="48"></canvas>
+      <div><div class="seg" id="slotseg">${v.slots.map(sl => `<button class="${sl === shopSlot ? 'on' : ''}" data-slot="${sl}">${SLOTS[sl].icon} ${SLOTS[sl].label}</button>`).join('')}</div>
+      <div class="sact"><b>${c ? esc(c.label) : 'Default'} ${esc(SLOTS[shopSlot].label.toLowerCase())}</b><br>${action}</div></div></div>
+    <div class="sgrid"><button class="scell ${!eq[shopSlot] ? 'on' : ''} ${pick === 'default' ? 'sel' : ''}" data-color="default"><span class="swatch none"></span><span class="sname">Default</span><span class="ssub">${!eq[shopSlot] ? '✓ wearing' : 'free'}</span></button></div>
+    ${tiers}
+    <p class="dim small">Bought items are yours forever, even if a pet dies (that only empties your Spare Steps). Switching outfits is free.</p>`;
+  const cv = $('#spreview'), ctx = cv.getContext('2d'), t0 = performance.now();
+  const loop = now => { if (!cv.isConnected) return; const t = qs.has('t') ? +qs.get('t') + (now - t0) / 1000 : (now - t0) / 1000; ctx.clearRect(0, 0, 34, 48); setRaccoonLook(preview); blit(ctx, raccoonBody(t, 'idle'), 0, 0); setRaccoonLook(myLook()); anim = requestAnimationFrame(loop); };
+  anim = requestAnimationFrame(loop);
+  $('#sback').addEventListener('click', () => { shopPick = null; go('home'); });
+  view.querySelectorAll('[data-slot]').forEach(b => b.addEventListener('click', () => { shopSlot = b.dataset.slot; shopPick = null; render(); }));
+  view.querySelectorAll('[data-color]').forEach(b => b.addEventListener('click', () => { shopPick = { slot: shopSlot, color: b.dataset.color }; render(); }));
+  $('#sact')?.addEventListener('click', e => { const d = e.currentTarget.dataset.do; if (d === 'buy') confirmBuy(c); else equip(d === 'default' ? null : c.id); });
+}
+async function equip(color) {
+  if (DEMO) { const eq = state.cosmetics.equipped[VILLAIN] = state.cosmetics.equipped[VILLAIN] || {}; if (color) eq[shopSlot] = color; else delete eq[shopSlot]; render(); return; }
+  try { const r = await api('/shop/equip', { villain: VILLAIN, slot: shopSlot, color }); state = r.state; render(); } catch (e) { toast("Couldn't change outfit: " + e.message); }
+}
+function confirmBuy(c) {
+  const ov = $('#overlay'); ov.hidden = false; const slot = shopSlot;
+  ov.innerHTML = `<div class="ovbox"><h2>🛍 ${esc(VILLAINS[VILLAIN].shop)}</h2>
+    <p>Buy the <b>${esc(c.label)} ${esc(SLOTS[slot].label.toLowerCase())}</b> for <b>${fmt(c.price)}</b> Spare Steps?</p>
+    <p class="dim small">Yours forever. Spare Steps aren't refunded. You have ${fmt(state.bank)}; after: ${fmt(state.bank - c.price)}.</p>
+    <div class="row" style="justify-content:space-between"><button class="btn ghost" id="bno">Cancel</button><button class="btn acc" id="byes">Buy · ${fmt(c.price)}</button></div></div>`;
+  const close = () => { ov.hidden = true; ov.innerHTML = ''; };
+  $('#bno').addEventListener('click', close);
+  $('#byes').addEventListener('click', async e => {
+    e.target.disabled = true;
+    if (DEMO) { const cos = state.cosmetics; ((cos.owned[VILLAIN] = cos.owned[VILLAIN] || {})[slot] = cos.owned[VILLAIN][slot] || []).push(c.id); (cos.equipped[VILLAIN] = cos.equipped[VILLAIN] || {})[slot] = c.id; state.bank -= c.price; close(); render(); return; }
+    try { const r = await api('/shop/buy', { villain: VILLAIN, slot, color: c.id }); state = r.state; close(); render(); toast(`Bought. He's wearing it.`); }
+    catch (err) { close(); if (err.body && err.body.state) { state = err.body.state; render(); } toast(err.message === 'not enough Spare Steps' ? 'Not enough Spare Steps.' : "Couldn't buy: " + err.message); }
   });
 }
 
@@ -365,7 +426,7 @@ function renderFriendView(id) {
       <details class="more"><summary>Nickname</summary><div class="row nowrap"><input id="fnick" type="text" class="field" maxlength="24" placeholder="${esc(f.name)}'s human" value="${esc(x.nick || '')}"><button class="btn small" id="fnicksave">Save</button></div>
         <p><button class="btn small ghost" id="fremove">Remove friend</button></p></details>`;
     const ctx = $('#fscene').getContext('2d'), t0 = performance.now(), canvas = $('#fscene');
-    const fst = { mood: f.mood, species: f.species, injuries: f.injuries, deaths: f.deaths || 0, freed: !!f.todayMet, final: !!f.finalDay || !!f.bossToday, paused: !!f.paused };
+    const fst = { look: f.look || {}, mood: f.mood, species: f.species, injuries: f.injuries, deaths: f.deaths || 0, freed: !!f.todayMet, final: !!f.finalDay || !!f.bossToday, paused: !!f.paused };
     const loop = now => { if (!canvas.isConnected) return; drawScene(ctx, fst, qs.has('t') ? +qs.get('t') : (now - t0) / 1000); anim = requestAnimationFrame(loop); };
     anim = requestAnimationFrame(loop);
     $('#fback').addEventListener('click', () => go('friends'));
@@ -392,9 +453,15 @@ function offerFriendFromLink() {
     $('#fyes').addEventListener('click', async () => { close(); if (await addFriend(id)) go('friends'); });
   }).catch(() => toast(`No player with friend ID ${id}.`));
 }
+// ?look=shirt:gold,hat:black,... puts an outfit on the demo raccoon (owned + equipped)
+function demoCosmetics() {
+  const owned = { shirt: ['black', 'navy', 'gold'], hat: ['black', 'burgundy'], bowtie: ['mustard', 'rainbow'], glasses: ['black'] }, equipped = { shirt: 'navy', hat: 'black' };
+  if (qs.get('look')) { for (const k of Object.keys(equipped)) delete equipped[k]; for (const kv of qs.get('look').split(',')) { const [sl, c] = kv.split(':'); if (sl && c) { equipped[sl] = c; owned[sl] = [...new Set([...(owned[sl] || []), c])]; } } }
+  return { owned: { raccoon: owned }, equipped: { raccoon: equipped } };
+}
 function demoBosses(rung) { const n = 3 + 2 * rung, k = rung < 2 ? 0 : Math.floor((n - 4) / 3), o = []; for (let i = 1; i <= k; i++) { const d = Math.min(n - 2, Math.max(2, Math.round(1 + i * (n - 1) / (k + 1)))); if (!o.includes(d)) o.push(d); } return o; }
 function demoFriend(id) {
-  const D = { BEN123: { name: 'Nugget', species: 'hamster', rung: 1, need: 5, streak: 2, todaySteps: 12450, mood: 'happy', deaths: 0, injuries: [] },
+  const D = { BEN123: { name: 'Nugget', species: 'hamster', rung: 1, need: 5, streak: 2, todaySteps: 12450, mood: 'happy', deaths: 0, injuries: [], look: { shirt: 'gold', glasses: 'black', bowtie: 'teal' } },
     STEPH1: { name: 'Chompsky', species: 'bunny', rung: 0, need: 3, streak: 2, todaySteps: 9120, mood: 'worried', deaths: 0, injuries: [] },
     BRO777: { name: 'Chompsky', species: 'bunny', rung: 0, need: 3, streak: 1, todaySteps: 4300, mood: 'scared', deaths: 1, injuries: ['pop'] },
     NAPPER: { name: 'Acorn', species: 'squirrel', rung: 2, need: 7, streak: 4, todaySteps: 2100, mood: 'happy', deaths: 1, injuries: ['catapult'], paused: true } };
@@ -763,9 +830,10 @@ function welcomeScene() {
 
 function render() {
   stopAnim();
+  setRaccoonLook(myLook()); // your villain's outfit, everywhere he appears
   $('#tabs').hidden = !state;
-  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === (tab === 'friend' ? 'friends' : tab)));
-  if (tab === 'friends') renderFriends(); else if (tab === 'friend') renderFriendView(friendOpen); else if (tab === 'sync') renderSync(); else if (tab === 'settings') renderSettings(); else if (tab === 'shelf') renderShelf(); else renderHome();
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === (tab === 'friend' ? 'friends' : tab === 'shop' ? 'home' : tab)));
+  if (tab === 'shop') renderShop(); else if (tab === 'friends') renderFriends(); else if (tab === 'friend') renderFriendView(friendOpen); else if (tab === 'sync') renderSync(); else if (tab === 'settings') renderSettings(); else if (tab === 'shelf') renderShelf(); else renderHome();
   maybePlayDeath();
 }
 function go(t) { tab = t; render(); window.scrollTo(0, 0); }
@@ -877,6 +945,7 @@ function demoState(m) {
   if (m === 'final' || m === 'finalpaid') { if (!qs.has('rung')) rung = 0; streak = need(rung) - 1; todaySteps = m === 'final' ? 9420 : 15230; mood = m === 'final' ? 'worried' : 'happy'; hour = m === 'final' ? 18 : 21; }
   const pet = r => ({ rung: r, name: nm[r], species: sp[r], need: need(r), deaths: (inj[r] || []).length, injuries: inj[r] || [], rescuedOn: r < rung ? day(-30 + r * 9) : null, rescues: 1 });
   const shelf = Array.from({ length: rung }, (_, r) => pet(r));
+  if (m === 'shop') { if (!qs.has('rung')) rung = 6; streak = 2; todaySteps = 10420; mood = 'happy'; }
   if (m === 'boss') { if (!qs.has('rung')) rung = 4; streak = +(qs.get('streak') || 7); todaySteps = 8800; mood = 'worried'; hour = 17; }
   const bosses = demoBosses(rung), bossToday = streak + 1 < need(rung) && bosses.includes(streak + 1);
   const goal = streak + 1 >= need(rung) || bossToday ? FINAL_GOAL : GOAL;
@@ -887,7 +956,7 @@ function demoState(m) {
     v: 2, today, hour, goal, todaySteps, lastSync: m === 'nosync' ? null : Date.now() - 23 * 60000, lastSteps: todaySteps, started: day(-40),
     hostage, shelf, ladder, mood, lastDeath, deathSeen: 0,
     deathLog: [lastDeath, { id: 2, date: day(-21), rung: 2, name: 'Acorn', species: 'squirrel', type: 'catapult', rekidnap: { name: 'Nugget', same: false } }, { id: 1, date: day(-33), rung: 0, name: 'Chompsky', species: 'bunny', type: 'pop', rekidnap: { name: 'Chompsky', same: true } }].filter(Boolean),
-    bank: m === 'bank' || m === 'paused' ? (m === 'paused' ? 11200 : 41200) : 2350, pauseCost: PAUSE_COST, pausedToday: m === 'paused', friendId: 'DEMO42',
+    cosmetics: demoCosmetics(), bank: m === 'shop' ? 186500 : m === 'bank' || m === 'paused' ? (m === 'paused' ? 11200 : 41200) : 2350, pauseCost: PAUSE_COST, pausedToday: m === 'paused', friendId: 'DEMO42',
     bankLog: [{ date: day(-1), kind: 'earn', amount: 2900, bal: 41200 }, { date: day(-2), kind: 'earn', amount: 4100, bal: 38300 }, { date: day(-4), kind: 'pause', amount: -30000, bal: 34200 }, { date: day(-5), kind: 'earn', amount: 5300, bal: 64200 }],
     stats: { metDays: 27, missedDays: 3, rescues: 4 }, push: !qs.has('nopush'),
     baseGoal: GOAL, days: Array.from({ length: 14 }, (_, i) => ({ date: day(i - 13), goal: i === 13 ? goal : m === 'boss' && i === 9 ? FINAL_GOAL : GOAL, paused: m !== 'boss' && (i === 9 || (m === 'paused' && i === 13)), steps: i === 13 ? (todaySteps || null) : (m === 'nosync' ? null : hist[i]) })),

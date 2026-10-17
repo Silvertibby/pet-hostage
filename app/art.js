@@ -1,3 +1,4 @@
+import { colorById } from './shop.js';
 // Pet Hostage pixel art: everything is drawn in code on tiny grids, then scaled up crisp.
 // Shapes are filled on a grid and auto-outlined, which keeps the chunky 16-bit look.
 const PAL = {
@@ -251,6 +252,18 @@ export function critter(species, mood, t, injuries = [], opts = {}) {
 export const bunny = (mood, t) => critter('bunny', mood, t);
 export function silhouette(species, t) { const g = critter(species, 'happy', t); const pal = {}; for (const k in g.pal) pal[k] = '#3a3050'; pal.k = '#4d4266'; g.pal = pal; return g; }
 
+// v0.5.3: the villain's outfit (Raccoon Shop). LOOK = { shirt, hat, bowtie, glasses } color ids; missing = default look.
+let LOOK = {};
+export function setRaccoonLook(look) { LOOK = look || {}; }
+const hsl = (h, s, l) => { s /= 100; l /= 100; const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l), f = n => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return '#' + [f(0), f(8), f(4)].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join(''); };
+// [base, shade, highlight] for a slot right now (gold shimmers, rainbow cycles), or null for the default
+function lookPal(slot, t, off = 0) {
+  const c = colorById(LOOK[slot]); if (!c) return null;
+  if (c.anim === 'gold') { const w = (Math.sin(t * 3.2 + off) + 1) / 2; return [w > 0.75 ? '#ffd860' : '#e8b830', w > 0.6 ? '#c8961e' : '#b0841c', w > 0.5 ? '#fff6c8' : '#fff0a0']; }
+  if (c.anim === 'rainbow') { const h = (t * 80 + off * 40) % 360; return [hsl(h, 85, 58), hsl(h, 80, 40), hsl((h + 40) % 360, 95, 75)]; }
+  return c.hex;
+}
 // The kidnapper: a raccoon in a fedora with shifty eyes.
 export function raccoon(t, look = 0, annoyed = false) {
   const g = grid(30, 28);
@@ -273,7 +286,10 @@ export function raccoon(t, look = 0, annoyed = false) {
   for (let x = 2; x <= 27; x++) { if (!get(g, x, 7) || get(g, x, 7) === 'k') set(g, x, 7, x >= 3 && x <= 26 && (x < 7 || x > 22) ? 'k' : get(g, x, 7)); }
   rect(g, 6, 1, 18, 1, 'k'); rect(g, 2, 10, 26, 1, 'k'); set(g, 2, 8, 'k'); set(g, 2, 9, 'k'); set(g, 27, 8, 'k'); set(g, 27, 9, 'k');
   for (let y = 1; y < 8; y++) { set(g, 6, y, 'k'); set(g, 23, y, 'k'); }
-  g.pal = { k: '#1d1622', h: '#8d93a6', H: '#6b7088', m: '#ece6da', d: '#2b2a38', e: '#ffffff', b: '#0b0710', f: '#5a3d2b', F: '#1a1010', Q: '#7a5640' };
+  const hat = lookPal('hat', t), gl = lookPal('glasses', t, 2);
+  if (gl) { rect(g, 8, 14, 5, 3, 'g'); rect(g, 18, 14, 5, 3, 'g'); for (let x = 13; x <= 17; x++) set(g, x, 14, 'k'); set(g, 9, 14, 'G'); set(g, 19, 14, 'G'); } // shades over the mask
+  g.pal = { k: '#1d1622', h: '#8d93a6', H: '#6b7088', m: '#ece6da', d: '#2b2a38', e: '#ffffff', b: '#0b0710', f: '#5a3d2b', F: '#1a1010', Q: '#7a5640',
+    ...(hat ? { f: hat[0], F: hat[1], Q: hat[2] } : {}), ...(gl ? { g: gl[0], G: gl[2] } : {}) };
   g.alpha = 1;
   return g;
 }
@@ -326,7 +342,8 @@ export function raccoonBody(t, pose = 'idle', opts = {}) {
   pat2(g, 14 - lean, 26 + by + (sulk ? 1 : 0), ['rr.rr', 'rRRRr', 'rr.rr']);
   if (glee) { for (let x = 13; x <= 19; x++) { set(g, x + hx, 22 + hy, 'b'); set(g, x + hx, 23 + hy, x % 2 ? 'e' : 'b'); } set(g, 12 + hx, 21 + hy, 'k'); set(g, 20 + hx, 21 + hy, 'k'); } // big grin
   if (sulk) for (let x = 13; x <= 19; x++) { set(g, x + hx, 22 + hy, null); set(g, x + hx, 23 + hy, x === 13 || x === 19 ? 'k' : null); set(g, x + hx, 22 + hy, x > 13 && x < 19 ? 'k' : 'm'); } // flat frown
-  g.pal = { ...head.pal, c: '#4a3858', C: '#33263f', r: '#d8405e', R: '#a02a46', y: '#ffd84a' };
+  const coat = lookPal('shirt', t, 1), bow = lookPal('bowtie', t, 3);
+  g.pal = { ...head.pal, c: '#4a3858', C: '#33263f', r: '#d8405e', R: '#a02a46', y: '#ffd84a', ...(coat ? { c: coat[0], C: coat[1] } : {}), ...(bow ? { r: bow[0], R: bow[1] } : {}) };
   g.alpha = 1;
   return g;
 }
@@ -700,7 +717,11 @@ function drawPeril(ctx, st, t) {
   (PERIL[st.species] || PERIL.bunny)(ctx, st, t, false);
 }
 
-export function drawScene(ctx, st, t) {
+export function drawScene(ctx, st, t) { // st.look (optional) = whose villain outfit to draw, e.g. a friend's
+  const prev = LOOK; if (st && 'look' in st) LOOK = st.look || {};
+  try { drawScene0(ctx, st, t); } finally { LOOK = prev; }
+}
+function drawScene0(ctx, st, t) {
   ctx.save(); ctx.translate(-VIEW_X, -VIEW_Y);
   if (st.paused) { drawPaused(ctx, st, t); ctx.restore(); return; }
   if (st.freed) { drawFreed(ctx, st, t); ctx.restore(); return; }
@@ -742,6 +763,10 @@ function drawPaused(ctx, st, t) {
 // Death animation (DEATH_LEN seconds): caged and nervous -> cartoon death -> little ghost floats up.
 export const DEATH_LEN = 8; // v0.4.9: + the raccoon's plunger, + revival / re-kidnap phase
 export function drawDeath(ctx, d, t) {
+  const prev = LOOK; if (d && 'look' in d) LOOK = d.look || {};
+  try { drawDeath0(ctx, d, t); } finally { LOOK = prev; }
+}
+function drawDeath0(ctx, d, t) {
   ctx.save(); ctx.translate(-VIEW_X, -VIEW_Y);
   room(ctx, t, t > 3.2);
   const sp = d.species, inj = d.injuries || [], X = PET_X, Y = 54;

@@ -146,3 +146,21 @@ details.more .note { padding-left: 10px; margin-top: 8px; min-height: 0; }
 .dpip.boss.on { background: var(--good); }
 .dpip.boss.today { outline-color: #ffe27a; }
 .chart div.boss { box-shadow: 0 0 0 2px #ffb347, 0 0 6px rgba(255,140,60,.7); }
+/* v0.5.3 Raccoon Shop */
+.shoptop { display: grid; grid-template-columns: 102px 1fr; gap: 12px; align-items: center; }
+#spreview { width: 102px; height: 144px; background: radial-gradient(#3a3050, #1b1626 70%); border: 2px solid #3e3354; border-radius: 4px; }
+#slotseg { flex-wrap: wrap; } #slotseg button { flex: 1 1 45%; font-size: 12px; padding: 6px 4px; }
+.sact { margin-top: 8px; font-size: 18px; } .sact .btn { margin-top: 4px; }
+.stier { margin: 10px 0 4px; }
+.sgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 6px; }
+.scell { display: flex; flex-direction: column; align-items: center; gap: 2px; background: var(--panel); color: var(--ink); border: 2px solid #3e3354; border-radius: 4px; padding: 6px 4px; font: inherit; font-size: 16px; }
+.scell .ssub { color: var(--dim); font-size: 14px; }
+.scell.own .ssub { color: var(--good); }
+.scell.on { border-color: var(--good); box-shadow: 0 0 0 1px var(--good) inset; }
+.scell.sel { outline: 2px solid var(--ink); outline-offset: 1px; }
+.scell.locked { opacity: .55; }
+.swatch { width: 30px; height: 18px; border: 2px solid #000; border-radius: 2px; }
+.swatch.none { background: repeating-linear-gradient(45deg, #4a3858 0 4px, #33263f 4px 8px) !important; }
+.swatch.gold { background: linear-gradient(110deg, #b0841c, #e8b830 40%, #fff0a0 50%, #e8b830 60%, #b0841c) !important; background-size: 250% 100% !important; animation: shimmer 1.6s linear infinite; }
+.swatch.rainbow { background: linear-gradient(90deg, #ff4f4f, #ffb347, #ffe27a, #6fe07a, #4fb0ff, #b07aff, #ff4f4f) !important; background-size: 300% 100% !important; animation: shimmer 2.4s linear infinite; }
+@keyframes shimmer { from { background-position: 0% 0; } to { background-position: 100% 0; } }

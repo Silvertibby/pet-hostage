@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.5.3 (2026-10-17)
+- The Raccoon Shop: spend Spare Steps to dress up your kidnapper. Items are yours forever.
+
 ## v0.5.2 (2026-10-17)
 - Longer rescues now have mini-boss days: 15,000 steps, marked with a glowing square.
 

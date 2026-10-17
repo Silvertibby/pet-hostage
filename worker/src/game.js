@@ -1,3 +1,4 @@
+import { itemFor, owns, emptyCosmetics, VILLAINS } from './shop.js';
 // Pet Hostage v0.2 rules: a rescue LADDER. Tunable constants up top.
 export const RULES = {
   GOAL: 10000,          // 10,000 a day. Not editable.
@@ -104,6 +105,7 @@ export function normalize(st, today = localParts().date) {
   if (!Array.isArray(st.bankLog)) st.bankLog = [];
   if (!st.paused || typeof st.paused !== 'object') st.paused = {};
   if (!st.dayGoals || typeof st.dayGoals !== 'object') st.dayGoals = {};
+  if (!st.cosmetics || typeof st.cosmetics !== 'object') st.cosmetics = emptyCosmetics(); // v0.5.3: kept forever, deaths only empty the bank
   // v0.5.2 migration: a run already in progress keeps today and every closed day as they were; only days after today can be mini-bosses
   if (st.hostage && !Array.isArray(st.hostage.bosses)) {
     let open = 0; for (let d = addDays(st.hostage.settledThrough, 1); d <= today && open < 400; d = addDays(d, 1)) open++; // unsettled days incl. today
@@ -112,7 +114,7 @@ export function normalize(st, today = localParts().date) {
   }
   return st;
 }
-function bankMove(st, date, kind, amount) {
+export function bankMove(st, date, kind, amount) {
   st.bank = Math.max(0, st.bank + amount);
   st.bankLog = [{ date, kind, amount, bal: st.bank }, ...st.bankLog].slice(0, RULES.BANK_LOG_MAX);
 }
@@ -125,6 +127,29 @@ export function buyPause(st, today) {
   bankMove(st, today, 'pause', -RULES.PAUSE_COST);
   st.paused[today] = true;
   return { ok: true };
+}
+
+// v0.5.3 villain shop. Server-authoritative: validates item, shelf requirement and balance; ownership is permanent.
+export function buyItem(st, today, villain, slot, color) {
+  normalize(st, today);
+  const it = itemFor(villain, slot, color);
+  if (!it) return { ok: false, error: 'no such item' };
+  if (owns(st.cosmetics, villain, slot, it.color)) return { ok: false, error: 'already owned' };
+  if (st.hostage.rung < it.needShelf) return { ok: false, error: `needs ${it.needShelf} on the shelf` };
+  if (st.bank < it.price) return { ok: false, error: 'not enough Spare Steps' };
+  bankMove(st, today, 'shop', -it.price);
+  const o = st.cosmetics.owned[villain] = st.cosmetics.owned[villain] || {};
+  o[slot] = [...(o[slot] || []), it.color];
+  (st.cosmetics.equipped[villain] = st.cosmetics.equipped[villain] || {})[slot] = it.color; // wear it straight away
+  return { ok: true };
+}
+export function equipItem(st, villain, slot, color) {
+  normalize(st);
+  const v = VILLAINS[villain]; if (!v || !v.slots.includes(slot)) return { ok: false, error: 'no such slot' };
+  const eq = st.cosmetics.equipped[villain] = st.cosmetics.equipped[villain] || {};
+  if (color == null || color === '' || color === 'default') { delete eq[slot]; return { ok: true }; }
+  if (!owns(st.cosmetics, villain, slot, color)) return { ok: false, error: 'not owned' };
+  eq[slot] = color; return { ok: true };
 }
 
 export function settle(st, today) {
@@ -211,7 +236,7 @@ export function view(st, now = Date.now()) {
     lastDeath: st.lastDeath, deathSeen: st.deathSeen || 0, deathLog: (st.deathLog || []).slice(0, 10),
     stats: st.stats, bestRung: st.bestRung, started: st.started,
     push: !!st.sub, events: (st.events || []).slice(-5),
-    bank: st.bank, bankLog: st.bankLog.slice(0, 10), pauseCost: RULES.PAUSE_COST, pausedToday: !!st.paused[np.date], friendId: st.friendId || null,
+    bank: st.bank, bankLog: st.bankLog.slice(0, 10), cosmetics: st.cosmetics, pauseCost: RULES.PAUSE_COST, pausedToday: !!st.paused[np.date], friendId: st.friendId || null,
     code: st.code, syncLog: (st.syncLog || []).slice(0, 5),
     garmin: st.garmin ? { lastSync: st.garmin.lastSync || null, lastSteps: st.garmin.lastSteps ?? null, lastError: st.garmin.lastError || null, lastErrorAt: st.garmin.lastErrorAt || null } : null,
     android: st.android ? { lastSync: st.android.lastSync || null, lastSteps: st.android.lastSteps ?? null, app: st.android.app || null } : null,
@@ -227,5 +252,5 @@ export function publicView(st, now = Date.now()) {
   const np = localParts(now), h = st.hostage, p = petAt(st, h.rung), need = needFor(h.rung), goal = goalToday(st), todaySteps = st.days[np.date] || 0;
   return { friendId: st.friendId, today: np.date, hour: np.hour, name: p.name, species: p.species, rung: h.rung, need, day: h.streak + 1, streak: h.streak,
     goal, todaySteps, todayMet: todaySteps >= goal, finalDay: isFinalDay(h.streak, need), paused: !!st.paused[np.date], mood: mood(st, np),
-    deaths: p.deaths, injuries: p.injuries, shelf: h.rung, lastSync: st.lastSync, bosses: runBosses(h), bossToday: isBossDay(h, h.streak + 1) && !isFinalDay(h.streak, need) };
+    deaths: p.deaths, injuries: p.injuries, shelf: h.rung, lastSync: st.lastSync, look: (st.cosmetics.equipped || {}).raccoon || {}, bosses: runBosses(h), bossToday: isBossDay(h, h.streak + 1) && !isFinalDay(h.streak, need) };
 }
