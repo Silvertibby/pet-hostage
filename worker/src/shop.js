@@ -1,14 +1,41 @@
-// v0.5.3 villain cosmetics, keyed per villain so a future villain can reuse the slots/palette.
+// v0.5.3 villain cosmetics (v0.5.4: + styles and free rescue rewards), keyed per villain so a future villain can reuse the slots/palette.
 // This exact file is copied to app/shop.js (a test checks they match). Pure: no imports.
 // Prices in Spare Steps. Brighter = pricier. Gold needs 5 on the shelf, Rainbow needs 10.
 export const VILLAINS = {
-  raccoon: { name: 'The Raccoon', shop: 'Raccoon Shop', slots: ['shirt', 'hat', 'bowtie', 'glasses'] },
+  raccoon: { name: 'The Raccoon', shop: 'Raccoon Shop', slots: ['shirt', 'hat', 'bowtie', 'glasses'],
+    // v0.5.4 styles per slot (first = default). Styles in a color slot take that slot's color.
+    styles: { hat: ['fedora', 'bowler', 'tophat', 'crown'], glasses: ['shades', 'monocle', 'aviator'], bowtie: ['bowtie', 'scarf'], face: ['none', 'mustache'], pin: ['none', 'flower'], hand: ['none', 'cane'] } },
 };
+// v0.5.4 free rescue rewards: `at` = pets rescued (best ever). Awarded server-side, kept forever.
+export const REWARDS = {
+  raccoon: [
+    { at: 1, slot: 'glasses', style: 'monocle' },
+    { at: 2, slot: 'hat', style: 'bowler' },
+    { at: 3, slot: 'hat', style: 'tophat' },
+    { at: 4, slot: 'bowtie', style: 'scarf' },
+    { at: 5, slot: 'face', style: 'mustache' },
+    { at: 6, slot: 'glasses', style: 'aviator' },
+    { at: 7, slot: 'hand', style: 'cane' },
+    { at: 8, slot: 'pin', style: 'flower' },
+    { at: 9, slot: 'hat', style: 'crown' },
+  ],
+};
+export const STYLE_INFO = {
+  fedora: { label: 'Fedora', icon: '🕵️' }, bowler: { label: 'Bowler', icon: '🎩' }, tophat: { label: 'Top hat', icon: '🎩' }, crown: { label: 'Crown', icon: '👑' },
+  shades: { label: 'Shades', icon: '🕶️' }, monocle: { label: 'Monocle', icon: '🧐' }, aviator: { label: 'Aviators', icon: '🕶️' },
+  bowtie: { label: 'Bow tie', icon: '🎀' }, scarf: { label: 'Scarf', icon: '🧣' },
+  mustache: { label: 'Mustache', icon: '🥸' }, flower: { label: 'Flower', icon: '🌹' }, cane: { label: 'Cane', icon: '🐾' }, none: { label: 'None', icon: '∅' },
+};
+export const rewardFor = (villain, at) => (REWARDS[villain] || []).find(r => r.at === at) || null;
+export const styleKey = (slot, style) => slot + ':' + style;
+export const hasStyle = (cos, villain, slot, style) => { const v = VILLAINS[villain]; if (!v || !v.styles[slot]) return false;
+  return v.styles[slot][0] === style || !!(cos && cos.unlocked && (cos.unlocked[villain] || []).includes(styleKey(slot, style))); };
 export const SLOTS = {
   shirt: { label: 'Coat', icon: '🧥' },
   hat: { label: 'Hat', icon: '🎩' },
   bowtie: { label: 'Bow tie', icon: '🎀' },
   glasses: { label: 'Shades', icon: '🕶️' },
+  face: { label: 'Face', icon: '🥸' }, pin: { label: 'Lapel', icon: '🌹' }, hand: { label: 'Paw', icon: '🐾' }, // v0.5.4 style-only (rescue rewards)
 };
 // base / shade / highlight. anim: 'gold' shimmer or 'rainbow' cycle (drawn by the app).
 export const COLORS = [
@@ -35,5 +62,5 @@ export function itemFor(villain, slot, color) {
   if (!v || !v.slots.includes(slot) || !c) return null;
   return { villain, slot, color: c.id, price: c.price, needShelf: c.needShelf || 0, tier: c.tier };
 }
-export const emptyCosmetics = () => ({ owned: {}, equipped: {} });
+export const emptyCosmetics = () => ({ owned: {}, equipped: {}, unlocked: {} });
 export const owns = (cos, villain, slot, color) => !!(cos && cos.owned && cos.owned[villain] && (cos.owned[villain][slot] || []).includes(color));

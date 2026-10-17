@@ -1,4 +1,4 @@
-import { RULES, localParts, newState, migrate, settle, view, petAt, needFor, goalToday, DEATH_TEXT, normalize, buyPause, publicView, buyItem, equipItem } from './game.js';
+import { RULES, localParts, newState, migrate, settle, view, petAt, needFor, goalToday, DEATH_TEXT, normalize, buyPause, publicView, buyItem, equipItem, equipStyle } from './game.js';
 import { note, nudgeText, DISH, ITEM, PET_EMOJI } from './messages.js';
 import { sendPush } from './push.js';
 import { revivedVars } from './revived.js';
@@ -138,7 +138,7 @@ async function readBody(req) {
   return body;
 }
 
-const ROUTES = new Set(['/state', '/sync', '/settings', '/subscribe', '/sync-log/clear-test', '/unsubscribe', '/test-nudge', '/seen-death', '/pause', '/shop/buy', '/shop/equip']);
+const ROUTES = new Set(['/state', '/sync', '/settings', '/subscribe', '/sync-log/clear-test', '/unsubscribe', '/test-nudge', '/seen-death', '/pause', '/shop/buy', '/shop/equip', '/shop/style']);
 const SYNC_LOG_MAX = 10;
 function logSync(st, entry) {
   st.syncLog = [{ at: Date.now(), ...entry }, ...(st.syncLog || [])].slice(0, SYNC_LOG_MAX);
@@ -306,6 +306,11 @@ export default {
     }
     if (path === '/shop/equip') {
       const r = equipItem(st, String(body.villain || 'raccoon'), String(body.slot || ''), body.color == null ? null : String(body.color));
+      if (!r.ok) return json({ error: r.error, state: view(st) }, 409);
+      await save(env, st); return json({ ok: true, state: view(st) });
+    }
+    if (path === '/shop/style') { // v0.5.4: wear a rescue-reward style (only ones the server has unlocked)
+      const r = equipStyle(st, String(body.villain || 'raccoon'), String(body.slot || ''), body.style == null ? null : String(body.style));
       if (!r.ok) return json({ error: r.error, state: view(st) }, 409);
       await save(env, st); return json({ ok: true, state: view(st) });
     }

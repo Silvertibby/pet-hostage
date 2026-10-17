@@ -281,14 +281,30 @@ export function raccoon(t, look = 0, annoyed = false) {
   if ((t + 1.1) % 3.7 < 0.14) { rect(g, 9, 15, 3, 2, 'd'); rect(g, 19, 15, 3, 2, 'd'); } // blink
   rect(g, 14, 19, 3, 2, 'b');
   for (let x = 13; x <= 19; x++) set(g, x, 23 - (x > 16 ? (x - 16) * 0.4 : 0), 'k'); // smirk
-  // fedora
+  const sty = LOOK.styles || {}, hs = sty.hat || 'fedora', gs = sty.glasses || 'shades';
+  if (sty.face === 'mustache') pat2(g, 9, 20, ['n..nn...nn..n', '.nnnnn.nnnnn.']); // v0.5.4 rescue rewards
+  if (hs === 'tophat') layer(g, l => { rect(l, 11, 1, 9, 8, 'f'); rect(l, 10, 1, 11, 1, 'f'); rect(l, 11, 6, 9, 2, 'F'); rect(l, 12, 1, 1, 4, 'Q'); rect(l, 5, 9, 21, 1, 'f'); set(l, 4, 8, 'f'); set(l, 26, 8, 'f'); }, 'k');
+  else if (hs === 'bowler') layer(g, l => { ell(l, 15, 7.5, 7.6, 6, 'f'); for (let y = 8; y < 14; y++) for (let x = 0; x < 30; x++) set(l, x, y, null);
+    rect(l, 8, 6, 15, 1, 'F'); set(l, 11, 3, 'Q'); set(l, 12, 2, 'Q'); set(l, 10, 4, 'Q'); rect(l, 5, 8, 21, 1, 'f'); rect(l, 6, 9, 19, 1, 'F'); }, 'k');
+  else if (hs === 'crown') layer(g, l => { rect(l, 8, 6, 15, 3, 'f'); rect(l, 8, 8, 15, 1, 'F');
+    for (const x of [9, 15, 21]) { rect(l, x - 1, 4, 3, 2, 'f'); set(l, x, 3, 'f'); set(l, x, 2, 'Q'); }
+    for (const x of [12, 18]) { rect(l, x - 1, 5, 3, 1, 'f'); set(l, x, 4, 'f'); }
+    for (const x of [11, 15, 19]) set(l, x, 7, 'j'); set(l, 9, 6, 'Q'); }, 'k');
+  else if (hs !== 'none') { // fedora
   rect(g, 3, 8, 24, 2, 'f'); rect(g, 7, 2, 16, 6, 'f'); rect(g, 7, 6, 16, 1, 'F'); rect(g, 8, 2, 14, 1, 'Q');
   for (let x = 2; x <= 27; x++) { if (!get(g, x, 7) || get(g, x, 7) === 'k') set(g, x, 7, x >= 3 && x <= 26 && (x < 7 || x > 22) ? 'k' : get(g, x, 7)); }
   rect(g, 6, 1, 18, 1, 'k'); rect(g, 2, 10, 26, 1, 'k'); set(g, 2, 8, 'k'); set(g, 2, 9, 'k'); set(g, 27, 8, 'k'); set(g, 27, 9, 'k');
   for (let y = 1; y < 8; y++) { set(g, 6, y, 'k'); set(g, 23, y, 'k'); }
+  }
   const hat = lookPal('hat', t), gl = lookPal('glasses', t, 2);
-  if (gl) { rect(g, 8, 14, 5, 3, 'g'); rect(g, 18, 14, 5, 3, 'g'); for (let x = 13; x <= 17; x++) set(g, x, 14, 'k'); set(g, 9, 14, 'G'); set(g, 19, 14, 'G'); } // shades over the mask
+  if (gs === 'monocle') { for (let x = 18; x <= 22; x++) { set(g, x, 13, 'g'); set(g, x, 17, 'g'); } for (let y = 14; y <= 16; y++) { set(g, 18, y, 'g'); set(g, 22, y, 'g'); }
+    set(g, 19, 13, 'G'); for (const [x, y] of [[23, 18], [23, 20], [24, 22], [24, 24]]) set(g, x, y, 'g'); }
+  else if (gs === 'aviator') { for (const x0 of [8, 18]) { rect(g, x0, 14, 5, 2, 'g'); rect(g, x0 + 1, 16, 3, 1, 'g'); set(g, x0 + 1, 14, 'G'); } for (let x = 9; x <= 21; x++) set(g, x, 13, 'k'); }
+  else if (gl && gs === 'shades') { rect(g, 8, 14, 5, 3, 'g'); rect(g, 18, 14, 5, 3, 'g'); for (let x = 13; x <= 17; x++) set(g, x, 14, 'k'); set(g, 9, 14, 'G'); set(g, 19, 14, 'G'); } // shades over the mask
   g.pal = { k: '#1d1622', h: '#8d93a6', H: '#6b7088', m: '#ece6da', d: '#2b2a38', e: '#ffffff', b: '#0b0710', f: '#5a3d2b', F: '#1a1010', Q: '#7a5640',
+    n: '#2a1e1a', j: '#d8405e',
+    ...(hs === 'tophat' ? { f: '#2b2533', F: '#7a2438', Q: '#4a4256' } : hs === 'bowler' ? { f: '#3a2a22', F: '#1a1010', Q: '#5e4636' } : hs === 'crown' ? { f: '#e8b830', F: '#b0841c', Q: '#fff0a0' } : {}),
+    ...(gs === 'monocle' ? { g: '#e8b830', G: '#fff0a0' } : gs === 'aviator' ? { g: '#3c4a68', G: '#9ab8ff' } : {}),
     ...(hat ? { f: hat[0], F: hat[1], Q: hat[2] } : {}), ...(gl ? { g: gl[0], G: gl[2] } : {}) };
   g.alpha = 1;
   return g;
@@ -334,21 +350,44 @@ export function raccoonBody(t, pose = 'idle', opts = {}) {
     : walk ? [[[11, 30], [9 - st, 36]], [[23, 30], [25 + st, 36]]]
     : [[[11, 30], [9, 37]], [[23, 30], [25, 37]]];
   layer(g, l => { for (const [[x0, y0], [x1, y1]] of arms) { stroke(l, [[x0, y0 + by], [x1, y1 + by]], 1.7, 1.5, 'c'); } }, k);
+  const cane = (LOOK.styles || {}).hand === 'cane' && !glee && arms[1][1][1] >= 33;
+  if (cane) layer(g, l => { const [px, py] = arms[1][1], x = Math.round(px + 1.5), y0 = Math.round(py + by);
+    for (let y = y0 - 2; y <= 45; y++) set(l, x, y, 'w'); set(l, x - 1, y0 - 3, 'W'); set(l, x - 2, y0 - 3, 'W'); set(l, x - 3, y0 - 2, 'W'); set(l, x, y0 - 3, 'W'); set(l, x, 46, 'y'); }, k);
   layer(g, l => { for (const [, [x1, y1]] of arms) ell(l, x1 + (x1 < 17 ? -0.6 : 0.6), y1 + by, 1.8, 1.6, 'd'); }, k);
   // head (the classic fedora head) + red bow tie
   const head = raccoon(t, opts.look ?? (pose === 'smug' || pose === 'leash' || pose === 'stir' || pose === 'crank' || pose === 'recipe' || walk ? -1 : 0), sulk);
   const hx = 2 - lean, hy = 1 + by + (sulk ? 1 : 0);
   for (let y = 0; y < head.h; y++) for (let x = 0; x < head.w; x++) { const c = head.a[y * head.w + x]; if (c) set(g, x + hx, y + hy, c); }
-  pat2(g, 14 - lean, 26 + by + (sulk ? 1 : 0), ['rr.rr', 'rRRRr', 'rr.rr']);
+  const bsty = LOOK.styles || {}, ny = 26 + by + (sulk ? 1 : 0);
+  if (bsty.bowtie === 'scarf') { const bx = 14 - lean; rect(g, bx - 3, ny, 12, 2, 'r'); for (let x = bx - 3; x < bx + 9; x++) set(g, x, ny + 1, x % 2 ? 'R' : 'r');
+    for (let y = ny + 2; y < ny + 8; y++) { set(g, bx + 5, y, 'r'); set(g, bx + 6, y, 'R'); } set(g, bx + 5, ny + 8, 'R'); set(g, bx + 6, ny + 8, 'r'); }
+  else if (bsty.bowtie !== 'none') pat2(g, 14 - lean, ny, ['rr.rr', 'rRRRr', 'rr.rr']);
+  if (bsty.pin === 'flower') { pat2(g, 12, 30 + by, ['.p.', 'pyp', '.p.']); set(g, 13, 33 + by, 'v'); }
   if (glee) { for (let x = 13; x <= 19; x++) { set(g, x + hx, 22 + hy, 'b'); set(g, x + hx, 23 + hy, x % 2 ? 'e' : 'b'); } set(g, 12 + hx, 21 + hy, 'k'); set(g, 20 + hx, 21 + hy, 'k'); } // big grin
   if (sulk) for (let x = 13; x <= 19; x++) { set(g, x + hx, 22 + hy, null); set(g, x + hx, 23 + hy, x === 13 || x === 19 ? 'k' : null); set(g, x + hx, 22 + hy, x > 13 && x < 19 ? 'k' : 'm'); } // flat frown
   const coat = lookPal('shirt', t, 1), bow = lookPal('bowtie', t, 3);
-  g.pal = { ...head.pal, c: '#4a3858', C: '#33263f', r: '#d8405e', R: '#a02a46', y: '#ffd84a', ...(coat ? { c: coat[0], C: coat[1] } : {}), ...(bow ? { r: bow[0], R: bow[1] } : {}) };
+  g.pal = { ...head.pal, c: '#4a3858', C: '#33263f', r: '#d8405e', R: '#a02a46', y: '#ffd84a', p: '#ff6fa8', v: '#3e9a4a', w: '#8a5a3a', W: '#e8b830', ...(coat ? { c: coat[0], C: coat[1] } : {}), ...(bow ? { r: bow[0], R: bow[1] } : {}) };
   g.alpha = 1;
   return g;
 }
 function pat2(g, x, y, rows) { rows.forEach((r, j) => { for (let i = 0; i < r.length; i++) if (r[i] !== '.') set(g, x + i, y + j, r[i]); }); }
 
+// v0.5.4: one outfit item on its own (shop tiles, shelf rewards): the pixels it adds to the raccoon, cropped. dark = silhouette.
+const HEAD_SLOTS = ['hat', 'glasses', 'face'];
+export function itemSprite(slot, style, color, dark = false, t = 0) {
+  const prev = LOOK, head = HEAD_SLOTS.includes(slot);
+  const c = color || (slot === 'glasses' && style === 'shades' ? 'black' : null);
+  const draw = lk => { LOOK = lk; return head ? raccoon(t, 0) : raccoonBody(t, 'idle'); };
+  let a, b;
+  try { b = draw({ styles: { [slot]: 'none' } }); a = draw({ styles: { [slot]: style }, ...(c ? { [slot]: c } : {}) }); } finally { LOOK = prev; }
+  let x0 = a.w, y0 = a.h, x1 = -1, y1 = -1;
+  for (let y = 0; y < a.h; y++) for (let x = 0; x < a.w; x++) { const i = y * a.w + x; if (a.a[i] && a.a[i] !== b.a[i]) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); } }
+  if (x1 < 0) return null;
+  const g = grid(x1 - x0 + 1, y1 - y0 + 1);
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const i = y * a.w + x; if (a.a[i] && a.a[i] !== b.a[i]) set(g, x - x0, y - y0, a.a[i]); }
+  g.pal = a.pal; if (dark) { const pal = {}; for (const k in a.pal) pal[k] = '#0e0b14'; g.pal = pal; }
+  g.alpha = 1; return g;
+}
 export function blit(ctx, g, ox, oy, opt = {}) {
   ctx.save(); ctx.globalAlpha = (opt.alpha ?? 1) * (g.alpha ?? 1);
   for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) {

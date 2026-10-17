@@ -164,3 +164,13 @@ details.more .note { padding-left: 10px; margin-top: 8px; min-height: 0; }
 .swatch.gold { background: linear-gradient(110deg, #b0841c, #e8b830 40%, #fff0a0 50%, #e8b830 60%, #b0841c) !important; background-size: 250% 100% !important; animation: shimmer 1.6s linear infinite; }
 .swatch.rainbow { background: linear-gradient(90deg, #ff4f4f, #ffb347, #ffe27a, #6fe07a, #4fb0ff, #b07aff, #ff4f4f) !important; background-size: 300% 100% !important; animation: shimmer 2.4s linear infinite; }
 @keyframes shimmer { from { background-position: 0% 0; } to { background-position: 100% 0; } }
+/* v0.5.4 icon tiles + rescue rewards */
+#slotseg.icons button { flex: 1 1 22%; font-size: 18px; padding: 6px 2px; font-family: inherit; }
+.sgrid { grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); margin-top: 6px; }
+.scell .ssub { font-size: 12px; min-height: 14px; }
+.scell.sty { justify-content: space-between; min-height: 72px; }
+canvas.sicon { width: calc(var(--iw, 10) * 3px); height: calc(var(--ih, 10) * 3px); max-width: 100%; object-fit: contain; image-rendering: pixelated; }
+.scell.sty.locked { opacity: .8; }
+.rw { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 4px; font-size: 11px; color: var(--dim); min-height: 26px; }
+.rw canvas { width: calc(var(--iw, 10) * 3px); height: calc(var(--ih, 10) * 3px); max-width: 60%; image-rendering: pixelated; }
+.rw.got { color: var(--good); }

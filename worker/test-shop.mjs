@@ -18,7 +18,7 @@ const call = async (path, body) => { const r = await worker.fetch(new Request('h
 const C = (await call('/claim', {})).body.code;
 const poke = async f => { const s = JSON.parse(await env.PH.get('player:' + C)); f(s); await env.PH.put('player:' + C, JSON.stringify(s)); };
 // old record without cosmetics: defaults in
-let s = (await call('/state?code=' + C)).body; assert.deepEqual(s.cosmetics, { owned: {}, equipped: {} });
+let s = (await call('/state?code=' + C)).body; assert.deepEqual(s.cosmetics, { owned: {}, equipped: {}, unlocked: { raccoon: [] } });
 // not enough
 let r = await call('/shop/buy', { code: C, villain: 'raccoon', slot: 'hat', color: 'black' }); assert.equal(r.status, 409); assert.equal(r.body.error, 'not enough Spare Steps');
 await poke(s => { s.bank = 40000; });

@@ -1,4 +1,4 @@
-import { itemFor, owns, emptyCosmetics, VILLAINS } from './shop.js';
+import { itemFor, owns, emptyCosmetics, VILLAINS, REWARDS, styleKey, hasStyle } from './shop.js';
 // Pet Hostage v0.2 rules: a rescue LADDER. Tunable constants up top.
 export const RULES = {
   GOAL: 10000,          // 10,000 a day. Not editable.
@@ -106,6 +106,8 @@ export function normalize(st, today = localParts().date) {
   if (!st.paused || typeof st.paused !== 'object') st.paused = {};
   if (!st.dayGoals || typeof st.dayGoals !== 'object') st.dayGoals = {};
   if (!st.cosmetics || typeof st.cosmetics !== 'object') st.cosmetics = emptyCosmetics(); // v0.5.3: kept forever, deaths only empty the bank
+  if (!st.cosmetics.unlocked || typeof st.cosmetics.unlocked !== 'object') st.cosmetics.unlocked = {};
+  if (st.hostage) awardRewards(st); // v0.5.4 backfill: everything earned by the best shelf so far (not auto-worn)
   // v0.5.2 migration: a run already in progress keeps today and every closed day as they were; only days after today can be mini-bosses
   if (st.hostage && !Array.isArray(st.hostage.bosses)) {
     let open = 0; for (let d = addDays(st.hostage.settledThrough, 1); d <= today && open < 400; d = addDays(d, 1)) open++; // unsettled days incl. today
@@ -113,6 +115,29 @@ export function normalize(st, today = localParts().date) {
     st.hostage.bosses = bossDaysFor(st.hostage.rung).filter(d => d > lastLocked);
   }
   return st;
+}
+// v0.5.4: free styles for rescues, per villain. Permanent; returns what was newly given.
+export const rescuedCount = st => Math.max(st.bestRung || 0, st.hostage ? st.hostage.rung : 0);
+export function awardRewards(st, wear = false) {
+  const n = rescuedCount(st), got = [];
+  for (const [villain, list] of Object.entries(REWARDS)) {
+    const u = st.cosmetics.unlocked[villain] = st.cosmetics.unlocked[villain] || [];
+    for (const r of list) if (r.at <= n && !u.includes(styleKey(r.slot, r.style))) {
+      u.push(styleKey(r.slot, r.style)); got.push({ villain, ...r });
+      if (wear) { const eq = st.cosmetics.equipped[villain] = st.cosmetics.equipped[villain] || {}; (eq.styles = eq.styles || {})[r.slot] = r.style; }
+    }
+  }
+  return got;
+}
+export function equipStyle(st, villain, slot, style) {
+  normalize(st);
+  const v = VILLAINS[villain]; if (!v || !v.styles || !v.styles[slot]) return { ok: false, error: 'no such slot' };
+  if (style == null || style === '' || style === 'default') style = v.styles[slot][0];
+  if (!v.styles[slot].includes(style)) return { ok: false, error: 'no such style' };
+  if (!hasStyle(st.cosmetics, villain, slot, style)) return { ok: false, error: 'not unlocked' };
+  const eq = st.cosmetics.equipped[villain] = st.cosmetics.equipped[villain] || {}, sty = eq.styles = eq.styles || {};
+  if (style === v.styles[slot][0]) delete sty[slot]; else sty[slot] = style;
+  return { ok: true };
 }
 export function bankMove(st, date, kind, amount) {
   st.bank = Math.max(0, st.bank + amount);
@@ -172,8 +197,8 @@ export function settle(st, today) {
         p.rescuedOn = d; p.rescues++; st.stats.rescues++;
         kidnap(st, r + 1, addDays(d, 1));
         st.bestRung = Math.max(st.bestRung, r + 1);
-        const n = petAt(st, r + 1);
-        events.push({ kind: 'rescue', date: d, rung: r, name: p.name, species: p.species, next: { rung: r + 1, name: n.name, species: n.species, need: needFor(r + 1) } });
+        const n = petAt(st, r + 1), gifts = awardRewards(st, true);
+        events.push({ kind: 'rescue', date: d, rung: r, name: p.name, species: p.species, gifts, next: { rung: r + 1, name: n.name, species: n.species, need: needFor(r + 1) } });
       }
     } else { // every day counts, including the first (no free starting day)
       const type = deathTypeFor(r, p.deaths);

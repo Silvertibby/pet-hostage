@@ -1,9 +1,9 @@
 import { maybeRevived, revivedVars } from './revived.js';
-import { VILLAINS, SLOTS, COLORS, TIERS, colorById, owns } from './shop.js';
-import { drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
+import { VILLAINS, SLOTS, COLORS, TIERS, colorById, owns, REWARDS, STYLE_INFO, styleKey, hasStyle, rewardFor } from './shop.js';
+import { drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, itemSprite, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.5.4';
+const VERSION = 'v0.5.5';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
@@ -240,21 +240,18 @@ function renderHome() {
     <div class="quest"><div class="qhead"><b>Day ${h.day}/${h.need}</b><div class="dpips">${pips}</div>${tag ? `<span class="tag">${tag}</span>` : ''}</div></div>
     <div class="steps"><b>${fmt(s.todaySteps)}</b><span>/ ${fmt(s.goal)}</span></div>
     <div class="bar ${prog >= 1 ? 'done' : ''}">${Array.from({ length: BAR_SEGMENTS }, (_, i) => `<i class="${i < filled ? 'f' : ''}"></i>`).join('')}</div>
-    <div class="sync"><span>${s.lastSync ? `Synced ${ago(s.lastSync)}` : `<span class="hint">No steps synced yet</span>`} <span id="upd" class="upd">${updLabel()}</span></span>
+    <div class="sync"><span>${s.lastSync ? `🔄 ${ago(s.lastSync)}` : `<span class="hint">🔄 —</span>`} <span id="upd" class="upd">${updLabel()}</span></span>
       <span class="row nowrap">${s.lastSync ? `<button class="btn small ghost" id="syncnow">Sync</button>` : `<button class="btn small acc" id="gosetup">Set up sync</button>`}<button class="btn small ghost" id="refreshbtn" aria-label="Refresh">↻</button></span></div>
     ${bankHtml(s, paused)}
     ${s.push ? '' : pushBanner(h)}
     <details class="more"><summary><canvas class="px" id="rac" width="30" height="28"></canvas>Ransom note</summary>
       <div class="note"><div class="cut">${cutout(homeNote(s))}</div></div></details>
     <details class="more"><summary>📈 History</summary>
-      <div class="legend"><span>🏆 ${s.shelf.length} on the shelf</span><span>${s.stats.metDays} paid · ${s.stats.missedDays} missed</span></div>
+      <div class="legend"><span>🏆 ${s.shelf.length}</span><span>✓ ${s.stats.metDays} · ✗ ${s.stats.missedDays}</span></div>
       <div class="chart">${chart}</div>
       <div class="legend"><span>${s.days[0].date.slice(5)}</span><span>today</span></div>
       ${bankHistoryHtml(s)}
-      ${(s.deathLog || []).length ? `<div class="legend">${s.deathLog.slice(0, 3).map(d => `<button class="btn small ghost" data-replay="${d.id}">☠ Replay ${esc(d.name)} ${fmtDate(d.date)}</button>`).join(' ')}</div>` : ''}</details>
-    <details class="more"><summary>❓ The deal</summary>
-      <p class="small">${esc(h.name)} the ${esc(speciesLabel(h.species))} (rung ${h.rung + 1}): ${h.need} days in a row: 10,000 steps a day, and 15,000 on the final day. Then ${esc(h.name)} goes on your shelf. Miss one and, well.${h.deaths ? ` Patched up after ${h.deaths} death${h.deaths > 1 ? 's' : ''} so far.` : ''}</p>
-      <p class="small dim">Tap ${esc(h.name)} or The Raccoon to hear from them. Pull down to refresh.</p></details>
+      ${(s.deathLog || []).length ? `<div class="legend">${s.deathLog.slice(0, 3).map(d => `<button class="btn small ghost" data-replay="${d.id}">☠ ${esc(d.name)} ${fmtDate(d.date)}</button>`).join(' ')}</div>` : ''}</details>
   `;
   startScene($('#scene')); noteAvatar($('#rac'));
   $('#gosetup')?.addEventListener('click', () => go('sync'));
@@ -271,15 +268,13 @@ const BANK_ICON = '👟';
 function bankHtml(s, paused) {
   const bal = s.bank || 0, cost = s.pauseCost || PAUSE_COST, can = bal >= cost && !paused;
   return `<div class="card bank"><div class="row nowrap" style="justify-content:space-between">
-      <span>${BANK_ICON} Spare Steps <b>${fmt(bal)}</b></span>
-      ${paused ? `<span class="tag">⏸ today is paused</span>` : `<button class="btn small ${can ? 'acc' : 'ghost'}" id="pausebtn" ${can ? '' : 'disabled'}>⏸ Pause today · ${fmt(cost)}</button>`}</div>
-    <div class="dim small">${paused ? `Today doesn't count: no progress, no miss. Back to normal tomorrow.` : `Steps over each day's goal are saved here. A missed day empties it.${can ? '' : ` Pause needs ${fmt(cost)}.`}`}</div>
-    <div class="soon"><button class="btn small" id="goshop">🛍 Raccoon Shop</button> <span class="dim small">Dress up your kidnapper. Items are yours forever.</span></div></div>`;
+      <span>${BANK_ICON} <b>${fmt(bal)}</b></span>
+      <span class="row nowrap">${paused ? `<span class="tag">⏸ paused</span>` : `<button class="btn small ${can ? 'acc' : 'ghost'}" id="pausebtn" ${can ? '' : 'disabled'}>⏸ ${fmt(cost)}</button>`}<button class="btn small" id="goshop" title="Raccoon Shop">🛍</button></span></div></div>`;
 }
 const BANK_KIND = { earn: 'saved', pause: '⏸ paused', reset: '☠ emptied', shop: '🛍 shop' };
 function bankHistoryHtml(s) {
   const log = s.bankLog || [];
-  return `<div class="legend"><span>${BANK_ICON} Spare Steps: <b>${fmt(s.bank || 0)}</b></span><span>${(s.days || []).filter(d => d.paused).length ? '⏸ = paused day' : ''}</span></div>
+  return `<div class="legend"><span>${BANK_ICON} <b>${fmt(s.bank || 0)}</b></span></div>
     ${log.length ? `<ul class="banklog">${log.slice(0, 6).map(e => `<li><span>${fmtDate(e.date)} · ${BANK_KIND[e.kind] || e.kind}</span><span class="${e.amount < 0 ? 'neg' : 'pos'}">${e.amount > 0 ? '+' : ''}${fmt(e.amount)}</span></li>`).join('')}</ul>` : ''}`;
 }
 function confirmPause() {
@@ -304,39 +299,59 @@ const VILLAIN = 'raccoon';
 const myLook = () => (state && state.cosmetics && state.cosmetics.equipped && state.cosmetics.equipped[VILLAIN]) || {};
 let shopSlot = 'shirt', shopPick = null; // the swatch being looked at (try-on preview)
 const swatchCss = c => c.anim === 'gold' ? 'swatch gold' : c.anim === 'rainbow' ? 'swatch rainbow' : 'swatch';
+const rescued = () => Math.max(state.bestRung || 0, state.hostage.rung);
+const rungName = r => { const l = (state.ladder || []).find(x => x.rung === r); return l ? l.name : '???'; };
+// v0.5.4 tabs: color slots + style-only slots (rescue rewards). Icon tiles, prices only.
 function renderShop() {
   const v = VILLAINS[VILLAIN], cos = state.cosmetics || { owned: {}, equipped: {} }, eq = myLook(), shelf = state.hostage.rung, bank = state.bank || 0;
-  const pick = shopPick && shopPick.slot === shopSlot ? shopPick.color : (eq[shopSlot] || 'default');
-  const preview = { ...eq }; if (pick === 'default') delete preview[shopSlot]; else preview[shopSlot] = pick;
+  const tabs = [...v.slots, ...Object.keys(v.styles).filter(sl => !v.slots.includes(sl))];
+  if (!tabs.includes(shopSlot)) shopSlot = tabs[0];
+  const colorSlot = v.slots.includes(shopSlot), styles = v.styles[shopSlot] || [], cur = (eq.styles || {})[shopSlot] || styles[0];
+  const pick = colorSlot ? (shopPick && shopPick.slot === shopSlot ? shopPick.color : (eq[shopSlot] || 'default')) : null;
+  const preview = { ...eq }; if (colorSlot) { if (pick === 'default') delete preview[shopSlot]; else preview[shopSlot] = pick; }
+  const styleTile = st => { const r = REWARDS[VILLAIN].find(x => x.slot === shopSlot && x.style === st), got = hasStyle(cos, VILLAIN, shopSlot, st);
+    return `<button class="scell sty ${cur === st ? 'on' : ''} ${got ? '' : 'locked'}" data-style="${st}" title="${esc(STYLE_INFO[st].label)}">
+      <canvas class="px sicon" data-islot="${shopSlot}" data-istyle="${st}" data-dark="${got ? '' : 1}"></canvas><span class="ssub">${cur === st ? '✓' : got ? '' : `🔒 ${esc(rungName(r.at - 1))}`}</span></button>`; };
   const cell = c => {
     const own = owns(cos, VILLAIN, shopSlot, c.id), on = eq[shopSlot] === c.id, locked = !own && shelf < (c.needShelf || 0);
-    const sub = on ? '✓ wearing' : own ? 'owned' : locked ? `🔒 ${c.needShelf} rescued` : fmt(c.price);
-    return `<button class="scell ${on ? 'on' : ''} ${own ? 'own' : ''} ${locked ? 'locked' : ''} ${pick === c.id ? 'sel' : ''}" data-color="${c.id}">
-      <span class="${swatchCss(c)}" style="background:${c.hex[0]}"></span><span class="sname">${esc(c.label)}</span><span class="ssub">${sub}</span></button>`;
+    const sub = on ? '✓' : own ? '●' : locked ? `🔒 ${c.needShelf}` : fmt(c.price);
+    return `<button class="scell ${on ? 'on' : ''} ${own ? 'own' : ''} ${locked ? 'locked' : ''} ${pick === c.id ? 'sel' : ''}" data-color="${c.id}" title="${esc(c.label)}">
+      <span class="${swatchCss(c)}" style="background:${c.hex[0]}"></span><span class="ssub">${sub}</span></button>`;
   };
-  const tiers = Object.keys(TIERS).map(t => { const cs = COLORS.filter(c => c.tier === t); return cs.length ? `<div class="stier dim small">${TIERS[t]}</div><div class="sgrid">${cs.map(cell).join('')}</div>` : ''; }).join('');
-  const c = colorById(pick), own = c && owns(cos, VILLAIN, shopSlot, c.id), on = c ? eq[shopSlot] === c.id : !eq[shopSlot];
+  const c = colorSlot ? colorById(pick) : null, own = c && owns(cos, VILLAIN, shopSlot, c.id), on = c ? eq[shopSlot] === c.id : !eq[shopSlot];
   const locked = c && !own && shelf < (c.needShelf || 0);
-  const action = !c ? (on ? `<span class="dim">Default look</span>` : `<button class="btn acc" id="sact" data-do="default">Wear default</button>`)
+  const action = !colorSlot ? '' : !c ? (on ? '' : `<button class="btn acc" id="sact" data-do="default">Wear</button>`)
     : own ? (on ? `<button class="btn ghost" id="sact" data-do="default">Take off</button>` : `<button class="btn acc" id="sact" data-do="wear">Wear</button>`)
-    : locked ? `<span class="dim">🔒 Rescue ${c.needShelf} pets to unlock (you have ${shelf})</span>`
-    : `<button class="btn acc" id="sact" data-do="buy" ${bank >= c.price ? '' : 'disabled'}>Buy · ${fmt(c.price)}</button>${bank >= c.price ? '' : ` <span class="dim small">need ${fmt(c.price - bank)} more</span>`}`;
+    : locked ? `<span class="dim">🔒 ${c.needShelf} 🏆</span>`
+    : `<button class="btn acc" id="sact" data-do="buy" ${bank >= c.price ? '' : 'disabled'}>👟 ${fmt(c.price)}</button>`;
   view.innerHTML = `
-    <p class="row" style="justify-content:space-between"><button class="btn small ghost" id="sback">← Hostage</button><span>👟 <b>${fmt(bank)}</b> Spare Steps</span></p>
+    <p class="row" style="justify-content:space-between"><button class="btn small ghost" id="sback">←</button><span>👟 <b>${fmt(bank)}</b></span></p>
     <h2>${esc(v.shop.toUpperCase())}</h2>
     <div class="shoptop"><canvas id="spreview" class="px" width="34" height="48"></canvas>
-      <div><div class="seg" id="slotseg">${v.slots.map(sl => `<button class="${sl === shopSlot ? 'on' : ''}" data-slot="${sl}">${SLOTS[sl].icon} ${SLOTS[sl].label}</button>`).join('')}</div>
-      <div class="sact"><b>${c ? esc(c.label) : 'Default'} ${esc(SLOTS[shopSlot].label.toLowerCase())}</b><br>${action}</div></div></div>
-    <div class="sgrid"><button class="scell ${!eq[shopSlot] ? 'on' : ''} ${pick === 'default' ? 'sel' : ''}" data-color="default"><span class="swatch none"></span><span class="sname">Default</span><span class="ssub">${!eq[shopSlot] ? '✓ wearing' : 'free'}</span></button></div>
-    ${tiers}
-    <p class="dim small">Bought items are yours forever, even if a pet dies (that only empties your Spare Steps). Switching outfits is free.</p>`;
+      <div><div class="seg icons" id="slotseg">${tabs.map(sl => `<button class="${sl === shopSlot ? 'on' : ''}" data-slot="${sl}" title="${esc(SLOTS[sl].label)}">${SLOTS[sl].icon}</button>`).join('')}</div>
+      <div class="sact">${action}</div></div></div>
+    ${styles.length > 1 ? `<div class="sgrid">${styles.map(styleTile).join('')}</div>` : ''}
+    ${colorSlot ? Object.keys(TIERS).map((t, i) => { const cs = COLORS.filter(x => x.tier === t); return cs.length ? `<div class="sgrid">${i ? '' : `<button class="scell ${!eq[shopSlot] ? 'on' : ''} ${pick === 'default' ? 'sel' : ''}" data-color="default" title="Default"><span class="swatch none"></span><span class="ssub">${!eq[shopSlot] ? '✓' : ''}</span></button>`}${cs.map(cell).join('')}</div>` : ''; }).join('') : ''}`;
+  drawItemIcons(view, colorSlot ? preview : eq);
   const cv = $('#spreview'), ctx = cv.getContext('2d'), t0 = performance.now();
   const loop = now => { if (!cv.isConnected) return; const t = qs.has('t') ? +qs.get('t') + (now - t0) / 1000 : (now - t0) / 1000; ctx.clearRect(0, 0, 34, 48); setRaccoonLook(preview); blit(ctx, raccoonBody(t, 'idle'), 0, 0); setRaccoonLook(myLook()); anim = requestAnimationFrame(loop); };
   anim = requestAnimationFrame(loop);
   $('#sback').addEventListener('click', () => { shopPick = null; go('home'); });
   view.querySelectorAll('[data-slot]').forEach(b => b.addEventListener('click', () => { shopSlot = b.dataset.slot; shopPick = null; render(); }));
   view.querySelectorAll('[data-color]').forEach(b => b.addEventListener('click', () => { shopPick = { slot: shopSlot, color: b.dataset.color }; render(); }));
+  view.querySelectorAll('[data-style]').forEach(b => b.addEventListener('click', () => { if (!b.classList.contains('locked')) wearStyle(b.dataset.style); }));
   $('#sact')?.addEventListener('click', e => { const d = e.currentTarget.dataset.do; if (d === 'buy') confirmBuy(c); else equip(d === 'default' ? null : c.id); });
+}
+// item icons on <canvas data-islot data-istyle data-dark>: drawn once, in the slot's current color (or as a silhouette)
+function drawItemIcons(root, look = myLook()) {
+  root.querySelectorAll('canvas[data-istyle]').forEach(cv => {
+    const g = itemSprite(cv.dataset.islot, cv.dataset.istyle, look[cv.dataset.islot], !!cv.dataset.dark); if (!g) return;
+    cv.width = g.w; cv.height = g.h; cv.style.setProperty('--iw', g.w); cv.style.setProperty('--ih', g.h); blit(cv.getContext('2d'), g, 0, 0);
+  });
+}
+async function wearStyle(style) {
+  if (DEMO) { const eq = state.cosmetics.equipped[VILLAIN] = state.cosmetics.equipped[VILLAIN] || {}; (eq.styles = eq.styles || {})[shopSlot] = style; render(); return; }
+  try { const r = await api('/shop/style', { villain: VILLAIN, slot: shopSlot, style }); state = r.state; render(); } catch (e) { toast("Couldn't change: " + e.message); }
 }
 async function equip(color) {
   if (DEMO) { const eq = state.cosmetics.equipped[VILLAIN] = state.cosmetics.equipped[VILLAIN] || {}; if (color) eq[shopSlot] = color; else delete eq[shopSlot]; render(); return; }
@@ -346,7 +361,7 @@ function confirmBuy(c) {
   const ov = $('#overlay'); ov.hidden = false; const slot = shopSlot;
   ov.innerHTML = `<div class="ovbox"><h2>🛍 ${esc(VILLAINS[VILLAIN].shop)}</h2>
     <p>Buy the <b>${esc(c.label)} ${esc(SLOTS[slot].label.toLowerCase())}</b> for <b>${fmt(c.price)}</b> Spare Steps?</p>
-    <p class="dim small">Yours forever. Spare Steps aren't refunded. You have ${fmt(state.bank)}; after: ${fmt(state.bank - c.price)}.</p>
+    <p class="dim small">👟 ${fmt(state.bank)} → ${fmt(state.bank - c.price)}</p>
     <div class="row" style="justify-content:space-between"><button class="btn ghost" id="bno">Cancel</button><button class="btn acc" id="byes">Buy · ${fmt(c.price)}</button></div></div>`;
   const close = () => { ov.hidden = true; ov.innerHTML = ''; };
   $('#bno').addEventListener('click', close);
@@ -391,11 +406,10 @@ function renderFriends() {
   view.innerHTML = `
     <h2>Friends</h2>
     <div class="card"><p><button class="btn acc" id="finvite" ${mine ? '' : 'disabled'}>👥 Invite a friend</button></p>
-      <div class="dim small">Sends a link that adds you as their friend (and gets them started if they're new).</div>
-      <div class="dim small" style="margin-top:6px">Your friend ID: <b>${esc(mine || '…')}</b> (public, not your sync code)</div></div>
-    <div class="card"><div class="dim">Add a friend by ID</div>
-      <div class="row nowrap"><input id="fid" type="text" class="field" placeholder="e.g. K7PQ2M" autocapitalize="characters" autocomplete="off" maxlength="12"><button class="btn" id="fadd">Add</button></div></div>
-    <div id="flist">${l.length ? `<div class="dim">Loading…</div>` : `<p class="dim">No friends yet. Invite one, or type their friend ID.</p>`}</div>`;
+      <div class="dim small">ID <b>${esc(mine || '…')}</b></div></div>
+    <div class="card">
+      <div class="row nowrap"><input id="fid" type="text" class="field" placeholder="Friend ID" autocapitalize="characters" autocomplete="off" maxlength="12"><button class="btn" id="fadd">Add</button></div></div>
+    <div id="flist">${l.length ? `<div class="dim">Loading…</div>` : ''}</div>`;
   wireCopy(view);
   $('#finvite').addEventListener('click', inviteFriend);
   const add = async () => { if (await addFriend($('#fid').value)) renderFriends(); };
@@ -422,7 +436,7 @@ function renderFriendView(id) {
       <div class="quest"><div class="qhead"><b>Day ${f.day}/${f.need}</b><div class="dpips">${pips}</div><span class="tag">${friendStatus(f)}</span></div></div>
       <div class="steps"><b>${fmt(f.todaySteps)}</b><span>/ ${fmt(f.goal)}</span></div>
       <div class="bar ${prog >= 1 ? 'done' : ''}">${Array.from({ length: BAR_SEGMENTS }, (_, i) => `<i class="${i < filled ? 'f' : ''}"></i>`).join('')}</div>
-      <div class="card small">${x.nick ? `<b>${esc(x.nick)}</b>'s` : 'Their'} ${esc(speciesLabel(f.species))}, rung ${f.rung + 1} · ${f.shelf} on the shelf${f.deaths ? ` · patched up after ${f.deaths} death${f.deaths > 1 ? 's' : ''}` : ''}${f.lastSync ? ` · synced ${ago(f.lastSync)}` : ''}<br><span class="dim">View only.</span></div>
+      <div class="card small">${x.nick ? `<b>${esc(x.nick)}</b>'s` : 'Their'} ${esc(speciesLabel(f.species))}, rung ${f.rung + 1} · ${f.shelf} on the shelf${f.deaths ? ` · patched up after ${f.deaths} death${f.deaths > 1 ? 's' : ''}` : ''}${f.lastSync ? ` · synced ${ago(f.lastSync)}` : ''}</div>
       <details class="more"><summary>Nickname</summary><div class="row nowrap"><input id="fnick" type="text" class="field" maxlength="24" placeholder="${esc(f.name)}'s human" value="${esc(x.nick || '')}"><button class="btn small" id="fnicksave">Save</button></div>
         <p><button class="btn small ghost" id="fremove">Remove friend</button></p></details>`;
     const ctx = $('#fscene').getContext('2d'), t0 = performance.now(), canvas = $('#fscene');
@@ -454,10 +468,12 @@ function offerFriendFromLink() {
   }).catch(() => toast(`No player with friend ID ${id}.`));
 }
 // ?look=shirt:gold,hat:black,... puts an outfit on the demo raccoon (owned + equipped)
-function demoCosmetics() {
+function demoCosmetics(rung = 6) {
   const owned = { shirt: ['black', 'navy', 'gold'], hat: ['black', 'burgundy'], bowtie: ['mustard', 'rainbow'], glasses: ['black'] }, equipped = { shirt: 'navy', hat: 'black' };
   if (qs.get('look')) { for (const k of Object.keys(equipped)) delete equipped[k]; for (const kv of qs.get('look').split(',')) { const [sl, c] = kv.split(':'); if (sl && c) { equipped[sl] = c; owned[sl] = [...new Set([...(owned[sl] || []), c])]; } } }
-  return { owned: { raccoon: owned }, equipped: { raccoon: equipped } };
+  const unl = REWARDS.raccoon.filter(r => r.at <= rung).map(r => styleKey(r.slot, r.style));
+  if (qs.get('style')) { equipped.styles = {}; for (const kv of qs.get('style').split(',')) { const [sl, st] = kv.split(':'); if (sl && st) { equipped.styles[sl] = st; if (!unl.includes(styleKey(sl, st))) unl.push(styleKey(sl, st)); } } }
+  return { owned: { raccoon: owned }, equipped: { raccoon: equipped }, unlocked: { raccoon: unl } };
 }
 function demoBosses(rung) { const n = 3 + 2 * rung, k = rung < 2 ? 0 : Math.floor((n - 4) / 3), o = []; for (let i = 1; i <= k; i++) { const d = Math.min(n - 2, Math.max(2, Math.round(1 + i * (n - 1) / (k + 1)))); if (!o.includes(d)) o.push(d); } return o; }
 function demoFriend(id) {
@@ -473,17 +489,22 @@ function demoFriend(id) {
 function pushBanner(h) {
   const notHome = isIOS && !isStandalone();
   const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-  return `<div class="pushbanner"><div class="pbt">🔔 Turn on notifications</div>
-    <div class="small">${esc(h.name)} begs at 1 PM and 7:30 PM, only on days you're short.</div>
-    ${notHome ? `<div class="hint small">Open Pet Hostage from your Home Screen icon first, then tap the button.</div>` : !supported && !DEMO ? `<div class="hint small">This browser can't do notifications.</div>` : ''}
-    <p style="margin:8px 0 0"><button class="btn acc" id="pushbanner-on" ${notHome || (!supported && !DEMO) ? 'disabled' : ''}>Enable notifications</button></p>
+  return `<div class="pushbanner"><div class="row nowrap" style="justify-content:space-between"><span class="pbt">🔔</span>
+    <button class="btn acc small" id="pushbanner-on" ${notHome || (!supported && !DEMO) ? 'disabled' : ''}>Notify me</button></div>
+    ${notHome ? `<div class="hint small">Open from the Home Screen icon first.</div>` : ''}
     <div id="pushbanner-msg" class="small dim"></div></div>`;
 }
 
 // ---- the rescued shelf + the ladder ----
-function petCard(p, extra) {
+function petCard(p, extra, reward = '') {
   return `<div class="pcard ${p.locked ? 'locked' : ''} ${p.status || ''}"><canvas class="px shelfpet" width="40" height="42" data-i="${shelfPets.length}"></canvas>
-    <div class="pname">${p.locked ? '???' : esc(p.name)}</div><div class="dim small">${extra}</div></div>`;
+    <div class="pname">${p.locked ? '???' : esc(p.name)}</div><div class="dim small">${extra}</div>${reward}</div>`;
+}
+// v0.5.4: what rescuing rung r gives the villain (colored once earned, a silhouette until then)
+function rewardChip(r, name) {
+  const w = rewardFor(VILLAIN, r + 1); if (!w) return '';
+  const got = hasStyle(state.cosmetics, VILLAIN, w.slot, w.style);
+  return `<div class="rw ${got ? 'got' : ''}" title="${esc(STYLE_INFO[w.style].label)}"><canvas class="px" data-islot="${w.slot}" data-istyle="${w.style}" data-dark="${got ? '' : 1}"></canvas><span>${got ? '✓' : '🎁' + (name ? ' ' + esc(name) : '')}</span></div>`;
 }
 let shelfPets = [];
 function animateShelf() {
@@ -501,22 +522,21 @@ const scars = p => p.deaths ? `<br>patched up ×${p.deaths}` : '';
 function renderShelf() {
   const s = state; shelfPets = [];
   const reveal = DEMO === 'lineup';
-  const cards = arr => arr.map(x => { const html = petCard(x.p, x.extra); shelfPets.push(x.p); return html; }).join('');
-  const shelf = s.shelf.map(p => ({ p, extra: `rescued ${fmtDate(p.rescuedOn)}${scars(p)}` }));
+  const shelf = s.shelf.map(p => ({ p, extra: `${fmtDate(p.rescuedOn)}${p.deaths ? ` · 🩹${p.deaths}` : ''}` }));
   const ladder = s.ladder.map(l => {
     const p = { ...l, locked: !reveal && l.status === 'locked' && !l.known, injuries: l.injuries || [] };
-    const tag = l.status === 'rescued' ? '✅ rescued' : l.status === 'hostage' ? '🔒 hostage' : p.locked ? '' : speciesLabel(l.species);
-    return { p, extra: `${l.need} days${tag ? ' · ' + tag : ''}` };
+    const tag = l.status === 'rescued' ? '✅' : l.status === 'hostage' ? '🔒' : '';
+    return { p, extra: `${l.need} days${tag ? ' ' + tag : ''}`, reward: rewardChip(l.rung, p.locked ? '' : l.name) };
   });
+  const cards = arr => arr.map(x => { const html = petCard(x.p, x.extra, x.reward || ''); shelfPets.push(x.p); return html; }).join('');
   view.innerHTML = `
-    <h2>RESCUED SHELF</h2>
-    <div class="shelf">${shelf.length ? `<div class="pgrid">${cards(shelf)}</div><div class="plank"></div>` : `<div class="card dim">Empty. Rescue ${esc(s.hostage.name)} (${s.hostage.need} days in a row) to put someone here.</div>`}</div>
-    <p class="dim small">Miss a day and the current hostage dies. Then The Raccoon takes the last pet on this shelf back, and you rescue it again with its original day count.</p>
-    <h2>THE LADDER</h2>
+    <h2>🏆 SHELF</h2>
+    <div class="shelf">${shelf.length ? `<div class="pgrid">${cards(shelf)}</div><div class="plank"></div>` : `<div class="card dim">🏆 0</div>`}</div>
+    <h2>🪜 LADDER</h2>
     <div class="pgrid ladder">${cards(ladder)}</div>
-    <h2>OBITUARIES</h2>
-    <div class="card">${(s.deathLog || []).length ? s.deathLog.map(d => `<div class="grave"><span>🪦</span><span><b>${esc(d.name)}</b> <span class="dim">${fmtDate(d.date)} · ${esc(DEATH_TEXT[d.type] || '')}. ${d.rekidnap.same ? 'Stitched back up.' : esc(d.rekidnap.name) + ' re-kidnapped.'}</span></span></div>`).join('') : '<span class="dim">Nobody has died. Yet.</span>'}</div>
+    ${(s.deathLog || []).length ? `<h2>🪦</h2><div class="card">${s.deathLog.map(d => `<div class="grave"><span>🪦</span><span><b>${esc(d.name)}</b> <span class="dim">${fmtDate(d.date)} · ${esc(DEATH_TEXT[d.type] || '')}</span></span></div>`).join('')}</div>` : ''}
   `;
+  drawItemIcons(view);
   animateShelf();
 }
 
@@ -562,10 +582,10 @@ function playDeath(d, freezeAt) {
 
 function syncLogHtml(s) {
   const log = (s.syncLog || []);
-  if (!log.length && phonePick() === 'android') return `<span class="dim">Nothing has reached The Raccoon yet. Set up the Pet Hostage Sync app below, then tap "Check steps".</span>`;
-  if (!log.length) return `<span class="dim">Nothing has reached The Raccoon yet. Run the "${SHORTCUT_NAME}" shortcut once by hand, then tap "Check steps" below.</span>`;
+  if (!log.length && phonePick() === 'android') return `<span class="dim">🔄 —</span>`;
+  if (!log.length) return `<span class="dim">🔄 —</span>`;
   const line = e => `${e.ok ? '✅' : '❌'} ${timePT(e.at)} · ${ago(e.at)} · ${e.ok ? (e.dry ? 'dry run, ' : '') + fmt(e.steps) + ' steps' : esc(e.reason || 'failed')}${e.raw != null && !e.ok ? ` <span class="dim">(got "${esc(e.raw)}")</span>` : ''}${e.codeNote ? ` <span class="dim">· ${esc(e.codeNote)}</span>` : ''}${e.src === 'garmin' ? ' <span class="dim">· Garmin</span>' : e.src === 'android' ? ' <span class="dim">· Android</span>' : ''}${e.ok && e.reason ? ` <span class="dim">· ${esc(e.reason)}</span>` : ''}`;
-  return `<div>${line(log[0])}</div>` + (log.length > 1 ? `<div class="dim" style="margin-top:6px">Earlier:<br>${log.slice(1).map(line).join('<br>')}</div>` : '');
+  return `<div>${line(log[0])}</div>` + (log.length > 1 ? `<div class="dim" style="margin-top:6px">${log.slice(1).map(line).join('<br>')}</div>` : '');
 }
 function garminHtml(s) {
   const g = s.garmin;
@@ -573,9 +593,8 @@ function garminHtml(s) {
   const err = g.lastError && g.lastErrorAt && g.lastErrorAt > g.lastSync;
   return `<h2>GARMIN</h2>
     <div class="card" id="garmin">
-      <div>⌚ <b>Synced automatically from Garmin</b></div>
+      <div>⌚ <b>Garmin · auto</b></div>
       <div class="dim" style="margin-top:6px">Last Garmin sync ${timePT(g.lastSync)} · ${ago(g.lastSync)} · ${fmt(g.lastSteps)} steps</div>
-      <div class="dim">Checks your Garmin account every 15 minutes, 5 AM to midnight, plus 11:55 PM. Nothing to run on your phone.</div>
       ${err ? `<div style="margin-top:6px">❌ Last attempt failed ${timePT(g.lastErrorAt)}: ${esc(g.lastError)}</div>` : ''}
     </div>`;
 }
@@ -591,8 +610,8 @@ function androidHtml(s, w = 'garmin') {
     : `<li>Make sure ${w === 'none' ? 'the app that counts your steps' : 'your watch\'s app'} (<b>Samsung Health</b>, Google Fit…) shares <b>Steps</b> with <b>Health Connect</b>: in that app's settings, or phone Settings → Health Connect → App permissions.</li>`;
   return `<div class="card" id="android">${a && a.lastSync
       ? `<div><b>Pet Hostage Sync is connected</b></div><div class="dim" style="margin-top:6px">Last sync ${timePT(a.lastSync)} · ${ago(a.lastSync)} · ${fmt(a.lastSteps)} steps</div>`
-      : `<div class="dim">A small app reads your steps from Health Connect and sends them here every ~15 min. No passwords.</div>`}</div>
-    <details class="more"${a && a.lastSync ? '' : ' open'}><summary>Set it up</summary>
+      : `<div class="dim">📲 Health Connect → Pet Hostage Sync</div>`}</div>
+    <details class="more"><summary>Set it up</summary>
     <ol class="guide">
       <li><a class="btn" href="${APK_URL}" download>Download the app</a><br>Open it and allow <b>Install unknown apps</b> when asked.</li>
       ${share}
@@ -616,7 +635,7 @@ function watchPick() {
   return localStorage.getItem('ph.watch') || (benLike() || phonePick() === 'android' ? 'garmin' : 'apple');
 }
 function recipeHtml(w) {
-  const open = state.lastSync ? '' : ' open';
+  const open = ''; // v0.5.4: collapsed
   // v0.4.13: a Source filter is REQUIRED for every watch: Find Health Samples returns iPhone + watch samples, and Sum adds both.
   const src = {
     apple: `<b>Source is</b> your Apple Watch (e.g. "Stephanie's Apple Watch")`,
@@ -657,7 +676,7 @@ function recipeHtml(w) {
 function iphoneHtml(w) {
   return `${benLike() ? `<p class="dim">Backup only: Garmin syncs on its own (above). A Shortcut can raise today's count, never lower it.</p>` : ''}
     <div class="card">
-      <div class="dim">🔒 Your private sync URL (has your secret code <b>${esc(code)}</b>). For your Shortcut only; don't send it to friends.</div>
+      <div class="dim">🔒 Private: holds your secret code. Shortcut only, never share.</div>
       <div class="code" id="surl">${esc(syncUrl())}</div>
       <p><button class="btn acc" data-copy="${esc(syncUrl())}">🔒 Copy sync URL (setup only)</button></p>
     </div>
@@ -670,8 +689,8 @@ function stepsHtml(ph, w) {
 const segHtml = (id, opts, cur, attr, off = []) => `<div class="seg" id="${id}">${opts.map(([k, l]) => `<button class="${k === cur ? 'on' : ''}${off.includes(k) ? ' off' : ''}" data-${attr}="${k}">${l}</button>`).join('')}</div>`;
 function pickerHtml() {
   const ph = phonePick(), w = watchPick();
-  return `<div class="dim">Which phone?</div>${segHtml('phoneseg', PHONES, ph, 'phone')}
-    <div class="dim">Which watch?</div>${segHtml('watchseg', WATCHES, w, 'watch', ph === 'android' ? ['apple'] : [])}`;
+  return `${segHtml('phoneseg', PHONES, ph, 'phone')}
+    ${segHtml('watchseg', WATCHES, w, 'watch', ph === 'android' ? ['apple'] : [])}`;
 }
 function wireCopy(root) {
   root.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', async () => {
@@ -685,13 +704,11 @@ function wirePickers() {
 }
 function renderSync() {
   view.innerHTML = `
-    <h2>LAST SYNC ATTEMPT</h2>
     <div class="card" id="synclog">${syncLogHtml(state)}</div>
     ${garminHtml(state)}
-    <h2>${benLike() ? 'OTHER WAYS TO SYNC' : 'SET UP STEP SYNC'}</h2>
+    <h2>${benLike() ? 'BACKUP' : 'SET UP'}</h2>
     <div id="pickers">${pickerHtml()}</div>
     <div id="syncsteps">${stepsHtml(phonePick(), watchPick())}</div>
-    <h2>TEST IT</h2>
     <p><button class="btn" id="refresh">Check steps</button></p>
     <div id="synctest" class="dim"></div>
   `;
@@ -713,43 +730,34 @@ function renderSettings() {
   else if (!pushSupported) pushHint = 'This browser can\'t do web push.';
   const perm = 'Notification' in window ? Notification.permission : 'unsupported';
   view.innerHTML = `
-    <h2>NOTIFICATIONS</h2>
+    <h2>🔔</h2>
     <div class="card">
-      <p>Around 1 PM and 7:30 PM, if you're short of the day's goal, you get one note from your hostage (begging) and one from The Raccoon (taunting). Plus a note when you pay, and a morning report on yesterday (rescues, deaths, re-kidnappings).</p>
-      <p class="dim">Status: ${s.push ? 'subscribed ✅' : 'off'} · permission: ${perm}</p>
+      <p class="dim">${s.push ? '✅' : 'off'} · 1 PM · 7:30 PM</p>
       ${pushHint ? `<p class="hint">${pushHint}</p>` : ''}
       <div class="row">
         <button class="btn acc" id="pushon" ${pushHint ? 'disabled' : ''}>${s.push ? 'Re-enable' : 'Enable notifications'}</button>
-        <button class="btn" id="pushtest" ${s.push ? '' : 'disabled'}>Send test nudge</button>
+        <button class="btn" id="pushtest" ${s.push ? '' : 'disabled'}>Test</button>
       </div>
       <div id="pushmsg" class="dim" style="margin-top:8px"></div>
     </div>
-    <h2>RANSOM</h2>
+    <h2>✏️ NAME</h2>
     <div class="card">
-      <label for="pname">Current hostage's name</label><input type="text" id="pname" maxlength="24" value="${esc(s.hostage.name)}">
+      <input type="text" id="pname" maxlength="24" value="${esc(s.hostage.name)}">
       <p><button class="btn" id="save">Save</button></p>
-      <p class="dim">Rules: the ransom is <b>10,000 steps a day</b>, and <b>15,000 on each pet's final day</b>, judged at midnight Pacific. Each pet on the ladder needs a streak to rescue: 3 days for the bunny, then 5, 7, 9... Rescued pets go on the shelf and The Raccoon grabs the next animal. Miss a single day and the current hostage meets a cartoon end, then The Raccoon takes your last rescued pet back, and you rescue it again with its original day count. Pets that died come back patched up.</p>
+      <p class="dim small">👟 10,000/day · 🔥 15,000 final day · ⏰ midnight PT</p>
     </div>
-    <h2>PLAY WITH A FRIEND</h2>
-    <div class="card">
-      <p class="dim">Friends get their own raccoon, ladder and code. Your pets stay yours. Invites live in the Friends tab.</p>
-      <p><button class="btn" id="share">👥 Go to Friends</button></p>
-    </div>
-    <h2>YOUR CODE</h2>
+    <h2>🔒 YOUR CODE</h2>
     <div class="card">
       <div class="row" style="justify-content:space-between"><span class="big-code">${esc(code)}</span><button class="btn small ghost" id="copycode">🔒 Copy code (backup)</button></div>
-      <p class="dim">Private: don't send it to friends (use Invite a friend instead). Keep it somewhere safe. If the home-screen app is ever deleted or forgets you, open the app, tap <b>Restore with code</b>, and type it in. Your Shortcut uses it too.</p>
-      <label for="rcode">Restore a different code on this device</label>
+      <p class="dim small">🔒 Private. Don't share it.</p>
       <div class="row"><input type="text" id="rcode" maxlength="20" placeholder="e.g. 3YS267ZCSA" autocapitalize="characters" autocomplete="off" style="flex:1;width:auto"><button class="btn" id="rgo">Restore</button></div>
       <div id="rmsg" class="dim" style="margin-top:6px"></div>
     </div>
-    <p class="dim">${VERSION}</p>
   `;
   $('#save').addEventListener('click', async () => {
     try { state = await api('/settings', { name: $('#pname').value }); toast('Saved. The Raccoon has updated his notes.'); } catch (e) { toast('Save failed: ' + e.message); }
   });
   $('#pushon').addEventListener('click', enablePush);
-  $('#share').addEventListener('click', () => go('friends'));
   $('#copycode').addEventListener('click', async () => { try { await navigator.clipboard.writeText(code); toast('Code copied'); } catch { toast('Copy failed, long-press to select'); } });
   $('#rgo').addEventListener('click', () => restoreCode($('#rcode').value, $('#rmsg')));
   $('#pushtest').addEventListener('click', async () => {
@@ -964,7 +972,7 @@ function demoState(m) {
     v: 2, today, hour, goal, todaySteps, lastSync: m === 'nosync' ? null : Date.now() - 23 * 60000, lastSteps: todaySteps, started: day(-40),
     hostage, shelf, ladder, mood, lastDeath, deathSeen: 0,
     deathLog: [lastDeath, { id: 2, date: day(-21), rung: 2, name: 'Acorn', species: 'squirrel', type: 'catapult', rekidnap: { name: 'Nugget', same: false } }, { id: 1, date: day(-33), rung: 0, name: 'Chompsky', species: 'bunny', type: 'pop', rekidnap: { name: 'Chompsky', same: true } }].filter(Boolean),
-    cosmetics: demoCosmetics(), bank: m === 'shop' ? 186500 : m === 'bank' || m === 'paused' ? (m === 'paused' ? 11200 : 41200) : 2350, pauseCost: PAUSE_COST, pausedToday: m === 'paused', friendId: 'DEMO42',
+    cosmetics: demoCosmetics(rung), bank: m === 'shop' ? 186500 : m === 'bank' || m === 'paused' ? (m === 'paused' ? 11200 : 41200) : 2350, pauseCost: PAUSE_COST, pausedToday: m === 'paused', friendId: 'DEMO42',
     bankLog: [{ date: day(-1), kind: 'earn', amount: 2900, bal: 41200 }, { date: day(-2), kind: 'earn', amount: 4100, bal: 38300 }, { date: day(-4), kind: 'pause', amount: -30000, bal: 34200 }, { date: day(-5), kind: 'earn', amount: 5300, bal: 64200 }],
     stats: { metDays: 27, missedDays: 3, rescues: 4 }, push: !qs.has('nopush'),
     baseGoal: GOAL, days: Array.from({ length: 14 }, (_, i) => ({ date: day(i - 13), goal: i === 13 ? goal : m === 'boss' && i === 9 ? FINAL_GOAL : GOAL, paused: m !== 'boss' && (i === 9 || (m === 'paused' && i === 13)), steps: i === 13 ? (todaySteps || null) : (m === 'nosync' ? null : hist[i]) })),
