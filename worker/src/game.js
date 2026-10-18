@@ -22,6 +22,7 @@ export const ANIMALS = [
   { species: 'piglet', name: 'Truffle' },
   { species: 'panda', name: 'Bao' },
   { species: 'capybara', name: 'Yuzu' }, // v0.4.3: appended so nobody's rungs shift
+  { species: 'unicorn', name: 'Marmalade' }, // v0.5.7: appended the same way (rung 9, 21 days)
 ];
 // Cartoon deaths, in the order a pet meets them (offset by rung so the ladder varies). Each leaves its own patch-up.
 export const DEATHS = ['pop', 'anvil', 'catapult', 'zap'];

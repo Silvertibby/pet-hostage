@@ -175,6 +175,8 @@ export const REVIVED = {
       raccoon: ["Dumplings, the sequel. Same steamer.", "Endangered? You're on my menu twice.", "Back in the basket, {name}."] },
     capybara: { pet: ["Still calm. Calmly holding a grudge. {left} steps.", "Even my chill has scar tissue now.", "The hot spring and I have history. Bad history."],
       raccoon: ["Hot pot, reheated. {name} soaks it up.", "Still calm, {name}? Even after last time?", "I kept the yuzu. Saved a slot for you."] },
+    unicorn: { pet: ["I'm a mythical creature. I shouldn't even HAVE stitches.", "My horn survived {how}. My optimism didn't. {left} steps.", "Glitter doesn't cover scars. I checked."],
+      raccoon: ["Juice, the sequel. Pulp included.", "Even magic needs patching, {name}.", "I kept the glass from last time."] },
   },
 };
 export const tierOf = deaths => Math.max(1, Math.min(3, deaths | 0));

@@ -134,8 +134,22 @@ export const SPECIES = {
       set(g, 21, 4, 't'); set(g, 24, 7, 'U'); set(g, 23, 7, 'U'); set(g, 25, 6, 'U');
       set(g, 23, 2, 'L'); set(g, 24, 2, 'L'); set(g, 24, 1, 'L'); set(g, 22, 3, 'k');
     } },
+  // v0.5.7: the orange unicorn (rung 9). Golden striped horn, pink/purple forelock and a matching tail.
+  unicorn: { label: 'unicorn', pal: { k: '#b0582a', w: '#ffb460', g: '#f3983e', c: '#ffe8cc', p: '#ffc2b0', P: '#8a3a2a', q: '#ff8f96', m: '#7a3018', e: '#2e1a22', i: '#8a3a7a', I: '#d070b8', j: '#f8d0ec',
+      h: '#ffe27a', H: '#c8901e', r: '#ff6fa8', R: '#a87aff' },
+    back(l, t) { const sw = Math.sin(t * 2.2) * 1;
+      stroke(l, [[25, 33], [29.5, 31], [32 + sw, 25], [31 + sw, 19]], 1.6, 2.4, 'r');
+      stroke(l, [[26, 34], [30.5, 32.5], [33.2 + sw, 27], [33 + sw, 21.5]], 0.9, 1.3, 'R'); },
+    ears(l, t, dr) { const d = dr * 1.8; pointyEar(l, 9.8, 11.5, 7.5, 3.3, -1.4 - d, 'w', 'p'); pointyEar(l, MC(9.8), 11.5, 7.5, 3.3, 1.4 + d, 'w', 'p'); },
+    head(g, t) {
+      ell(g, 13.4, 9.4, 3.2, 1.9, 'r'); ell(g, 22.8, 9.2, 2.9, 1.8, 'R'); ell(g, 10.4, 10.8, 1.7, 1.6, 'R'); set(g, 15, 10, 'R'); set(g, 21, 10, 'r'); set(g, 9, 12, 'r'); // forelock
+      layer(g, l => { tri(l, 16.5, 9, 19.5, 9, 18, -0.4, 'h'); }, 'H'); // tall golden horn
+      for (const [x, y] of [[17, 7], [18, 6], [17, 4], [18, 3], [18, 1]]) set(g, x, y, 'H'); // spiral stripes
+      if (Math.sin(t * 2.6) > 0.8) { set(g, 21, 1, 't'); set(g, 22, 0, 'j'); set(g, 20, 0, 'j'); } // a twinkle on the horn
+      ell(g, CX, 23.6, 4.6, 2.6, 'c'); // soft muzzle
+    } },
 };
-export const SPECIES_ORDER = ['bunny', 'hamster', 'squirrel', 'hedgehog', 'kitten', 'duckling', 'piglet', 'panda', 'capybara'];
+export const SPECIES_ORDER = ['bunny', 'hamster', 'squirrel', 'hedgehog', 'kitten', 'duckling', 'piglet', 'panda', 'capybara', 'unicorn'];
 
 function mixHex(h, to, w) { const n = parseInt(h.slice(1, 7), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
   return '#' + [r, g, b].map((v, i) => Math.round(v * (1 - w) + to[i] * w).toString(16).padStart(2, '0')).join(''); }
@@ -365,7 +379,9 @@ export function raccoonBody(t, pose = 'idle', opts = {}) {
     : walk ? [[[11, 30], [9 - st, 36]], [[23, 30], [25 + st, 36]]]
     : [[[11, 30], [9, 37]], [[23, 30], [25, 37]]];
   layer(g, l => { for (const [[x0, y0], [x1, y1]] of arms) { stroke(l, [[x0, y0 + by], [x1, y1 + by]], 1.7, 1.5, 'c'); } }, k);
-  const cane = (LOOK.styles || {}).hand === 'cane' && !glee && arms[1][1][1] >= 33;
+  const hand = (LOOK.styles || {}).hand, cane = hand === 'cane' && !glee && arms[1][1][1] >= 33;
+  if (hand === 'scepter') layer(g, l => { const [px, py] = arms[1][1], x = Math.round(px + 1.5), y0 = Math.round(py + by); // v0.5.7: royal scepter
+    for (let y = y0 - 7; y <= y0 + 4; y++) set(l, x, y, 'W'); ell(l, x + 0.5, y0 - 8.5, 1.8, 1.8, 'J'); set(l, x, y0 - 9, 'Y'); set(l, x - 1, y0 - 6, 'W'); set(l, x + 1, y0 - 6, 'W'); }, k);
   if (cane) layer(g, l => { const [px, py] = arms[1][1], x = Math.round(px + 1.5), y0 = Math.round(py + by);
     for (let y = y0 - 2; y <= 45; y++) set(l, x, y, 'w'); set(l, x - 1, y0 - 3, 'W'); set(l, x - 2, y0 - 3, 'W'); set(l, x - 3, y0 - 2, 'W'); set(l, x, y0 - 3, 'W'); set(l, x, 46, 'y'); }, k);
   layer(g, l => { for (const [, [x1, y1]] of arms) ell(l, x1 + (x1 < 17 ? -0.6 : 0.6), y1 + by, 1.8, 1.6, 'd'); }, k);
@@ -382,7 +398,7 @@ export function raccoonBody(t, pose = 'idle', opts = {}) {
   if (glee) { for (let x = 13; x <= 19; x++) { set(g, x + hx, 22 + hy, 'b'); set(g, x + hx, 23 + hy, x % 2 ? 'e' : 'b'); } set(g, 12 + hx, 21 + hy, 'k'); set(g, 20 + hx, 21 + hy, 'k'); } // big grin
   if (sulk) for (let x = 13; x <= 19; x++) { set(g, x + hx, 22 + hy, null); set(g, x + hx, 23 + hy, x === 13 || x === 19 ? 'k' : null); set(g, x + hx, 22 + hy, x > 13 && x < 19 ? 'k' : 'm'); } // flat frown
   const coat = lookPal('shirt', t, 1), bow = lookPal('bowtie', t, 3);
-  g.pal = { ...head.pal, c: '#4a3858', C: '#33263f', r: '#d8405e', R: '#a02a46', y: '#ffd84a', p: '#ff6fa8', v: '#3e9a4a', w: '#8a5a3a', W: '#e8b830', ...(coat ? { c: coat[0], C: coat[1] } : {}), ...(bow ? { r: bow[0], R: bow[1] } : {}) };
+  g.pal = { ...head.pal, c: '#4a3858', C: '#33263f', r: '#d8405e', R: '#a02a46', y: '#ffd84a', p: '#ff6fa8', v: '#3e9a4a', w: '#8a5a3a', W: '#e8b830', J: '#d8405e', Y: '#ffd0dc', ...(coat ? { c: coat[0], C: coat[1] } : {}), ...(bow ? { r: bow[0], R: bow[1] } : {}) };
   if (g.top) { g.top.pal = g.pal; g.top.alpha = 1; }
   g.alpha = 1;
   return g;
@@ -775,9 +791,27 @@ const PERIL = {
     steam(ctx, 26, 64, 44, t, calm ? 3 : 8, calm);
     if (!calm) { const [ax, ay] = racWithPaw(ctx, st, t, 'stir'); pline(ctx, ax, ay, 66, 64, '#c8a070'); px(ctx, 63, 66, 5, 2, '#a8703e'); px(ctx, ax - 1, ay - 1, 3, 3, '#1f1a28'); }
   },
+  unicorn(ctx, st, t, calm) { // v0.5.7: stood on a giant citrus juicer while the press comes down; a glass waits at the spout
+    const ly = calm ? 14 : Math.round(16 + (Math.sin(t * 0.8) * 0.5 + 0.5) * 9);
+    pulley(ctx, 47, 12); pulley(ctx, 74, 12); px(ctx, 47, 12, 27, 1, '#a7824c'); px(ctx, 47, 12, 1, ly - 12, '#a7824c');
+    // the press: a heavy dome with ridges
+    for (let j = 0; j < 7; j++) { const o = Math.round((6 - j) ** 2 / 2.4); px(ctx, 26 + o, ly + j, 42 - 2 * o, 1, j < 2 ? '#d8dce6' : '#b0b4c0'); }
+    for (let x = 30; x < 66; x += 4) px(ctx, x, ly + 3, 1, 4, '#8a8f9c'); px(ctx, 44, ly - 2, 7, 2, '#8a8f9c'); px(ctx, 26, ly + 7, 42, 1, '#6a6e7a');
+    if (!calm) petAt(ctx, st, t, 29, 32 + (Math.sin(t * 9) > 0.5 ? 1 : 0));
+    // ridged reamer + bowl
+    for (let j = 0; j < 6; j++) px(ctx, 40 - j * 2, 70 + j, 14 + j * 4, 1, j % 2 ? '#f0a030' : '#ffc860');
+    px(ctx, 20, 76, 54, 3, '#e8e4ec'); px(ctx, 20, 76, 54, 1, '#ffffff'); for (let j = 0; j < 10; j++) { const o = Math.round(j * j / 12); px(ctx, 20 + o, 79 + j, 54 - 2 * o, 1, j < 3 ? '#ffb52e' : '#d8d4e0'); }
+    px(ctx, 73, 79, 6, 2, '#d8d4e0'); // spout
+    const lvl = calm ? 2 : 4 + Math.round((Math.sin(t * 0.6) * 0.5 + 0.5) * 6); // the glass fills
+    px(ctx, 76, 82, 1, 10, '#c5cad6'); px(ctx, 85, 82, 1, 10, '#c5cad6'); px(ctx, 76, 91, 10, 1, '#c5cad6'); px(ctx, 77, 91 - lvl, 8, lvl, '#ffa02a'); px(ctx, 77, 91 - lvl, 8, 1, '#ffd070');
+    if (!calm) { if (Math.floor(t * 6) % 3) px(ctx, 79, 81 + (Math.floor(t * 12) % 3), 1, 2, '#ffa02a');
+      for (let i = 0; i < 5; i++) if (Math.sin(t * 9 + i * 2.1) > 0.6) px(ctx, 28 + i * 9, 68 - (i % 2) * 3, 1, 1, i % 2 ? '#ffe27a' : '#ff6fa8'); // juice + glitter spray
+      const [ax, ay] = racWithPaw(ctx, st, t, 'crank'); pline(ctx, 74, 12, ax, ay, '#a7824c'); winch(ctx, ax, ay, t); }
+    else pline(ctx, 74, 12, 76, 60, '#a7824c');
+  },
 };
 export const PERIL_SPECIES = Object.keys(PERIL);
-const PERIL_LAMP = { bunny: 66, hamster: 68, kitten: 70, hedgehog: 62, panda: 62, capybara: 38 }; // keep the lamp clear of the ropes
+const PERIL_LAMP = { bunny: 66, hamster: 68, kitten: 70, hedgehog: 62, panda: 62, capybara: 38, unicorn: 62 }; // keep the lamp clear of the ropes
 function drawPeril(ctx, st, t) {
   room(ctx, t, false, PERIL_LAMP[st.species] || LAMP0);
   (PERIL[st.species] || PERIL.bunny)(ctx, st, t, false);

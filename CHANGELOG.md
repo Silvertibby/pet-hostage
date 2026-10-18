@@ -1,5 +1,9 @@
 # Pet Hostage changelog
 
+## v0.5.7 (2026-10-18)
+- New hostage at the end of the ladder: Marmalade the orange unicorn (21 days). The II loop now starts after her.
+- New rescue reward: the scepter (10 rescued).
+
 ## v0.5.6 (2026-10-17)
 - Friends: 📋 copy button for your friend ID; Invite also copies the link.
 - The top hat is now a tall stovepipe.

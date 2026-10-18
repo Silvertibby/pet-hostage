@@ -4,7 +4,7 @@
 export const VILLAINS = {
   raccoon: { name: 'The Raccoon', shop: 'Raccoon Shop', slots: ['shirt', 'hat', 'bowtie', 'glasses'],
     // v0.5.4 styles per slot (first = default). Styles in a color slot take that slot's color.
-    styles: { hat: ['fedora', 'bowler', 'tophat', 'crown'], glasses: ['shades', 'monocle', 'aviator'], bowtie: ['bowtie', 'scarf'], face: ['none', 'mustache'], pin: ['none', 'flower'], hand: ['none', 'cane'] } },
+    styles: { hat: ['fedora', 'bowler', 'tophat', 'crown'], glasses: ['shades', 'monocle', 'aviator'], bowtie: ['bowtie', 'scarf'], face: ['none', 'mustache'], pin: ['none', 'flower'], hand: ['none', 'cane', 'scepter'] } },
 };
 // v0.5.4 free rescue rewards: `at` = pets rescued (best ever). Awarded server-side, kept forever.
 export const REWARDS = {
@@ -18,13 +18,14 @@ export const REWARDS = {
     { at: 7, slot: 'hand', style: 'cane' },
     { at: 8, slot: 'pin', style: 'flower' },
     { at: 9, slot: 'hat', style: 'crown' },
+    { at: 10, slot: 'hand', style: 'scepter' }, // v0.5.7: for rescuing the unicorn
   ],
 };
 export const STYLE_INFO = {
   fedora: { label: 'Fedora', icon: '🕵️' }, bowler: { label: 'Bowler', icon: '🎩' }, tophat: { label: 'Top hat', icon: '🎩' }, crown: { label: 'Crown', icon: '👑' },
   shades: { label: 'Shades', icon: '🕶️' }, monocle: { label: 'Monocle', icon: '🧐' }, aviator: { label: 'Aviators', icon: '🕶️' },
   bowtie: { label: 'Bow tie', icon: '🎀' }, scarf: { label: 'Scarf', icon: '🧣' },
-  mustache: { label: 'Mustache', icon: '🥸' }, flower: { label: 'Flower', icon: '🌹' }, cane: { label: 'Cane', icon: '🐾' }, none: { label: 'None', icon: '∅' },
+  mustache: { label: 'Mustache', icon: '🥸' }, flower: { label: 'Flower', icon: '🌹' }, cane: { label: 'Cane', icon: '🐾' }, scepter: { label: 'Scepter', icon: '🪄' }, none: { label: 'None', icon: '∅' },
 };
 export const rewardFor = (villain, at) => (REWARDS[villain] || []).find(r => r.at === at) || null;
 export const styleKey = (slot, style) => slot + ':' + style;

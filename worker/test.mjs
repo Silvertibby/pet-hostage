@@ -1,6 +1,6 @@
 // Local checks: Web Push encryption round-trip, VAPID JWT signature, rules.
 import { encryptPayload, vapidJwt, b64u } from './src/push.js';
-import { settle, newState, addDays, mood, migrate, view, needFor, animalFor, ANIMALS, goalFor, goalToday, isFinalDay, RULES } from './src/game.js';
+import { settle, newState, addDays, mood, migrate, view, needFor, animalFor, ANIMALS, goalFor, goalToday, isFinalDay, RULES, bossDaysFor } from './src/game.js';
 import assert from 'node:assert';
 const subtle = crypto.subtle;
 // Fake browser subscription
@@ -52,12 +52,15 @@ function sim(pattern, start = D0) { // pattern: 'Y' (15k+, beats any day) / 'y' 
 }
 assert.deepEqual([0, 1, 2, 3, 4].map(needFor), [3, 5, 7, 9, 11]);
 assert.equal(new Set(ANIMALS.map(a => a.species)).size, ANIMALS.length); assert.ok(ANIMALS.length >= 6);
-assert.equal(animalFor(0).name, 'Chompsky'); assert.equal(animalFor(9).name, 'Chompsky II');
+assert.equal(animalFor(0).name, 'Chompsky'); assert.equal(animalFor(10).name, 'Chompsky II');
 // v0.4.3: the capybara is APPENDED; the first 8 rungs are unchanged so nobody's progress shifts
 assert.deepEqual(ANIMALS.slice(0, 8).map(a => a.species), ['bunny', 'hamster', 'squirrel', 'hedgehog', 'kitten', 'duckling', 'piglet', 'panda']);
-assert.equal(ANIMALS.length, 9); assert.deepEqual(animalFor(8), { species: 'capybara', name: 'Yuzu' }); assert.equal(needFor(8), 19); assert.equal(animalFor(17).name, 'Yuzu II');
+assert.deepEqual(animalFor(8), { species: 'capybara', name: 'Yuzu' }); assert.equal(needFor(8), 19);
+// v0.5.7: the unicorn is appended the same way (rung 9, 21 days, 5 mini-bosses); the II loop starts after it
+assert.equal(ANIMALS.length, 10); assert.deepEqual(animalFor(9), { species: 'unicorn', name: 'Marmalade' }); assert.equal(needFor(9), 21);
+assert.deepEqual(bossDaysFor(9), [4, 8, 11, 14, 18]); assert.equal(animalFor(18).name, 'Yuzu II'); assert.equal(animalFor(19).name, 'Marmalade II');
 { const st = newState('OLD', D0); st.pets[8] = { species: 'bunny', name: 'Chompsky II', deaths: 0, injuries: [], rescuedOn: null, rescues: 0, firstKidnapped: D0 }; // a pet already made keeps its identity
-  assert.equal(view(st).ladder[8].name, 'Chompsky II'); assert.equal(view(st).ladder.length, 9); }
+  assert.equal(view(st).ladder[8].name, 'Chompsky II'); assert.equal(view(st).ladder.length, 10); }
 // no free start day: missing it kills the bunny (rung 1 -> bunny again, patched up); hitting it counts as day 1
 { const { st, deaths } = sim('n'); assert.equal(deaths.length, 1); assert.equal(deaths[0].date, D0); assert.ok(deaths[0].rekidnap.same); assert.equal(st.hostage.rung, 0); assert.deepEqual(st.pets[0].injuries, ['pop']); }
 { const { st } = sim('Y'); assert.equal(st.hostage.streak, 1); }

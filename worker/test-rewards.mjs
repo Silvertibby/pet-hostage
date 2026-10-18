@@ -11,7 +11,7 @@ const call = async (path, body) => { const r = await worker.fetch(new Request('h
 const C = (await call('/claim', {})).body.code;
 const poke = async f => { const s = JSON.parse(await env.PH.get('player:' + C)); f(s); await env.PH.put('player:' + C, JSON.stringify(s)); };
 // v0.5.4 rescue rewards: free, server-side, permanent, backfilled, per villain
-assert.deepEqual(REWARDS.raccoon.map(r => r.at), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+assert.deepEqual(REWARDS.raccoon.map(r => r.at), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 assert.equal(REWARDS.raccoon.find(r => r.style === 'tophat').at, 3);
 for (const r of REWARDS.raccoon) assert.ok(VILLAINS.raccoon.styles[r.slot].includes(r.style), r.style);
 let s = (await call('/state?code=' + C)).body; assert.deepEqual(s.cosmetics.unlocked, { raccoon: [] });

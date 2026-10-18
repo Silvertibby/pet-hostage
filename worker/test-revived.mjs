@@ -7,7 +7,7 @@ import { newState } from './src/game.js';
 import { planNudge } from './src/index.js';
 console.log = () => {};
 assert.equal(readFileSync('src/revived.js', 'utf8'), readFileSync('../app/revived.js', 'utf8'), 'app/revived.js must be a copy of worker/src/revived.js');
-const SPECIES = ['bunny', 'hamster', 'squirrel', 'hedgehog', 'kitten', 'duckling', 'piglet', 'panda', 'capybara'];
+const SPECIES = ['bunny', 'hamster', 'squirrel', 'hedgehog', 'kitten', 'duckling', 'piglet', 'panda', 'capybara', 'unicorn'];
 let total = 0;
 for (const who of ['pet', 'raccoon']) {
   for (const t of [1, 2, 3]) { const n = REVIVED[who][t].length; assert.ok(n >= 15 && n <= 25, `${who} tier ${t}: ${n}`); total += n; }
