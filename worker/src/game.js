@@ -294,7 +294,7 @@ export function view(st, now = Date.now()) {
     lastDeath: st.lastDeath, deathSeen: st.deathSeen || 0, deathLog: (st.deathLog || []).slice(0, 10),
     stats: st.stats, bestRung: st.bestRung, started: st.started,
     push: !!st.sub, events: (st.events || []).slice(-5),
-    cheers: st.cheers.filter(c => c.date === np.date).map(({ id, kind, from, name, msg, at, date }) => ({ id, kind: kind || 'cheer', from, name, msg, at, date })), cheersTotal: st.cheersTotal, displayName: st.displayName || null, friends: st.friends,
+    cheers: st.cheers.filter(c => c.date === np.date).map(({ id, kind, from, name, msg, at, date }) => ({ id, kind: kind || 'cheer', from, name, msg, at, date })), cheersTotal: st.cheersTotal, displayName: st.displayName || null, friends: st.friends, newFriends: st.newFriends || [],
     bank: st.bank, bankLog: st.bankLog.slice(0, 10), cosmetics: st.cosmetics, pauseCost: RULES.PAUSE_COST, pausedToday: !!st.paused[np.date], friendId: st.friendId || null,
     code: st.code, syncLog: (st.syncLog || []).slice(0, 5),
     garmin: st.garmin ? { lastSync: st.garmin.lastSync || null, lastSteps: st.garmin.lastSteps ?? null, lastError: st.garmin.lastError || null, lastErrorAt: st.garmin.lastErrorAt || null } : null,

@@ -1,5 +1,9 @@
 # Pet Hostage changelog
 
+## v0.6.1 (2026-10-19)
+- Mutual friends: adding someone adds you to their list too (with a 👥 dot). Removing only removes your side. Existing one-way adds were made mutual.
+- Invite links now survive onboarding: a brand-new player gets the add-friend prompt right after accepting.
+
 ## v0.6.0 (2026-10-19)
 - Cheers get automatic free replies: ↩ made it (when the goal is hit) or ↩ missed (at midnight PT), green or red banners. Manual Reply removed.
 - Every spend (cheer, shop, pause) asks to confirm with the cost and balance after.

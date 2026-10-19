@@ -199,3 +199,4 @@ canvas.sicon { height: min(calc(var(--ih, 10) * 3px), 48px); width: auto; max-wi
 .cheerbar.reply.miss { background: linear-gradient(135deg, #4a1f26, #3a1a2a); border-color: #ff5a5a55; }
 .cheerbar.reply.win b { color: #8ff09a; } .cheerbar.reply.miss b { color: #ff8a8a; }
 .cheerprev { text-align: center; font-size: 18px; margin: 8px 0; }
+#tabs button.dot { position: relative; } #tabs button.dot::after { content: ""; position: absolute; top: 6px; right: 26%; width: 8px; height: 8px; border-radius: 50%; background: var(--acc); }

@@ -17,7 +17,7 @@ const fa = a.friendId, fb = b.friendId; assert.ok(fa && fb);
 assert.deepEqual(a.cheers, []); assert.equal(a.cheersTotal, 0);
 // not on the friend list yet
 let r = await call('/cheer', { code: A, to: fb, msg: 'go' }); assert.equal(r.status, 409); assert.equal(r.body.error, 'not a friend');
-r = await call('/friends/save', { code: A, ids: [fb, fa, 'zzzzzz', fb] }); assert.deepEqual(r.body.friends, [fb, 'ZZZZZZ']);
+r = await call('/friends/save', { code: A, ids: [fb, fa, 'zzzzzz', fb] }); assert.deepEqual(r.body.friends, [fb]); // v0.6.1: unknown IDs are not linked
 // balance check
 r = await call('/cheer', { code: A, to: fb, msg: 'go' }); assert.equal(r.body.error, 'not enough Spare Steps');
 await poke(A, s => { s.bank = 10000; });
@@ -43,7 +43,7 @@ await poke(A, s => { s.cheerSent = {}; }); r = await call('/cheer', { code: A, t
 assert.equal(JSON.parse(await env.PH.get('player:' + B)).rev, revB, 'recipient record untouched');
 assert.ok([...env.PH.m.keys()].some(k => k.startsWith('inbox:' + fb + ':')));
 // no manual replies any more
-r = await call('/cheer', { code: B, to: fa, msg: 'paws', reply: 1 }); assert.equal(r.body.error, 'not a friend');
+r = await call('/cheer', { code: B, to: fa, msg: 'paws', reply: 1 }); assert.ok(r.body.error); // v0.6.1: mutual now, but a 'reply' is just a paid cheer
 // auto 'win' reply: the sync that crosses B's goal sends ONE free reply to A (however many cheers A sent)
 r = await call('/sync', { code: B, steps: 9000 }); a2 = (await call('/state?code=' + A)).body; assert.equal(a2.cheers.length, 0);
 r = await call('/sync', { code: B, steps: 10400 }); assert.equal(r.status, 200);

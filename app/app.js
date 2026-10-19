@@ -4,7 +4,7 @@ import { VILLAINS, SLOTS, COLORS, TIERS, colorById, forSlot, owns, REWARDS, STYL
 import { drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, itemSprite, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.6.0';
+const VERSION = 'v0.6.1';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
@@ -397,14 +397,26 @@ function confirmBuy(c) {
 // ---- v0.5.0: Friends. Public friend IDs only (never a sync code). The list + nicknames live on this device. ----
 let friendOpen = null, friendCache = {};
 const loadFriends = () => { try { return JSON.parse(localStorage.getItem('ph.friends') || '[]').filter(f => f && f.id); } catch { return []; } };
+// v0.6.1: the friend list comes from the server (mutual links), merged with local-only entries; nicknames stay local
+function mergeServerFriends() {
+  if (!state || !Array.isArray(state.friends)) return; const l = loadFriends(); let add = false;
+  for (const id of state.friends) if (!l.some(f => f.id === id)) { l.push({ id, nick: '' }); add = true; }
+  if (add) localStorage.setItem('ph.friends', JSON.stringify(l));
+}
+function newFriendNote() {
+  const n = (state && state.newFriends || []).length; const b = document.querySelector('#tabs [data-tab="friends"]');
+  if (b) b.classList.toggle('dot', n > 0);
+  if (n && !newFriendToasted) { newFriendToasted = true; toast(n > 1 ? `👥 ${n} new friends` : '👥 New friend'); }
+}
+let newFriendToasted = false;
 const saveFriends = l => { localStorage.setItem('ph.friends', JSON.stringify(l)); pushFriendList(l); };
 // v0.5.8: the server keeps a copy of the list (public friend IDs only) so it can check who you may cheer
 let friendSyncT;
 function pushFriendList(l = loadFriends()) {
   if (DEMO || !state) return; clearTimeout(friendSyncT);
-  friendSyncT = setTimeout(() => api('/friends/save', { ids: l.map(f => f.id) }).then(r => { if (state) state.friends = r.friends; }).catch(() => {}), 400);
+  friendSyncT = setTimeout(() => api('/friends/save', { ids: l.map(f => f.id) }).then(r => { if (state) { state.friends = r.friends; state.newFriends = r.state.newFriends; } }).catch(() => {}), 400);
 }
-function syncFriendListOnce() { const l = loadFriends().map(f => f.id).sort(), srv = [...(state.friends || [])].sort(); if (l.join() !== srv.join() && l.length) pushFriendList(); }
+function syncFriendListOnce() { const srv = state.friends || []; if (loadFriends().some(f => !srv.includes(f.id))) pushFriendList(); } // local-only -> server (mutual)
 const normFid = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
 const friendLink = id => APP_URL + '?friend=' + id;
 const PET_ICON = { bunny: '🐰', hamster: '🐹', squirrel: '🐿️', hedgehog: '🦔', kitten: '🐱', duckling: '🐥', piglet: '🐷', panda: '🐼', capybara: '🦫', unicorn: '🦄' };
@@ -430,6 +442,7 @@ async function addFriend(raw) {
 }
 function renderFriends() {
   stopAnim();
+  if (!DEMO && state && (state.newFriends || []).length) api('/friends/seen', {}).then(r => { state.newFriends = r.state.newFriends; newFriendNote(); }).catch(() => {});
   const mine = state.friendId, l = loadFriends();
   view.innerHTML = `
     <h2>Friends</h2>
@@ -476,7 +489,8 @@ function renderFriendView(id) {
     $('#fback').addEventListener('click', () => go('friends'));
     $('#fcheer')?.addEventListener('click', () => openCheerPicker(id, x.nick || f.name));
     $('#fnicksave').addEventListener('click', () => { const l = loadFriends(), e = l.find(z => z.id === id); if (e) { e.nick = $('#fnick').value.trim().slice(0, 24); saveFriends(l); toast('Saved.'); draw(f); } });
-    $('#fremove').addEventListener('click', () => { if (!confirm('Remove this friend from your list?')) return; saveFriends(loadFriends().filter(z => z.id !== id)); go('friends'); });
+    $('#fremove').addEventListener('click', () => { if (!confirm('Remove this friend from your list?')) return; localStorage.setItem('ph.friends', JSON.stringify(loadFriends().filter(z => z.id !== id))); state.friends = (state.friends || []).filter(x => x !== id);
+      if (!DEMO) api('/friends/remove', { id }).then(r => { state = r.state; }).catch(() => {}); go('friends'); });
   };
   if (friendCache[id]) draw(friendCache[id]); else view.innerHTML = `<p class="dim">Loading…</p>`;
   (DEMO ? Promise.resolve(demoFriend(id)) : api('/friend?id=' + id)).then(f => { friendCache[id] = f; if (tab === 'friend' && friendOpen === id) draw(f); })
@@ -485,8 +499,8 @@ function renderFriendView(id) {
 // ?friend=ID from a share link: ask once, then drop it from the URL
 function offerFriendFromLink() {
   const id = normFid(qs.get('friend') || localStorage.getItem('ph.pendingFriend'));
+  if (!id || !state) return; // v0.6.1: keep the pending add until there IS a player (new players claim first)
   localStorage.removeItem('ph.pendingFriend');
-  if (!id || !state) return;
   const u = new URL(location.href); u.searchParams.delete('friend'); history.replaceState(null, '', u);
   if (id === state.friendId || loadFriends().some(f => f.id === id)) { tab = 'friends'; render(); return; }
   (DEMO ? Promise.resolve(demoFriend(id)) : api('/friend?id=' + id)).then(f => {
@@ -928,7 +942,7 @@ function renderWelcome(lostCode) {
   $('#showrestore').addEventListener('click', () => { $('#restorebox').hidden = false; $('#rcode').focus(); });
   $('#rgo').addEventListener('click', () => restoreCode($('#rcode').value, $('#rmsg')));
   $('#claim').addEventListener('click', async () => {
-    try { const r = await api('/claim', {}); setCode(r.code); state = r.state; lastUpdated = Date.now(); welcome = false; unclaimed = false; go('sync'); toast('Deal. Now set up step sync.'); }
+    try { const r = await api('/claim', {}); setCode(r.code); state = r.state; lastUpdated = Date.now(); welcome = false; unclaimed = false; go('sync'); toast('Deal. Now set up step sync.'); offerFriendFromLink(); }
     catch (e) { toast('Could not reach The Raccoon: ' + e.message); }
   });
 }
@@ -941,6 +955,8 @@ function welcomeScene() {
 
 let friendListChecked = false;
 function render() {
+  if (state && !DEMO) mergeServerFriends();
+  if (state) newFriendNote();
   if (!friendListChecked && state && !DEMO) { friendListChecked = true; syncFriendListOnce(); }
   stopAnim();
   setRaccoonLook(myLook()); // your villain's outfit, everywhere he appears
@@ -1074,7 +1090,7 @@ function demoState(m) {
     bankLog: [{ date: today, kind: 'reply', amount: 0, bal: 41200, to: 'STEPH1', name: 'Steph', outcome: 'win', dir: 'in' }, { date: today, kind: 'refund', amount: 12000, bal: 41200, item: 'raccoon:shirt:navy' }, { date: today, kind: 'cheer', amount: -1000, bal: 41200, to: 'BEN123', name: 'Nugget' }, { date: day(-1), kind: 'shop', amount: -12000, bal: 42200, item: 'raccoon:shirt:forest' }, { date: day(-1), kind: 'earn', amount: 2340, bal: 54200 }, { date: day(-2), kind: 'earn', amount: 4100, bal: 38300 }, { date: day(-4), kind: 'pause', amount: -30000, bal: 34200 }, { date: day(-5), kind: 'earn', amount: 5300, bal: 64200 }],
     stats: { metDays: 27, missedDays: 3, rescues: 4 }, push: !qs.has('nopush'),
     cheers: m === 'win' || m === 'miss' ? [{ id: 'r1', kind: m, from: 'STEPH1', name: 'Steph', msg: m === 'win' ? 'w1' : 'm2', at: Date.now() - 5e5, date: today }, { id: 'c2', kind: 'cheer', from: 'BEN123', name: 'Nugget', msg: CHEERS[1].id, at: Date.now() - 3e5, date: today }] : m === 'cheer' || m === 'cheered' ? [{ id: 7, from: 'BEN123', name: 'Nugget', msg: CHEERS[0].id, at: Date.now() - 9e5, date: today, reply: false }, { id: 8, from: 'STEPH1', name: 'Steph', msg: CHEERS[2].id, at: Date.now() - 6e5, date: today, reply: false }, { id: 6, from: 'BRO777', name: 'Old', msg: CHEERS[1].id, at: Date.now() - 9e7, date: day(-1) }] : [],
-    cheersTotal: 5, displayName: null, friends: ['BEN123', 'STEPH1'],
+    cheersTotal: 5, displayName: null, friends: ['BEN123', 'STEPH1'], newFriends: qs.has('newfriend') ? ['STEPH1'] : [],
     baseGoal: GOAL, days: Array.from({ length: 14 }, (_, i) => ({ date: day(i - 13), goal: i === 13 ? goal : m === 'boss' && i === 9 ? FINAL_GOAL : GOAL, paused: m !== 'boss' && (i === 9 || (m === 'paused' && i === 13)), steps: i === 13 ? (todaySteps || null) : (m === 'nosync' ? null : hist[i]) })),
   };
 }

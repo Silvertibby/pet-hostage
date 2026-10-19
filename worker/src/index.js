@@ -130,6 +130,34 @@ async function syncInbox(env, st, today, prev) {
   if (JSON.stringify(show) !== JSON.stringify(st.cheers)) { st.cheers = show; }
   return { changed, after, items: uniq };
 }
+// ---- v0.6.1 mutual friendships: one key per direction, fl:<owner>:<friend> = { at, by, seen }. Adding writes both
+// directions (the other side marked new/unseen), so no one's game record is ever rewritten. Removing deletes only your side.
+const LKEY = (a, b) => `fl:${a}:${b}`;
+async function readLinks(env, fid) {
+  const out = []; let cursor;
+  do { const r = await env.PH.list({ prefix: `fl:${fid}:`, cursor });
+    for (const k of r.keys) { const v = await env.PH.get(k.name); if (v) try { out.push({ id: k.name.slice(fid.length + 4), ...JSON.parse(v) }); } catch {} }
+    cursor = r.list_complete ? null : r.cursor; } while (cursor);
+  return out.sort((a, b) => a.at - b.at);
+}
+async function linkFriends(env, me, other) {
+  if (!me || !other || me === other) return;
+  if (!(await env.PH.get(LKEY(me, other)))) await env.PH.put(LKEY(me, other), JSON.stringify({ at: Date.now(), by: me, seen: true }));
+  if (!(await env.PH.get(LKEY(other, me)))) await env.PH.put(LKEY(other, me), JSON.stringify({ at: Date.now(), by: me, seen: false })); // "new friend" for them
+}
+// One-time backfill: every friend list synced for the cheer check becomes mutual links. Only link keys are written.
+let linksChecked = false;
+async function migrateLinks(env) {
+  if (linksChecked) return;
+  if (!(await env.PH.get('mig:links'))) {
+    for (const code of await allCodes(env)) { const raw = await env.PH.get(PKEY(code)); if (!raw) continue;
+      const st = JSON.parse(raw); if (!st.friendId) continue;
+      for (const id of st.friends || []) if (await env.PH.get(FKEY(id))) await linkFriends(env, st.friendId, id); }
+    await env.PH.put('mig:links', String(Date.now()));
+  }
+  linksChecked = true;
+}
+export const _resetLinksFlag = () => { linksChecked = false; };
 // Save the player, then do the inbox writes that depend on it.
 // base = this request's first inbox pass: re-run on the same in-memory items (picks up a goal just crossed) without double counting.
 async function commit(env, st, today, pre, base) {
@@ -224,7 +252,7 @@ async function readBody(req) {
   return body;
 }
 
-const ROUTES = new Set(['/state', '/sync', '/settings', '/subscribe', '/sync-log/clear-test', '/unsubscribe', '/test-nudge', '/seen-death', '/pause', '/shop/buy', '/shop/equip', '/shop/style', '/friends/save', '/cheer', '/cheer/seen']);
+const ROUTES = new Set(['/state', '/sync', '/settings', '/subscribe', '/sync-log/clear-test', '/unsubscribe', '/test-nudge', '/seen-death', '/pause', '/shop/buy', '/shop/equip', '/shop/style', '/friends/save', '/friends/remove', '/friends/seen', '/cheer', '/cheer/seen']);
 const SYNC_LOG_MAX = 10;
 function logSync(st, entry) {
   st.syncLog = [{ at: Date.now(), ...entry }, ...(st.syncLog || [])].slice(0, SYNC_LOG_MAX);
@@ -253,7 +281,7 @@ async function handle(req, env) {
 
     if (path === '/') return text('Pet Hostage worker. The Raccoon is listening.');
     if (path === '/vapid') return json({ publicKey: env.VAPID_PUBLIC_KEY });
-    await migrateLegacy(env);
+    await migrateLegacy(env); await migrateLinks(env);
     if (path === '/status') return json({ multiplayer: true });
     if (path === '/claim' && req.method === 'POST') { // every fresh player gets their own code + ladder
       let c; do { c = makeCode(); } while (await env.PH.get(PKEY(c)));
@@ -289,6 +317,8 @@ async function handle(req, env) {
     const events = settle(st, today);
     if (events.length) st.pendingReport = [...(st.pendingReport || []), ...events]; // pushed at the morning report
 
+    if (st.friendId) { const links = await readLinks(env, st.friendId); // the server friend list (mutual links)
+      st.friends = links.map(l => l.id); st.newFriends = links.filter(l => !l.seen).map(l => l.id); }
     const inbox = await syncInbox(env, st, today);
     if (path === '/state') { if (events.length || inbox.changed || inbox.after.length) await commit(env, st, today, inbox); return json(view(st)); }
 
@@ -414,16 +444,26 @@ async function handle(req, env) {
       if (!r.ok) return json({ error: r.error, state: view(st) }, 409);
       await commit(env, st, today, null, inbox); return json({ ok: true, state: view(st) });
     }
-    if (path === '/friends/save') { // v0.5.8: server copy of this device's friend list (public friend IDs only), so cheers can be checked
+    if (path === '/friends/save') { // v0.6.1: adds any of this device's friend IDs as mutual links (never removes)
       const ids = [...new Set((Array.isArray(body.ids) ? body.ids : []).map(normFid).filter(id => id && id !== st.friendId))].slice(0, 50);
-      st.friends = ids; await commit(env, st, today, null, inbox); return json({ ok: true, friends: st.friends });
+      for (const id of ids) if (!st.friends.includes(id) && (await env.PH.get(FKEY(id)))) { await linkFriends(env, st.friendId, id); st.friends.push(id); }
+      await commit(env, st, today, null, inbox); return json({ ok: true, friends: st.friends, state: view(st) });
+    }
+    if (path === '/friends/remove') { // only your side; they keep you unless they remove you too
+      const id = normFid(body.id); await env.PH.delete(LKEY(st.friendId, id));
+      st.friends = st.friends.filter(x => x !== id); st.newFriends = st.newFriends.filter(x => x !== id);
+      await commit(env, st, today, null, inbox); return json({ ok: true, state: view(st) });
+    }
+    if (path === '/friends/seen') { // the "new friend" dot was shown
+      for (const id of st.newFriends) { const raw = await env.PH.get(LKEY(st.friendId, id)); if (raw) await env.PH.put(LKEY(st.friendId, id), JSON.stringify({ ...JSON.parse(raw), seen: true })); }
+      st.newFriends = []; await commit(env, st, today, null, inbox); return json({ ok: true, state: view(st) });
     }
     if (path === '/cheer') { // 1,000 Spare Steps -> a preset cheer in the friend's inbox (shown today only) + a push
       const to = normFid(body.to), c = cheerById(String(body.msg || ''));
       if (!c) return json({ error: 'no such cheer', state: view(st) }, 409);
       if (!to || to === st.friendId) return json({ error: 'not a friend', state: view(st) }, 409);
       if (!st.friends.includes(to)) {
-        if (body.add && (await env.PH.get(FKEY(to)))) st.friends = [...st.friends, to].slice(-50);
+        if (body.add && (await env.PH.get(FKEY(to)))) { await linkFriends(env, st.friendId, to); st.friends = [...st.friends, to]; }
         else return json({ error: 'not a friend', state: view(st) }, 409);
       }
       const sent = st.cheerSent[today] = st.cheerSent[today] || {};
