@@ -52,4 +52,14 @@ assert.deepEqual(f.look, { shirt: 'gold', bowtie: 'rainbow', hat: 'black' }); as
 fake = Date.parse('2026-10-11T12:00:00-07:00'); // Oct 10 had 0 steps -> death
 s = (await call('/state?code=' + C)).body; assert.equal(s.bank, 0); assert.ok(s.stats.missedDays >= 1);
 assert.deepEqual(s.cosmetics.owned.raccoon, { hat: ['black'], shirt: ['gold'], bowtie: ['rainbow'] }); assert.equal(s.cosmetics.equipped.raccoon.shirt, 'gold');
+// v0.6.0: paid colors too close to a slot's stock color are gone; owners get refunded once and go back to default
+r = await call('/shop/buy', { code: C, villain: 'raccoon', slot: 'glasses', color: 'black' }); assert.equal(r.body.error, 'no such item');
+for (const [sl, c] of [['shirt', 'charcoal'], ['shirt', 'navy'], ['hat', 'brown'], ['bowtie', 'red'], ['glasses', 'charcoal']]) {
+  r = await call('/shop/buy', { code: C, villain: 'raccoon', slot: sl, color: c }); assert.equal(r.body.error, 'no such item', sl + ' ' + c); }
+{ const raw = JSON.parse(await env.PH.get('player:' + C)); raw.stockRefund = 0; raw.bank = 100; raw.cosmetics.owned.raccoon.shirt = ['gold', 'navy']; raw.cosmetics.equipped.raccoon.shirt = 'navy';
+  raw.cosmetics.owned.raccoon.glasses = ['black']; await env.PH.put('player:' + C, JSON.stringify(raw)); }
+s = (await call('/state?code=' + C)).body; assert.equal(s.bank, 100 + price('navy') + price('black'));
+assert.deepEqual(s.cosmetics.owned.raccoon.shirt, ['gold']); assert.equal(s.cosmetics.equipped.raccoon.shirt, undefined);
+assert.deepEqual(s.bankLog.filter(e => e.kind === 'refund').map(e => e.item).sort(), ['raccoon:glasses:black', 'raccoon:shirt:navy']);
+s = (await call('/state?code=' + C)).body; assert.equal(s.bank, 100 + price('navy') + price('black'), 'refunded once');
 process.stdout.write('✓ raccoon shop (catalog, prices, server-side buy/equip, shelf gates, shared bank, kept through death, friend look)\n');

@@ -1,4 +1,4 @@
-import { itemFor, owns, emptyCosmetics, VILLAINS, REWARDS, styleKey, hasStyle } from './shop.js';
+import { colorById, itemFor, owns, emptyCosmetics, VILLAINS, REWARDS, styleKey, hasStyle } from './shop.js';
 // Pet Hostage v0.2 rules: a rescue LADDER. Tunable constants up top.
 export const RULES = {
   GOAL: 10000,          // 10,000 a day. Not editable.
@@ -116,6 +116,7 @@ export function normalize(st, today = localParts().date) {
   st.cheers = st.cheers.filter(c => c.date === today); // a cheer only lives for the Pacific day it was sent
   if (today) backfillLedger(st, today);
   for (const d of Object.keys(st.cheerSent)) if (d !== today) delete st.cheerSent[d];
+  if (today && !st.stockRefund) refundStockColors(st, today);
   if (st.hostage) awardRewards(st); // v0.5.4 backfill: everything earned by the best shelf so far (not auto-worn)
   // v0.5.2 migration: a run already in progress keeps today and every closed day as they were; only days after today can be mini-bosses
   if (st.hostage && !Array.isArray(st.hostage.bosses)) {
@@ -152,6 +153,17 @@ export function equipStyle(st, villain, slot, style) {
 export function bankMove(st, date, kind, amount, ctx) {
   st.bank = Math.max(0, st.bank + amount);
   st.bankLog = [{ date, kind, amount, bal: st.bank, ...(ctx || {}) }, ...st.bankLog].slice(0, RULES.BANK_LOG_MAX);
+}
+// v0.6.0: paid colors that matched a slot's stock color were removed. Anyone who bought one gets the price back
+// (noted in history) and that slot goes back to default. Runs once per player.
+function refundStockColors(st, today) {
+  for (const [v, slots] of Object.entries(st.cosmetics.owned || {})) for (const [sl, cols] of Object.entries(slots || {})) {
+    for (const cid of [...(cols || [])]) { const c = colorById(cid); if (!c || !(c.notFor || []).includes(sl)) continue;
+      slots[sl] = slots[sl].filter(x => x !== cid);
+      bankMove(st, today, 'refund', c.price, { item: `${v}:${sl}:${cid}` });
+      const eq = st.cosmetics.equipped[v]; if (eq && eq[sl] === cid) delete eq[sl]; }
+  }
+  st.stockRefund = 1;
 }
 // Backfill context on old ledger entries where it can be derived without guessing.
 function backfillLedger(st, today) {
@@ -282,7 +294,7 @@ export function view(st, now = Date.now()) {
     lastDeath: st.lastDeath, deathSeen: st.deathSeen || 0, deathLog: (st.deathLog || []).slice(0, 10),
     stats: st.stats, bestRung: st.bestRung, started: st.started,
     push: !!st.sub, events: (st.events || []).slice(-5),
-    cheers: st.cheers.filter(c => c.date === np.date).map(({ id, from, name, msg, at, date, reply }) => ({ id, from, name, msg, at, date, reply: !!reply })), cheersTotal: st.cheersTotal, displayName: st.displayName || null, friends: st.friends,
+    cheers: st.cheers.filter(c => c.date === np.date).map(({ id, kind, from, name, msg, at, date }) => ({ id, kind: kind || 'cheer', from, name, msg, at, date })), cheersTotal: st.cheersTotal, displayName: st.displayName || null, friends: st.friends,
     bank: st.bank, bankLog: st.bankLog.slice(0, 10), cosmetics: st.cosmetics, pauseCost: RULES.PAUSE_COST, pausedToday: !!st.paused[np.date], friendId: st.friendId || null,
     code: st.code, syncLog: (st.syncLog || []).slice(0, 5),
     garmin: st.garmin ? { lastSync: st.garmin.lastSync || null, lastSteps: st.garmin.lastSteps ?? null, lastError: st.garmin.lastError || null, lastErrorAt: st.garmin.lastErrorAt || null } : null,

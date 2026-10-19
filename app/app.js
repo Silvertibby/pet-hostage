@@ -1,10 +1,10 @@
 import { maybeRevived, revivedVars } from './revived.js';
-import { CHEERS, CHEER_COST, cheerById, DISPLAY_NAME_MAX } from './cheers.js';
-import { VILLAINS, SLOTS, COLORS, TIERS, colorById, owns, REWARDS, STYLE_INFO, styleKey, hasStyle, rewardFor } from './shop.js';
+import { CHEERS, CHEER_COST, cheerById, DISPLAY_NAME_MAX, replyLine } from './cheers.js';
+import { VILLAINS, SLOTS, COLORS, TIERS, colorById, forSlot, owns, REWARDS, STYLE_INFO, styleKey, hasStyle, rewardFor } from './shop.js';
 import { drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, itemSprite, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.5.9';
+const VERSION = 'v0.6.0';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
@@ -280,13 +280,16 @@ function bankHtml(s, paused) {
       <span>${BANK_ICON} <b>${fmt(bal)}</b></span>
       <span class="row nowrap">${paused ? `<span class="tag">⏸ paused</span>` : `<button class="btn small ${can ? 'acc' : 'ghost'}" id="pausebtn" ${can ? '' : 'disabled'}>⏸ ${fmt(cost)}</button>`}<button class="btn small" id="goshop" title="Raccoon Shop">🛍</button></span></div></div>`;
 }
-const BANK_KIND = { earn: ['👟', 'day banked'], pause: ['⏸', 'paused'], reset: ['💀', 'emptied'], shop: ['🛍', 'shop'], cheer: ['📣', 'cheer'], reply: ['↩', 'reply'] };
+const BANK_KIND = { earn: ['👟', 'day banked'], pause: ['⏸', 'paused'], reset: ['💀', 'emptied'], shop: ['🛍', 'shop'], cheer: ['📣', 'cheer'], reply: ['↩', 'reply'], refund: ['💸', 'refund'] };
 function bankWho(e) { const f = e.to && loadFriends().find(x => x.id === e.to); return (f && f.nick) || e.name || (e.to ? e.to : 'a friend'); } // local nickname wins
 function bankWhat(e) {
   const [icon, base] = BANK_KIND[e.kind] || ['•', e.kind];
   if (e.kind === 'shop' && e.item) { const [, slot, col] = e.item.split(':'), c = colorById(col), sl = SLOTS[slot]; return [icon, c && sl ? `${c.label} ${sl.label.toLowerCase()}` : base]; }
   if (e.kind === 'cheer') return [icon, `cheered ${esc(bankWho(e))}`];
+  if (e.kind === 'reply' && e.dir === 'in') return [icon, `${esc(bankWho(e))} ${e.outcome === 'miss' ? 'missed' : 'made it'}`]; // v0.6.0 auto replies
+  if (e.kind === 'reply' && e.dir === 'out') return [icon, `told ${esc(bankWho(e))}: ${e.outcome === 'miss' ? 'missed' : 'made it'}`];
   if (e.kind === 'reply') return [icon, `replied to ${esc(bankWho(e))}`];
+  if (e.kind === 'refund' && e.item) { const [, slot, col] = e.item.split(':'), c = colorById(col), sl = SLOTS[slot]; return [icon, c && sl ? `refund · ${c.label} ${sl.label.toLowerCase()}` : base]; }
   return [icon, base];
 }
 function bankHistoryHtml(s) {
@@ -349,7 +352,7 @@ function renderShop() {
       <div><div class="seg icons" id="slotseg">${tabs.map(sl => `<button class="${sl === shopSlot ? 'on' : ''}" data-slot="${sl}" title="${esc(SLOTS[sl].label)}">${SLOTS[sl].icon}</button>`).join('')}</div>
       <div class="sact">${action}</div></div></div>
     ${styles.length > 1 ? `<div class="sgrid">${styles.map(styleTile).join('')}</div>` : ''}
-    ${colorSlot ? Object.keys(TIERS).map((t, i) => { const cs = COLORS.filter(x => x.tier === t); return cs.length ? `<div class="sgrid">${i ? '' : `<button class="scell ${!eq[shopSlot] ? 'on' : ''} ${pick === 'default' ? 'sel' : ''}" data-color="default" title="Default"><span class="swatch none"></span><span class="ssub">${!eq[shopSlot] ? '✓' : ''}</span></button>`}${cs.map(cell).join('')}</div>` : ''; }).join('') : ''}`;
+    ${colorSlot ? Object.keys(TIERS).map((t, i) => { const cs = forSlot(shopSlot).filter(x => x.tier === t); return cs.length ? `<div class="sgrid">${i ? '' : `<button class="scell ${!eq[shopSlot] ? 'on' : ''} ${pick === 'default' ? 'sel' : ''}" data-color="default" title="Default"><span class="swatch none"></span><span class="ssub">${!eq[shopSlot] ? '✓' : ''}</span></button>`}${cs.map(cell).join('')}</div>` : ''; }).join('') : ''}`;
   drawItemIcons(view, colorSlot ? preview : eq);
   const cv = $('#spreview'), ctx = cv.getContext('2d'), t0 = performance.now();
   const loop = now => { if (!cv.isConnected) return; const t = qs.has('t') ? +qs.get('t') + (now - t0) / 1000 : (now - t0) / 1000; ctx.clearRect(0, 0, 34, 62); setRaccoonLook(preview); blit(ctx, raccoonBody(t, 'idle'), 0, 14); setRaccoonLook(myLook()); anim = requestAnimationFrame(loop); };
@@ -497,7 +500,7 @@ function offerFriendFromLink() {
 }
 // ?look=shirt:gold,hat:black,... puts an outfit on the demo raccoon (owned + equipped)
 function demoCosmetics(rung = 6) {
-  const owned = { shirt: ['black', 'navy', 'gold'], hat: ['black', 'burgundy'], bowtie: ['mustard', 'rainbow'], glasses: ['black'] }, equipped = { shirt: 'navy', hat: 'black' };
+  const owned = { shirt: ['black', 'forest', 'gold'], hat: ['black', 'burgundy'], bowtie: ['mustard', 'rainbow'], glasses: ['teal'] }, equipped = { shirt: 'forest', hat: 'black' };
   if (qs.get('look')) { for (const k of Object.keys(equipped)) delete equipped[k]; for (const kv of qs.get('look').split(',')) { const [sl, c] = kv.split(':'); if (sl && c) { equipped[sl] = c; owned[sl] = [...new Set([...(owned[sl] || []), c])]; } } }
   const unl = REWARDS.raccoon.filter(r => r.at <= rung).map(r => styleKey(r.slot, r.style));
   if (qs.get('style')) { equipped.styles = {}; for (const kv of qs.get('style').split(',')) { const [sl, st] = kv.split(':'); if (sl && st) { equipped.styles[sl] = st; if (!unl.includes(styleKey(sl, st))) unl.push(styleKey(sl, st)); } } }
@@ -511,43 +514,50 @@ const goalMet = s => !!(s.hostage && s.hostage.todayMet && !s.pausedToday);
 function cheerSender(c) { const f = loadFriends().find(x => x.id === c.from); return (f && f.nick) || c.name || 'A friend'; }
 function cheerBarHtml(s) {
   const q = todayCheers(s); if (!q.length) return '';
-  const c = q[0], m = cheerById(c.msg);
-  const reply = goalMet(s) ? `<button class="btn small acc" id="creply">↩ Reply</button>` : ''; // free, and only after today's goal
-  return `<div class="cheerbar" id="cheercard" data-id="${c.id}"><span class="cheerhearts" aria-hidden="true"><i>💖</i><i>✨</i><i>💛</i></span>
-    <div class="cbody"><b>${c.reply ? '↩ ' : ''}${esc(cheerSender(c))}</b><span>${esc(m ? m.text : '📣')}</span></div>
-    ${q.length > 1 ? `<span class="ccount">1/${q.length}</span>` : ''}${reply}<button class="btn small ghost" id="cdismiss" aria-label="Dismiss">✕</button></div>`;
+  const c = q[0], kind = c.kind || 'cheer', isReply = kind === 'win' || kind === 'miss';
+  const line = isReply ? replyLine(kind, c.msg) : cheerById(c.msg);
+  return `<div class="cheerbar ${isReply ? 'reply ' + kind : ''}" id="cheercard" data-id="${esc(String(c.id))}">${isReply ? '' : `<span class="cheerhearts" aria-hidden="true"><i>💖</i><i>✨</i><i>💛</i></span>`}
+    <div class="cbody"><b>${isReply ? '↩ ' : ''}${esc(cheerSender(c))}</b><span>${esc(line ? line.text : '📣')}</span></div>
+    ${q.length > 1 ? `<span class="ccount">1/${q.length}</span>` : ''}<button class="btn small ghost" id="cdismiss" aria-label="Dismiss">✕</button></div>`;
 }
 function wireCheerBar() {
   const card = $('#cheercard'); if (!card) return;
-  const id = +card.dataset.id, c = todayCheers(state).find(x => x.id === id);
+  const id = card.dataset.id;
   $('#cdismiss').addEventListener('click', () => dismissCheer(id));
-  $('#creply')?.addEventListener('click', () => openCheerPicker(c.from, cheerSender(c), id));
   let x0 = null; // swipe sideways to dismiss
   card.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
   card.addEventListener('touchmove', e => { if (x0 != null) card.style.transform = `translateX(${e.touches[0].clientX - x0}px)`; }, { passive: true });
   card.addEventListener('touchend', e => { const dx = (e.changedTouches[0].clientX - (x0 ?? 0)); x0 = null; if (Math.abs(dx) > 70) dismissCheer(id); else card.style.transform = ''; });
 }
 async function dismissCheer(id) {
-  state.cheers = (state.cheers || []).filter(c => c.id !== id); $('#cheerbar') && ($('#cheerbar').innerHTML = cheerBarHtml(state)); wireCheerBar();
+  state.cheers = (state.cheers || []).filter(c => String(c.id) !== id); $('#cheerbar') && ($('#cheerbar').innerHTML = cheerBarHtml(state)); wireCheerBar();
   if (!DEMO) try { const r = await api('/cheer/seen', { id }); state.cheers = r.state.cheers; } catch { /* retried next dismiss */ }
 }
-function openCheerPicker(to, name, replyId = null) {
-  const ov = $('#overlay'); ov.hidden = false; const free = replyId != null;
-  ov.innerHTML = `<div class="ovbox cheer"><h2>${free ? '↩' : '📣'} ${esc(name)}</h2>
+function openCheerPicker(to, name) {
+  const ov = $('#overlay'); ov.hidden = false;
+  ov.innerHTML = `<div class="ovbox cheer"><h2>📣 ${esc(name)}</h2>
     <div class="cheergrid">${CHEERS.map(c => `<button class="btn cheerpick" data-msg="${c.id}">${esc(c.text)}</button>`).join('')}</div>
-    <div class="row" style="justify-content:space-between"><button class="btn ghost" id="cno">✕</button><span class="dim">${free ? 'free' : `👟 ${fmt(CHEER_COST)}`}</span></div></div>`;
+    <div class="row" style="justify-content:space-between"><button class="btn ghost" id="cno">✕</button><span class="dim">👟 ${fmt(CHEER_COST)}</span></div></div>`;
+  $('#cno').addEventListener('click', () => { ov.hidden = true; ov.innerHTML = ''; });
+  ov.querySelectorAll('[data-msg]').forEach(b => b.addEventListener('click', () => confirmCheer(to, name, cheerById(b.dataset.msg))));
+}
+// v0.6.0: every spend is confirmed: what, cost, balance after
+function confirmCheer(to, name, c) {
+  const ov = $('#overlay'); ov.hidden = false;
+  ov.innerHTML = `<div class="ovbox cheer"><h2>📣 ${esc(name)}</h2>
+    <p class="cheerprev">${esc(c.text)}</p>
+    <p>Send for <b>${fmt(CHEER_COST)}</b> Spare Steps?</p>
+    <p class="dim small">👟 ${fmt(state.bank)} → ${fmt(state.bank - CHEER_COST)}</p>
+    <div class="row" style="justify-content:space-between"><button class="btn ghost" id="cno">Cancel</button><button class="btn acc" id="cyes">Send · ${fmt(CHEER_COST)}</button></div></div>`;
   const close = () => { ov.hidden = true; ov.innerHTML = ''; };
   $('#cno').addEventListener('click', close);
-  ov.querySelectorAll('[data-msg]').forEach(b => b.addEventListener('click', async () => {
-    ov.querySelectorAll('[data-msg]').forEach(x => x.disabled = true);
-    if (DEMO) { if (!free) state.bank -= CHEER_COST; else state.cheers = state.cheers.filter(c => c.id !== replyId); close(); toast('📣 Sent'); render(); return; }
-    try {
-      const r = await api('/cheer', { to, msg: b.dataset.msg, ...(free ? { reply: replyId } : {}) });
-      if (free && !loadFriends().some(f => f.id === to)) { const l = loadFriends(); l.push({ id: to, nick: '' }); localStorage.setItem('ph.friends', JSON.stringify(l)); } // a reply adds the sender
-      state = r.state; close(); toast('📣 Sent'); render();
-    } catch (err) { close(); if (err.body && err.body.state) { state = err.body.state; render(); }
-      toast({ 'cheer limit': '📣 Max 3 today', 'not enough Spare Steps': `👟 ${fmt(CHEER_COST)} needed`, 'goal first': 'Hit your goal first', 'not a friend': 'Not on your friends list' }[err.message] || "Couldn't send"); }
-  }));
+  $('#cyes').addEventListener('click', async e => {
+    e.target.disabled = true;
+    if (DEMO) { state.bank -= CHEER_COST; close(); toast('📣 Sent'); render(); return; }
+    try { const r = await api('/cheer', { to, msg: c.id }); state = r.state; close(); toast('📣 Sent'); render(); }
+    catch (err) { close(); if (err.body && err.body.state) { state = err.body.state; render(); }
+      toast({ 'cheer limit': '📣 Max 3 today', 'not enough Spare Steps': `👟 ${fmt(CHEER_COST)} needed`, 'not a friend': 'Not on your friends list', 'busy, try again': 'Busy, try again' }[err.message] || "Couldn't send"); }
+  });
 }
 function demoFriend(id) {
   const D = { BEN123: { name: 'Nugget', species: 'hamster', rung: 1, need: 5, streak: 2, todaySteps: 12450, mood: 'happy', deaths: 0, injuries: [], look: { shirt: 'gold', glasses: 'black', bowtie: 'teal' } },
@@ -1061,9 +1071,9 @@ function demoState(m) {
     hostage, shelf, ladder, mood, lastDeath, deathSeen: 0,
     deathLog: [lastDeath, { id: 2, date: day(-21), rung: 2, name: 'Acorn', species: 'squirrel', type: 'catapult', rekidnap: { name: 'Nugget', same: false } }, { id: 1, date: day(-33), rung: 0, name: 'Chompsky', species: 'bunny', type: 'pop', rekidnap: { name: 'Chompsky', same: true } }].filter(Boolean),
     cosmetics: demoCosmetics(rung), bank: qs.has('bank') ? +qs.get('bank') : m === 'shop' ? 186500 : m === 'bank' || m === 'paused' ? (m === 'paused' ? 11200 : 41200) : 2350, pauseCost: PAUSE_COST, pausedToday: m === 'paused', friendId: 'DEMO42',
-    bankLog: [{ date: today, kind: 'reply', amount: 0, bal: 41200, to: 'STEPH1', name: 'Steph' }, { date: today, kind: 'cheer', amount: -1000, bal: 41200, to: 'BEN123', name: 'Nugget' }, { date: day(-1), kind: 'shop', amount: -12000, bal: 42200, item: 'raccoon:shirt:navy' }, { date: day(-1), kind: 'earn', amount: 2340, bal: 54200 }, { date: day(-2), kind: 'earn', amount: 4100, bal: 38300 }, { date: day(-4), kind: 'pause', amount: -30000, bal: 34200 }, { date: day(-5), kind: 'earn', amount: 5300, bal: 64200 }],
+    bankLog: [{ date: today, kind: 'reply', amount: 0, bal: 41200, to: 'STEPH1', name: 'Steph', outcome: 'win', dir: 'in' }, { date: today, kind: 'refund', amount: 12000, bal: 41200, item: 'raccoon:shirt:navy' }, { date: today, kind: 'cheer', amount: -1000, bal: 41200, to: 'BEN123', name: 'Nugget' }, { date: day(-1), kind: 'shop', amount: -12000, bal: 42200, item: 'raccoon:shirt:forest' }, { date: day(-1), kind: 'earn', amount: 2340, bal: 54200 }, { date: day(-2), kind: 'earn', amount: 4100, bal: 38300 }, { date: day(-4), kind: 'pause', amount: -30000, bal: 34200 }, { date: day(-5), kind: 'earn', amount: 5300, bal: 64200 }],
     stats: { metDays: 27, missedDays: 3, rescues: 4 }, push: !qs.has('nopush'),
-    cheers: m === 'cheer' || m === 'cheered' ? [{ id: 7, from: 'BEN123', name: 'Nugget', msg: CHEERS[0].id, at: Date.now() - 9e5, date: today, reply: false }, { id: 8, from: 'STEPH1', name: 'Steph', msg: CHEERS[2].id, at: Date.now() - 6e5, date: today, reply: false }, { id: 6, from: 'BRO777', name: 'Old', msg: CHEERS[1].id, at: Date.now() - 9e7, date: day(-1) }] : [],
+    cheers: m === 'win' || m === 'miss' ? [{ id: 'r1', kind: m, from: 'STEPH1', name: 'Steph', msg: m === 'win' ? 'w1' : 'm2', at: Date.now() - 5e5, date: today }, { id: 'c2', kind: 'cheer', from: 'BEN123', name: 'Nugget', msg: CHEERS[1].id, at: Date.now() - 3e5, date: today }] : m === 'cheer' || m === 'cheered' ? [{ id: 7, from: 'BEN123', name: 'Nugget', msg: CHEERS[0].id, at: Date.now() - 9e5, date: today, reply: false }, { id: 8, from: 'STEPH1', name: 'Steph', msg: CHEERS[2].id, at: Date.now() - 6e5, date: today, reply: false }, { id: 6, from: 'BRO777', name: 'Old', msg: CHEERS[1].id, at: Date.now() - 9e7, date: day(-1) }] : [],
     cheersTotal: 5, displayName: null, friends: ['BEN123', 'STEPH1'],
     baseGoal: GOAL, days: Array.from({ length: 14 }, (_, i) => ({ date: day(i - 13), goal: i === 13 ? goal : m === 'boss' && i === 9 ? FINAL_GOAL : GOAL, paused: m !== 'boss' && (i === 9 || (m === 'paused' && i === 13)), steps: i === 13 ? (todaySteps || null) : (m === 'nosync' ? null : hist[i]) })),
   };

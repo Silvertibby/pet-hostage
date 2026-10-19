@@ -1,5 +1,12 @@
 # Pet Hostage changelog
 
+## v0.6.0 (2026-10-19)
+- Cheers get automatic free replies: ↩ made it (when the goal is hit) or ↩ missed (at midnight PT), green or red banners. Manual Reply removed.
+- Every spend (cheer, shop, pause) asks to confirm with the cost and balance after.
+- Cheers live in their own inbox, never rewriting the friend's game; spending is guarded against double-spend.
+- Monocle is always a clean gold lens (never tinted like shades).
+- Removed paid colors that looked like the stock ones (coat: charcoal, navy; hat: brown; bow tie: red; shades: black, charcoal). Owners get a refund.
+
 ## v0.5.9 (2026-10-19)
 - History: each Spare Steps entry says what it was for (📣 cheered Ben, 🛍 Navy coat, ⏸ paused, ↩ replied, 👟 day banked, 💀 emptied). Old entries filled in where derivable.
 

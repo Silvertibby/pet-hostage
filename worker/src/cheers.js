@@ -12,3 +12,17 @@ export const CHEERS = [
 export const cheerById = id => CHEERS.find(c => c.id === id) || null;
 export const DISPLAY_NAME_MAX = 20;
 export const cleanName = s => String(s ?? '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, DISPLAY_NAME_MAX);
+// v0.6.0 automatic replies (free, sent by the game): the cheered friend's outcome that day. Picked by the server, shown by id.
+export const WIN_LINES = [
+  { id: 'w1', text: '🎉 Made it! The pet is safe tonight.' },
+  { id: 'w2', text: '🐾 Goal hit. Tiny paws, big relief.' },
+  { id: 'w3', text: '✅ Done! The Raccoon is sulking.' },
+  { id: 'w4', text: '💪 Crushed it. Thanks for the cheer!' },
+];
+export const MISS_LINES = [
+  { id: 'm1', text: '🕯️ Missed it. Light a candle.' },
+  { id: 'm2', text: '🦝 The Raccoon collected. Oops.' },
+  { id: 'm3', text: '🩹 Fell short. Fetch the stitches.' },
+  { id: 'm4', text: '💀 Didn\'t make it. Moment of silence.' },
+];
+export const replyLine = (kind, id) => (kind === 'win' ? WIN_LINES : MISS_LINES).find(l => l.id === id) || null;

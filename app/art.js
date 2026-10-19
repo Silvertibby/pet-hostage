@@ -333,7 +333,7 @@ export function raccoon(t, look = 0, annoyed = false) {
     n: '#2a1e1a', j: '#d8405e',
     ...(hs === 'tophat' ? { f: '#2b2533', F: '#7a2438', Q: '#4a4256' } : hs === 'bowler' ? { f: '#3a2a22', F: '#1a1010', Q: '#5e4636' } : hs === 'crown' ? { f: '#e8b830', F: '#b0841c', Q: '#fff0a0' } : {}),
     ...(gs === 'monocle' ? { g: '#e8b830', G: '#fff0a0' } : gs === 'aviator' ? { g: '#3c4a68', G: '#9ab8ff' } : {}),
-    ...(hat ? { f: hat[0], F: hat[1], Q: hat[2] } : {}), ...(gl ? { g: gl[0], G: gl[2] } : {}) };
+    ...(hat ? { f: hat[0], F: hat[1], Q: hat[2] } : {}), ...(gl && gs !== 'monocle' ? { g: gl[0], G: gl[2] } : {}) }; // v0.6.0: the monocle is always its own gold lens, never tinted like shades
   g.alpha = 1;
   if (g.top) { g.top.pal = g.pal; g.top.alpha = 1; }
   return g;

@@ -2,7 +2,7 @@
 import assert from 'node:assert';
 import fs from 'node:fs';
 import worker from './src/index.js';
-import { CHEERS, CHEER_COST } from './src/cheers.js';
+import { CHEERS, CHEER_COST, WIN_LINES, MISS_LINES } from './src/cheers.js';
 console.log = () => {};
 assert.equal(fs.readFileSync('src/cheers.js', 'utf8'), fs.readFileSync('../app/cheers.js', 'utf8'), 'app/cheers.js must match');
 class KV { constructor() { this.m = new Map(); } async get(k) { return this.m.has(k) ? this.m.get(k) : null; } async put(k, v) { this.m.set(k, v); } async delete(k) { this.m.delete(k); }
@@ -37,26 +37,39 @@ r = await call('/cheer', { code: A, to: fb, msg: 'star' }); assert.equal(r.statu
 r = await call('/cheer', { code: A, to: fb, msg: 'fire' }); assert.equal(r.body.error, 'cheer limit'); assert.equal(r.body.state.bank, 7000);
 // seen: dismissing removes it from the banner queue; the total stays
 r = await call('/cheer/seen', { code: B, id: b.cheers[0].id }); assert.equal(r.body.state.cheers.length, 2); assert.equal(r.body.state.cheersTotal, 3);
-// reply: free, one per received cheer, only after today's goal; auto-adds the sender; arrives as a normal (reply) banner
-await poke(B, s => { s.bank = 0; });
-const cid = r.body.state.cheers[0].id;
-r = await call('/cheer', { code: B, to: fa, msg: 'paws', reply: cid }); assert.equal(r.body.error, 'goal first');
-await poke(B, s => { s.days['2026-10-09'] = 10500; });
-r = await call('/cheer', { code: B, to: fb, msg: 'paws', reply: cid }); assert.equal(r.body.error, 'no such cheer'); // must go back to that cheer's sender
-r = await call('/cheer', { code: B, to: fa, msg: 'paws', reply: cid }); assert.equal(r.status, 200); assert.equal(r.body.state.bank, 0); assert.deepEqual(r.body.state.friends, [fa]);
-assert.equal(r.body.state.cheers.length, 1, 'the replied cheer counts as seen');
-r = await call('/cheer', { code: B, to: fa, msg: 'go', reply: cid }); assert.equal(r.body.error, 'no such cheer'); // one reply per cheer
-a2 = (await call('/state?code=' + A)).body; assert.equal(a2.cheers.length, 1); assert.deepEqual([a2.cheers[0].from, a2.cheers[0].msg, a2.cheers[0].reply], [fb, 'paws', true]);
-{ const rl = r.body.state.bankLog[0]; assert.deepEqual([rl.kind, rl.amount, rl.to], ['reply', 0, fa]); assert.ok(rl.name); }
+// v0.6.0: cheers live in the recipient's inbox keys; the recipient's player record is never rewritten by a sender
+const revB = JSON.parse(await env.PH.get('player:' + B)).rev;
+await poke(A, s => { s.cheerSent = {}; }); r = await call('/cheer', { code: A, to: fb, msg: 'walk' }); assert.equal(r.status, 200);
+assert.equal(JSON.parse(await env.PH.get('player:' + B)).rev, revB, 'recipient record untouched');
+assert.ok([...env.PH.m.keys()].some(k => k.startsWith('inbox:' + fb + ':')));
+// no manual replies any more
+r = await call('/cheer', { code: B, to: fa, msg: 'paws', reply: 1 }); assert.equal(r.body.error, 'not a friend');
+// auto 'win' reply: the sync that crosses B's goal sends ONE free reply to A (however many cheers A sent)
+r = await call('/sync', { code: B, steps: 9000 }); a2 = (await call('/state?code=' + A)).body; assert.equal(a2.cheers.length, 0);
+r = await call('/sync', { code: B, steps: 10400 }); assert.equal(r.status, 200);
+a2 = (await call('/state?code=' + A)).body; assert.equal(a2.cheers.length, 1); assert.deepEqual([a2.cheers[0].kind, a2.cheers[0].from], ['win', fb]);
+assert.ok(WIN_LINES.some(l => l.id === a2.cheers[0].msg));
+{ const e = a2.bankLog.find(x => x.kind === 'reply'); assert.deepEqual([e.amount, e.to, e.outcome, e.dir], [0, fb, 'win', 'in']); }
+{ const bs = (await call('/state?code=' + B)).body; const e = bs.bankLog.find(x => x.kind === 'reply'); assert.deepEqual([e.amount, e.to, e.outcome, e.dir], [0, fa, 'win', 'out']);
+  assert.equal(bs.bankLog.filter(x => x.kind === 'reply').length, 1); }
+await call('/sync', { code: B, steps: 12000 }); a2 = (await call('/state?code=' + A)).body; assert.equal(a2.bankLog.filter(x => x.kind === 'reply').length, 1, 'no repeat');
 assert.ok(a2.bankLog.some(e => e.kind === 'cheer' && e.to === fb && e.name), 'cheer ledger carries recipient id + name');
-// a new (non-reply) cheer still costs 1,000
-r = await call('/cheer', { code: B, to: fa, msg: 'go' }); assert.equal(r.body.error, 'not enough Spare Steps');
-// cheers only live for the Pacific day they were sent: gone after midnight PT even if never seen; history keeps the count
+// auto 'miss' reply: B cheers A, A ends the day short -> just after midnight A's game sends 'miss' to B, valid for the new day
+await poke(B, s => { s.bank = 3000; s.friends = [fa]; });
+r = await call('/cheer', { code: B, to: fa, msg: 'go' }); assert.equal(r.status, 200);
 fake = Date.parse('2026-10-10T00:05:00-07:00');
-b = (await call('/state?code=' + B)).body; assert.deepEqual(b.cheers, []); assert.equal(b.cheersTotal, 3);
-a = (await call('/state?code=' + A)).body; assert.deepEqual(a.cheers, []); assert.equal(a.cheersTotal, 1); assert.equal(a.bank, 0);
-assert.equal(JSON.parse(await env.PH.get('player:' + B)).cheers.length, 0, 'cleaned up in storage');
-// the daily limit resets with the new day
-await poke(A, s => { s.bank = 5000; }); r = await call('/cheer', { code: A, to: fb, msg: 'go' }); assert.equal(r.status, 200);
+a = (await call('/state?code=' + A)).body; assert.ok(a.cheers.every(c => c.date === '2026-10-10'), 'yesterday banners gone');
+b = (await call('/state?code=' + B)).body; assert.equal(b.cheers.length, 1); assert.deepEqual([b.cheers[0].kind, b.cheers[0].date], ['miss', '2026-10-10']);
+assert.ok(MISS_LINES.some(l => l.id === b.cheers[0].msg));
+assert.ok(b.bankLog.some(e => e.kind === 'reply' && e.outcome === 'miss' && e.dir === 'in'));
+assert.equal(b.cheersTotal, 4);
+// double-spend guard: two cheers at once with exactly 1,000 banked -> one goes through
+await poke(A, s => { s.bank = 1000; s.cheerSent = {}; s.friends = [fb, 'ZZZZZZ']; });
+const both = await Promise.all([call('/cheer', { code: A, to: fb, msg: 'go' }), call('/cheer', { code: A, to: fb, msg: 'star' })]);
+assert.deepEqual(both.map(x => x.status).sort(), [200, 409]); a = (await call('/state?code=' + A)).body; assert.equal(a.bank, 0);
+assert.equal(a.bankLog.filter(e => e.kind === 'cheer' && e.date === '2026-10-10').length, 1);
+// v0.5.8 cheers stored on the record migrate into the inbox
+await poke(B, s => { s.inboxV = 0; s.cheers = [{ id: 5, from: fa, name: 'Old', msg: 'go', at: fake - 1000, date: '2026-10-10' }]; });
+b = (await call('/state?code=' + B)).body; assert.ok(b.cheers.some(c => c.name === 'Old' && typeof c.id === 'string'));
 assert.equal(CHEERS.length, 6); assert.equal(CHEER_COST, 1000);
-process.stdout.write('✓ cheers (friend check, cost, presets only, daily limit, display name, seen, reply adds friend, today only)\n');
+process.stdout.write('✓ cheers (friend check, cost, presets, limit, name, seen, inbox keys, auto win/miss replies, double-spend guard, migration)\n');
