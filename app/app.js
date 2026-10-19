@@ -1,9 +1,10 @@
 import { maybeRevived, revivedVars } from './revived.js';
+import { CHEERS, CHEER_COST, cheerById, DISPLAY_NAME_MAX } from './cheers.js';
 import { VILLAINS, SLOTS, COLORS, TIERS, colorById, owns, REWARDS, STYLE_INFO, styleKey, hasStyle, rewardFor } from './shop.js';
 import { drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, itemSprite, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.5.7';
+const VERSION = 'v0.5.8';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
@@ -242,6 +243,7 @@ function renderHome() {
   const paused = !!(h.paused || s.pausedToday);
   const tag = paused ? '⏸ paused' : h.todayMet ? (h.day >= h.need ? '🎉 rescue at midnight' : '✓ banked') : isFinal(h) ? '🔥 final day · 15k' : isBoss(h) ? '⚔️ mini-boss · 15k' : '';
   view.innerHTML = `
+    <div id="cheerbar">${cheerBarHtml(s)}</div>
     <div class="scenewrap big"><canvas id="scene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas>
       <div class="hudname">${esc(h.name)}</div></div>
     <div class="quest"><div class="qhead"><b>Day ${h.day}/${h.need}</b><div class="dpips">${pips}</div>${tag ? `<span class="tag">${tag}</span>` : ''}</div></div>
@@ -254,13 +256,13 @@ function renderHome() {
     <details class="more"><summary><canvas class="px" id="rac" width="30" height="28"></canvas>Ransom note</summary>
       <div class="note"><div class="cut">${cutout(homeNote(s))}</div></div></details>
     <details class="more"><summary>📈 History</summary>
-      <div class="legend"><span>🏆 ${s.shelf.length}</span><span>✓ ${s.stats.metDays} · ✗ ${s.stats.missedDays}</span></div>
+      <div class="legend"><span>🏆 ${s.shelf.length}${s.cheersTotal ? ` · 📣 ${s.cheersTotal}` : ''}</span><span>✓ ${s.stats.metDays} · ✗ ${s.stats.missedDays}</span></div>
       <div class="chart">${chart}</div>
       <div class="legend"><span>${s.days[0].date.slice(5)}</span><span>today</span></div>
       ${bankHistoryHtml(s)}
       ${(s.deathLog || []).length ? `<div class="legend">${s.deathLog.slice(0, 3).map(d => `<button class="btn small ghost" data-replay="${d.id}">☠ ${esc(d.name)} ${fmtDate(d.date)}</button>`).join(' ')}</div>` : ''}</details>
   `;
-  startScene($('#scene')); noteAvatar($('#rac'));
+  startScene($('#scene')); noteAvatar($('#rac')); wireCheerBar();
   $('#gosetup')?.addEventListener('click', () => go('sync'));
   $('#pausebtn')?.addEventListener('click', confirmPause);
   $('#goshop')?.addEventListener('click', () => go('shop'));
@@ -278,7 +280,7 @@ function bankHtml(s, paused) {
       <span>${BANK_ICON} <b>${fmt(bal)}</b></span>
       <span class="row nowrap">${paused ? `<span class="tag">⏸ paused</span>` : `<button class="btn small ${can ? 'acc' : 'ghost'}" id="pausebtn" ${can ? '' : 'disabled'}>⏸ ${fmt(cost)}</button>`}<button class="btn small" id="goshop" title="Raccoon Shop">🛍</button></span></div></div>`;
 }
-const BANK_KIND = { earn: 'saved', pause: '⏸ paused', reset: '☠ emptied', shop: '🛍 shop' };
+const BANK_KIND = { earn: 'saved', pause: '⏸ paused', reset: '☠ emptied', shop: '🛍 shop', cheer: '📣 cheer' };
 function bankHistoryHtml(s) {
   const log = s.bankLog || [];
   return `<div class="legend"><span>${BANK_ICON} <b>${fmt(s.bank || 0)}</b></span></div>
@@ -383,7 +385,14 @@ function confirmBuy(c) {
 // ---- v0.5.0: Friends. Public friend IDs only (never a sync code). The list + nicknames live on this device. ----
 let friendOpen = null, friendCache = {};
 const loadFriends = () => { try { return JSON.parse(localStorage.getItem('ph.friends') || '[]').filter(f => f && f.id); } catch { return []; } };
-const saveFriends = l => localStorage.setItem('ph.friends', JSON.stringify(l));
+const saveFriends = l => { localStorage.setItem('ph.friends', JSON.stringify(l)); pushFriendList(l); };
+// v0.5.8: the server keeps a copy of the list (public friend IDs only) so it can check who you may cheer
+let friendSyncT;
+function pushFriendList(l = loadFriends()) {
+  if (DEMO || !state) return; clearTimeout(friendSyncT);
+  friendSyncT = setTimeout(() => api('/friends/save', { ids: l.map(f => f.id) }).then(r => { if (state) state.friends = r.friends; }).catch(() => {}), 400);
+}
+function syncFriendListOnce() { const l = loadFriends().map(f => f.id).sort(), srv = [...(state.friends || [])].sort(); if (l.join() !== srv.join() && l.length) pushFriendList(); }
 const normFid = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
 const friendLink = id => APP_URL + '?friend=' + id;
 const PET_ICON = { bunny: '🐰', hamster: '🐹', squirrel: '🐿️', hedgehog: '🦔', kitten: '🐱', duckling: '🐥', piglet: '🐷', panda: '🐼', capybara: '🦫', unicorn: '🦄' };
@@ -428,7 +437,8 @@ function renderFriends() {
     const by = Object.fromEntries(list.map(f => [f.friendId, f]));
     $('#flist').innerHTML = `<div class="flist">${l.map(x => { const f = by[x.id] || { missing: true };
       return f.missing ? `<div class="frow dim"><span>❔</span><span><b>${esc(x.nick || x.id)}</b><br>not found</span><span></span></div>`
-        : `<button class="frow" data-friend="${x.id}"><span class="ficon">${PET_ICON[f.species] || '🐾'}</span><span><b>${esc(x.nick || f.name)}</b>${x.nick ? ` <span class="dim">(${esc(f.name)})</span>` : ''}<br><span class="dim">Day ${f.day}/${f.need} · ${friendStatus(f)}</span></span><span class="fsteps"><b>${fmt(f.todaySteps)}</b><br><span class="dim">/ ${fmt(f.goal)}</span></span></button>`; }).join('')}</div>`;
+        : `<div class="frowwrap"><button class="frow" data-friend="${x.id}"><span class="ficon">${PET_ICON[f.species] || '🐾'}</span><span><b>${esc(x.nick || f.name)}</b>${x.nick ? ` <span class="dim">(${esc(f.name)})</span>` : ''}<br><span class="dim">Day ${f.day}/${f.need} · ${friendStatus(f)}</span></span><span class="fsteps"><b>${fmt(f.todaySteps)}</b><br><span class="dim">/ ${fmt(f.goal)}</span></span></button>${canCheer() ? `<button class="btn small ghost cheerbtn" data-cheer="${x.id}" data-cname="${esc(x.nick || f.name)}" aria-label="Cheer" title="Cheer · ${fmt(CHEER_COST)}">📣</button>` : ''}</div>`; }).join('')}</div>`;
+    view.querySelectorAll('[data-cheer]').forEach(b => b.addEventListener('click', () => openCheerPicker(b.dataset.cheer, b.dataset.cname)));
     view.querySelectorAll('[data-friend]').forEach(b => b.addEventListener('click', () => { friendOpen = b.dataset.friend; go('friend'); }));
   }).catch(() => { if ($('#flist')) $('#flist').innerHTML = `<p class="dim">Couldn't load friends. Pull to refresh.</p>`; });
 }
@@ -439,7 +449,7 @@ function renderFriendView(id) {
     const prog = Math.min(1, f.todaySteps / f.goal), filled = Math.floor(prog * BAR_SEGMENTS);
     const pips = pipsHtml(f);
     view.innerHTML = `
-      <p><button class="btn small ghost" id="fback">← Friends</button></p>
+      <p class="row" style="justify-content:space-between"><button class="btn small ghost" id="fback">← Friends</button>${canCheer() ? `<button class="btn small acc" id="fcheer">📣 ${fmt(CHEER_COST)}</button>` : ''}</p>
       <div class="scenewrap big"><canvas id="fscene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas><div class="hudname">${esc(f.name)}</div></div>
       <div class="quest"><div class="qhead"><b>Day ${f.day}/${f.need}</b><div class="dpips">${pips}</div><span class="tag">${friendStatus(f)}</span></div></div>
       <div class="steps"><b>${fmt(f.todaySteps)}</b><span>/ ${fmt(f.goal)}</span></div>
@@ -452,6 +462,7 @@ function renderFriendView(id) {
     const loop = now => { if (!canvas.isConnected) return; drawScene(ctx, fst, qs.has('t') ? +qs.get('t') : (now - t0) / 1000); anim = requestAnimationFrame(loop); };
     anim = requestAnimationFrame(loop);
     $('#fback').addEventListener('click', () => go('friends'));
+    $('#fcheer')?.addEventListener('click', () => openCheerPicker(id, x.nick || f.name));
     $('#fnicksave').addEventListener('click', () => { const l = loadFriends(), e = l.find(z => z.id === id); if (e) { e.nick = $('#fnick').value.trim().slice(0, 24); saveFriends(l); toast('Saved.'); draw(f); } });
     $('#fremove').addEventListener('click', () => { if (!confirm('Remove this friend from your list?')) return; saveFriends(loadFriends().filter(z => z.id !== id)); go('friends'); });
   };
@@ -484,6 +495,51 @@ function demoCosmetics(rung = 6) {
   return { owned: { raccoon: owned }, equipped: { raccoon: equipped }, unlocked: { raccoon: unl } };
 }
 function demoBosses(rung) { const n = 3 + 2 * rung, k = rung < 2 ? 0 : Math.floor((n - 4) / 3), o = []; for (let i = 1; i <= k; i++) { const d = Math.min(n - 2, Math.max(2, Math.round(1 + i * (n - 1) / (k + 1)))); if (!o.includes(d)) o.push(d); } return o; }
+// ---- v0.5.8: cheers. 1,000 Spare Steps to send a preset cheer; a free reply once today's goal is met. ----
+const canCheer = () => (state.bank || 0) >= CHEER_COST;
+const todayCheers = s => (s.cheers || []).filter(c => c.date === s.today); // expire at midnight PT
+const goalMet = s => !!(s.hostage && s.hostage.todayMet && !s.pausedToday);
+function cheerSender(c) { const f = loadFriends().find(x => x.id === c.from); return (f && f.nick) || c.name || 'A friend'; }
+function cheerBarHtml(s) {
+  const q = todayCheers(s); if (!q.length) return '';
+  const c = q[0], m = cheerById(c.msg);
+  const reply = goalMet(s) ? `<button class="btn small acc" id="creply">↩ Reply</button>` : ''; // free, and only after today's goal
+  return `<div class="cheerbar" id="cheercard" data-id="${c.id}"><span class="cheerhearts" aria-hidden="true"><i>💖</i><i>✨</i><i>💛</i></span>
+    <div class="cbody"><b>${c.reply ? '↩ ' : ''}${esc(cheerSender(c))}</b><span>${esc(m ? m.text : '📣')}</span></div>
+    ${q.length > 1 ? `<span class="ccount">1/${q.length}</span>` : ''}${reply}<button class="btn small ghost" id="cdismiss" aria-label="Dismiss">✕</button></div>`;
+}
+function wireCheerBar() {
+  const card = $('#cheercard'); if (!card) return;
+  const id = +card.dataset.id, c = todayCheers(state).find(x => x.id === id);
+  $('#cdismiss').addEventListener('click', () => dismissCheer(id));
+  $('#creply')?.addEventListener('click', () => openCheerPicker(c.from, cheerSender(c), id));
+  let x0 = null; // swipe sideways to dismiss
+  card.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
+  card.addEventListener('touchmove', e => { if (x0 != null) card.style.transform = `translateX(${e.touches[0].clientX - x0}px)`; }, { passive: true });
+  card.addEventListener('touchend', e => { const dx = (e.changedTouches[0].clientX - (x0 ?? 0)); x0 = null; if (Math.abs(dx) > 70) dismissCheer(id); else card.style.transform = ''; });
+}
+async function dismissCheer(id) {
+  state.cheers = (state.cheers || []).filter(c => c.id !== id); $('#cheerbar') && ($('#cheerbar').innerHTML = cheerBarHtml(state)); wireCheerBar();
+  if (!DEMO) try { const r = await api('/cheer/seen', { id }); state.cheers = r.state.cheers; } catch { /* retried next dismiss */ }
+}
+function openCheerPicker(to, name, replyId = null) {
+  const ov = $('#overlay'); ov.hidden = false; const free = replyId != null;
+  ov.innerHTML = `<div class="ovbox cheer"><h2>${free ? '↩' : '📣'} ${esc(name)}</h2>
+    <div class="cheergrid">${CHEERS.map(c => `<button class="btn cheerpick" data-msg="${c.id}">${esc(c.text)}</button>`).join('')}</div>
+    <div class="row" style="justify-content:space-between"><button class="btn ghost" id="cno">✕</button><span class="dim">${free ? 'free' : `👟 ${fmt(CHEER_COST)}`}</span></div></div>`;
+  const close = () => { ov.hidden = true; ov.innerHTML = ''; };
+  $('#cno').addEventListener('click', close);
+  ov.querySelectorAll('[data-msg]').forEach(b => b.addEventListener('click', async () => {
+    ov.querySelectorAll('[data-msg]').forEach(x => x.disabled = true);
+    if (DEMO) { if (!free) state.bank -= CHEER_COST; else state.cheers = state.cheers.filter(c => c.id !== replyId); close(); toast('📣 Sent'); render(); return; }
+    try {
+      const r = await api('/cheer', { to, msg: b.dataset.msg, ...(free ? { reply: replyId } : {}) });
+      if (free && !loadFriends().some(f => f.id === to)) { const l = loadFriends(); l.push({ id: to, nick: '' }); localStorage.setItem('ph.friends', JSON.stringify(l)); } // a reply adds the sender
+      state = r.state; close(); toast('📣 Sent'); render();
+    } catch (err) { close(); if (err.body && err.body.state) { state = err.body.state; render(); }
+      toast({ 'cheer limit': '📣 Max 3 today', 'not enough Spare Steps': `👟 ${fmt(CHEER_COST)} needed`, 'goal first': 'Hit your goal first', 'not a friend': 'Not on your friends list' }[err.message] || "Couldn't send"); }
+  }));
+}
 function demoFriend(id) {
   const D = { BEN123: { name: 'Nugget', species: 'hamster', rung: 1, need: 5, streak: 2, todaySteps: 12450, mood: 'happy', deaths: 0, injuries: [], look: { shirt: 'gold', glasses: 'black', bowtie: 'teal' } },
     STEPH1: { name: 'Chompsky', species: 'bunny', rung: 0, need: 3, streak: 2, todaySteps: 9120, mood: 'worried', deaths: 0, injuries: [] },
@@ -751,6 +807,7 @@ function renderSettings() {
     <h2>✏️ NAME</h2>
     <div class="card">
       <input type="text" id="pname" maxlength="24" value="${esc(s.hostage.name)}">
+      <label for="dname" class="dim small">📣 Your name on cheers</label><input type="text" id="dname" maxlength="${DISPLAY_NAME_MAX}" placeholder="${esc(s.hostage.name)}" value="${esc(s.displayName || '')}">
       <p><button class="btn" id="save">Save</button></p>
       <p class="dim small">👟 10,000/day · 🔥 15,000 final day · ⏰ midnight PT</p>
     </div>
@@ -763,7 +820,7 @@ function renderSettings() {
     </div>
   `;
   $('#save').addEventListener('click', async () => {
-    try { state = await api('/settings', { name: $('#pname').value }); toast('Saved. The Raccoon has updated his notes.'); } catch (e) { toast('Save failed: ' + e.message); }
+    try { state = await api('/settings', { name: $('#pname').value, displayName: $('#dname').value }); toast('Saved.'); } catch (e) { toast('Save failed: ' + e.message); }
   });
   $('#pushon').addEventListener('click', enablePush);
   $('#copycode').addEventListener('click', async () => { try { await navigator.clipboard.writeText(code); toast('Code copied'); } catch { toast('Copy failed, long-press to select'); } });
@@ -863,7 +920,9 @@ function welcomeScene() {
   anim = requestAnimationFrame(loop);
 }
 
+let friendListChecked = false;
 function render() {
+  if (!friendListChecked && state && !DEMO) { friendListChecked = true; syncFriendListOnce(); }
   stopAnim();
   setRaccoonLook(myLook()); // your villain's outfit, everywhere he appears
   $('#tabs').hidden = !state;
@@ -972,6 +1031,7 @@ function demoState(m) {
   if (m === 'happy') { todaySteps = 10342; mood = 'happy'; hour = 20; }
   if (m === 'stitched') { rung = 0; streak = 1; inj = { 0: ['pop', 'anvil', 'catapult', 'zap'] }; todaySteps = 10120; mood = 'happy'; hour = 20; }
   if (m === 'paused') { todaySteps = 2100; mood = 'happy'; }
+  if (m === 'cheered') { todaySteps = 10342; mood = 'happy'; hour = 20; }
   if (m === 'nosync') { rung = 0; streak = 0; inj = {}; todaySteps = 0; hour = 10; mood = 'happy'; }
   if (m === 'death' || m === 'rekidnap') { rung = 1; streak = 0; inj = { 0: ['pop'], 1: [], 2: ['catapult', qs.get('type') || 'pop'] }; todaySteps = 840; hour = 9; mood = 'happy';
     lastDeath = { id: 3, date: day(-1), rung: 2, name: 'Acorn', species: 'squirrel', type: qs.get('type') || 'pop', deaths: 2, rekidnap: { rung: 1, name: 'Nugget', species: 'hamster', need: 5, same: false } }; }
@@ -991,9 +1051,11 @@ function demoState(m) {
     v: 2, today, hour, goal, todaySteps, lastSync: m === 'nosync' ? null : Date.now() - 23 * 60000, lastSteps: todaySteps, started: day(-40),
     hostage, shelf, ladder, mood, lastDeath, deathSeen: 0,
     deathLog: [lastDeath, { id: 2, date: day(-21), rung: 2, name: 'Acorn', species: 'squirrel', type: 'catapult', rekidnap: { name: 'Nugget', same: false } }, { id: 1, date: day(-33), rung: 0, name: 'Chompsky', species: 'bunny', type: 'pop', rekidnap: { name: 'Chompsky', same: true } }].filter(Boolean),
-    cosmetics: demoCosmetics(rung), bank: m === 'shop' ? 186500 : m === 'bank' || m === 'paused' ? (m === 'paused' ? 11200 : 41200) : 2350, pauseCost: PAUSE_COST, pausedToday: m === 'paused', friendId: 'DEMO42',
+    cosmetics: demoCosmetics(rung), bank: qs.has('bank') ? +qs.get('bank') : m === 'shop' ? 186500 : m === 'bank' || m === 'paused' ? (m === 'paused' ? 11200 : 41200) : 2350, pauseCost: PAUSE_COST, pausedToday: m === 'paused', friendId: 'DEMO42',
     bankLog: [{ date: day(-1), kind: 'earn', amount: 2900, bal: 41200 }, { date: day(-2), kind: 'earn', amount: 4100, bal: 38300 }, { date: day(-4), kind: 'pause', amount: -30000, bal: 34200 }, { date: day(-5), kind: 'earn', amount: 5300, bal: 64200 }],
     stats: { metDays: 27, missedDays: 3, rescues: 4 }, push: !qs.has('nopush'),
+    cheers: m === 'cheer' || m === 'cheered' ? [{ id: 7, from: 'BEN123', name: 'Nugget', msg: CHEERS[0].id, at: Date.now() - 9e5, date: today, reply: false }, { id: 8, from: 'STEPH1', name: 'Steph', msg: CHEERS[2].id, at: Date.now() - 6e5, date: today, reply: false }, { id: 6, from: 'BRO777', name: 'Old', msg: CHEERS[1].id, at: Date.now() - 9e7, date: day(-1) }] : [],
+    cheersTotal: 5, displayName: null, friends: ['BEN123', 'STEPH1'],
     baseGoal: GOAL, days: Array.from({ length: 14 }, (_, i) => ({ date: day(i - 13), goal: i === 13 ? goal : m === 'boss' && i === 9 ? FINAL_GOAL : GOAL, paused: m !== 'boss' && (i === 9 || (m === 'paused' && i === 13)), steps: i === 13 ? (todaySteps || null) : (m === 'nosync' ? null : hist[i]) })),
   };
 }

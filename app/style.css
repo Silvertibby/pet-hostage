@@ -178,3 +178,19 @@ canvas.sicon { width: calc(var(--iw, 10) * 3px); height: calc(var(--ih, 10) * 3p
 /* v0.5.6: tall items (stovepipe) scale down to fit their tile instead of stretching it */
 canvas.sicon { height: min(calc(var(--ih, 10) * 3px), 48px); width: auto; max-width: 100%; }
 .rw canvas { height: min(calc(var(--ih, 10) * 3px), 30px); width: auto; max-width: 60%; }
+/* v0.5.8 cheers */
+.cheerbar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; margin: 0 0 10px; border-radius: 14px; background: linear-gradient(135deg, #3a2a55, #2a3a55); border: 1px solid #ffffff22; position: relative; overflow: hidden; animation: cheerin .45s cubic-bezier(.2,1.4,.4,1); transition: transform .15s; touch-action: pan-y; }
+.cheerbar .cbody { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.cheerbar .cbody span { overflow: hidden; text-overflow: ellipsis; }
+.cheerbar .ccount { font-size: 12px; opacity: .7; }
+.cheerhearts { position: absolute; inset: 0; pointer-events: none; }
+.cheerhearts i { position: absolute; bottom: -10px; font-style: normal; font-size: 14px; animation: cheerup 2.4s ease-out infinite; opacity: 0; }
+.cheerhearts i:nth-child(1) { left: 12%; } .cheerhearts i:nth-child(2) { left: 48%; animation-delay: .8s; } .cheerhearts i:nth-child(3) { left: 82%; animation-delay: 1.6s; }
+@keyframes cheerup { 0% { transform: translateY(0); opacity: 0; } 20% { opacity: .9; } 100% { transform: translateY(-60px); opacity: 0; } }
+@keyframes cheerin { from { transform: translateY(-14px) scale(.96); opacity: 0; } to { transform: none; opacity: 1; } }
+.frowwrap { display: flex; gap: 6px; align-items: stretch; }
+.frowwrap .frow { flex: 1; min-width: 0; }
+.btn.small.cheerbtn { font-size: 20px; padding: 0 12px; }
+.cheergrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
+.cheerpick { font-size: 14px; padding: 12px 8px; }
+.ovbox.cheer h2 { color: var(--acc); }

@@ -2,6 +2,8 @@ import { RULES, localParts, newState, migrate, settle, view, petAt, needFor, goa
 import { note, nudgeText, DISH, ITEM, PET_EMOJI } from './messages.js';
 import { sendPush } from './push.js';
 import { revivedVars } from './revived.js';
+import { CHEER_COST, CHEER_DAILY_MAX, cheerById, cleanName } from './cheers.js';
+import { bankMove } from './game.js';
 
 // Multi-player: one KV key per player, "player:<CODE>". The old single-player key "state" is migrated once.
 const PKEY = c => 'player:' + c;
@@ -138,7 +140,7 @@ async function readBody(req) {
   return body;
 }
 
-const ROUTES = new Set(['/state', '/sync', '/settings', '/subscribe', '/sync-log/clear-test', '/unsubscribe', '/test-nudge', '/seen-death', '/pause', '/shop/buy', '/shop/equip', '/shop/style']);
+const ROUTES = new Set(['/state', '/sync', '/settings', '/subscribe', '/sync-log/clear-test', '/unsubscribe', '/test-nudge', '/seen-death', '/pause', '/shop/buy', '/shop/equip', '/shop/style', '/friends/save', '/cheer', '/cheer/seen']);
 const SYNC_LOG_MAX = 10;
 function logSync(st, entry) {
   st.syncLog = [{ at: Date.now(), ...entry }, ...(st.syncLog || [])].slice(0, SYNC_LOG_MAX);
@@ -273,6 +275,7 @@ export default {
     if (path === '/settings') {
       // The goal is fixed by the rules (10,000; 15,000 on a final day) and ignored if sent. Only the current hostage's name can change.
       if (typeof body.name === 'string' && body.name.trim()) petAt(st, st.hostage.rung).name = body.name.trim().slice(0, 24);
+      if (typeof body.displayName === 'string') { const d = cleanName(body.displayName); if (d) st.displayName = d; else delete st.displayName; } // v0.5.8: shown on cheers
       await save(env, st); return json(view(st));
     }
     if (path === '/subscribe') {
@@ -312,6 +315,44 @@ export default {
     if (path === '/shop/style') { // v0.5.4: wear a rescue-reward style (only ones the server has unlocked)
       const r = equipStyle(st, String(body.villain || 'raccoon'), String(body.slot || ''), body.style == null ? null : String(body.style));
       if (!r.ok) return json({ error: r.error, state: view(st) }, 409);
+      await save(env, st); return json({ ok: true, state: view(st) });
+    }
+    if (path === '/friends/save') { // v0.5.8: server copy of this device's friend list (public friend IDs only), so cheers can be checked
+      const ids = [...new Set((Array.isArray(body.ids) ? body.ids : []).map(normFid).filter(id => id && id !== st.friendId))].slice(0, 50);
+      st.friends = ids; await save(env, st); return json({ ok: true, friends: st.friends });
+    }
+    if (path === '/cheer') { // 1,000 Spare Steps -> a preset cheer on a friend's home screen (today only) + a push
+      const to = normFid(body.to), c = cheerById(String(body.msg || ''));
+      // v0.5.8 reply: free, one per received cheer, only once today's goal is met; aimed at that cheer's sender
+      const replyId = body.reply == null ? null : parseInt(body.reply, 10), orig = replyId == null ? null : st.cheers.find(x => x.id === replyId && x.date === today);
+      if (replyId != null) {
+        if (!orig || orig.from !== to) return json({ error: 'no such cheer', state: view(st) }, 409);
+        if (!((st.days[today] || 0) >= goalToday(st))) return json({ error: 'goal first', state: view(st) }, 409);
+      }
+      if (!c) return json({ error: 'no such cheer', state: view(st) }, 409);
+      if (!to || to === st.friendId) return json({ error: 'not a friend', state: view(st) }, 409);
+      if (!st.friends.includes(to)) {
+        if ((body.add || orig) && (await env.PH.get(FKEY(to)))) st.friends = [...st.friends, to].slice(-50); // replying to someone not on the list yet
+        else return json({ error: 'not a friend', state: view(st) }, 409);
+      }
+      const sent = st.cheerSent[today] = st.cheerSent[today] || {};
+      if (!orig && (sent[to] || 0) >= CHEER_DAILY_MAX) return json({ error: 'cheer limit', state: view(st) }, 409);
+      if (!orig && st.bank < CHEER_COST) return json({ error: 'not enough Spare Steps', state: view(st) }, 409);
+      const rc = await env.PH.get(FKEY(to)), rst = rc && await load(env, rc);
+      if (!rst || rst.friendId !== to) return json({ error: 'not a friend', state: view(st) }, 409);
+      settle(rst, today); normalize(rst, today);
+      const name = st.displayName || petAt(st, st.hostage.rung).name; // display name, else their current pet's name
+      const cheer = { id: (rst.cheerSeq = (rst.cheerSeq || 0) + 1), from: st.friendId, name, msg: c.id, at: Date.now(), date: today };
+      rst.cheers = [...rst.cheers, cheer].slice(-20); rst.cheersTotal++;
+      if (orig) st.cheers = st.cheers.filter(x => x.id !== orig.id); // replied = seen; one reply per cheer
+      else { bankMove(st, today, 'cheer', -CHEER_COST); sent[to] = (sent[to] || 0) + 1; }
+      if (orig) cheer.reply = true;
+      await push(env, rst, '📣 ' + name, c.text, 'ph-cheer-' + cheer.id);
+      await save(env, rst); await save(env, st); console.log('cheer', st.friendId, '->', to, c.id);
+      return json({ ok: true, state: view(st) });
+    }
+    if (path === '/cheer/seen') { // dismissed on the home screen
+      const id = parseInt(body.id, 10); st.cheers = st.cheers.filter(c => c.id !== id && c.date === today);
       await save(env, st); return json({ ok: true, state: view(st) });
     }
     if (path === '/seen-death') { // the app played the death animation; don't replay it on other devices

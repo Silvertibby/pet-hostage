@@ -1,5 +1,11 @@
 # Pet Hostage changelog
 
+## v0.5.8 (2026-10-18)
+- Friend cheers: 📣 send a friend a preset cheer for 1,000 Spare Steps (max 3 per friend per day).
+- Received cheers show as a banner on the home screen (✕ or swipe to dismiss) and expire at midnight PT; total count in History.
+- Free ↩ Reply (one per cheer), only after you've hit today's goal; replying adds the sender as a friend.
+- Settings: optional name shown on your cheers (default: your pet's name).
+
 ## v0.5.7 (2026-10-18)
 - New hostage at the end of the ladder: Marmalade the orange unicorn (21 days). The II loop now starts after her.
 - New rescue reward: the scepter (10 rescued).

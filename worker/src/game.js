@@ -108,6 +108,13 @@ export function normalize(st, today = localParts().date) {
   if (!st.dayGoals || typeof st.dayGoals !== 'object') st.dayGoals = {};
   if (!st.cosmetics || typeof st.cosmetics !== 'object') st.cosmetics = emptyCosmetics(); // v0.5.3: kept forever, deaths only empty the bank
   if (!st.cosmetics.unlocked || typeof st.cosmetics.unlocked !== 'object') st.cosmetics.unlocked = {};
+  // v0.5.8 cheers: server copy of the friend list (by public friend ID), today's received cheers, per-day send counts
+  if (!Array.isArray(st.friends)) st.friends = [];
+  if (!Array.isArray(st.cheers)) st.cheers = [];
+  if (typeof st.cheersTotal !== 'number') st.cheersTotal = 0;
+  if (!st.cheerSent || typeof st.cheerSent !== 'object') st.cheerSent = {};
+  st.cheers = st.cheers.filter(c => c.date === today); // a cheer only lives for the Pacific day it was sent
+  for (const d of Object.keys(st.cheerSent)) if (d !== today) delete st.cheerSent[d];
   if (st.hostage) awardRewards(st); // v0.5.4 backfill: everything earned by the best shelf so far (not auto-worn)
   // v0.5.2 migration: a run already in progress keeps today and every closed day as they were; only days after today can be mini-bosses
   if (st.hostage && !Array.isArray(st.hostage.bosses)) {
@@ -241,7 +248,7 @@ const petView = (st, r) => { const p = petAt(st, r); return { rung: r, name: p.n
 export function view(st, now = Date.now()) {
   const np = localParts(now);
   const days = [];
-  normalize(st);
+  normalize(st, np.date);
   for (let i = 13; i >= 0; i--) { const d = addDays(np.date, -i); days.push({ date: d, steps: st.days[d] ?? null, paused: !!st.paused[d], goal: d === np.date ? goalToday(st) : (st.dayGoals[d] ?? null) }); }
   const h = st.hostage, todaySteps = st.days[np.date] || 0, goal = goalToday(st);
   const hostage = { ...petView(st, h.rung), streak: h.streak, since: h.since, todayMet: todaySteps >= goal, finalDay: isFinalDay(h.streak, needFor(h.rung)), goal };
@@ -262,6 +269,7 @@ export function view(st, now = Date.now()) {
     lastDeath: st.lastDeath, deathSeen: st.deathSeen || 0, deathLog: (st.deathLog || []).slice(0, 10),
     stats: st.stats, bestRung: st.bestRung, started: st.started,
     push: !!st.sub, events: (st.events || []).slice(-5),
+    cheers: st.cheers.filter(c => c.date === np.date).map(({ id, from, name, msg, at, date, reply }) => ({ id, from, name, msg, at, date, reply: !!reply })), cheersTotal: st.cheersTotal, displayName: st.displayName || null, friends: st.friends,
     bank: st.bank, bankLog: st.bankLog.slice(0, 10), cosmetics: st.cosmetics, pauseCost: RULES.PAUSE_COST, pausedToday: !!st.paused[np.date], friendId: st.friendId || null,
     code: st.code, syncLog: (st.syncLog || []).slice(0, 5),
     garmin: st.garmin ? { lastSync: st.garmin.lastSync || null, lastSteps: st.garmin.lastSteps ?? null, lastError: st.garmin.lastError || null, lastErrorAt: st.garmin.lastErrorAt || null } : null,
