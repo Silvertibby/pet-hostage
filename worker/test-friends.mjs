@@ -34,3 +34,14 @@ const a = await st(A); assert.ok(a.friends.includes(fc)); assert.ok(a.newFriends
 assert.ok((await st(C)).friends.includes(fa)); assert.ok(!(await st(C)).friends.includes('GONE00'));
 assert.ok(env.PH.m.get('mig:links'));
 process.stdout.write('✓ friends (mutual links, new-friend flag, others untouched, remove one side, backfill)\n');
+// v0.6.2 quota: polling /state and a cron tick on unchanged players do no writes and no list() calls
+{ let puts = 0, lists = 0; const p0 = env.PH.put.bind(env.PH), l0 = env.PH.list.bind(env.PH);
+  env.PH.put = async (k, v) => { puts++; return p0(k, v); }; env.PH.list = async o => { lists++; return l0(o); };
+  for (const c of [A, B, C]) { await st(c); await st(c); }
+  puts = 0; lists = 0;
+  for (let i = 0; i < 5; i++) for (const c of [A, B, C]) await st(c);
+  assert.equal(puts, 0, 'no writes on unchanged polls'); assert.equal(lists, 0, 'no list() on polls');
+  fake += 60000; await worker.scheduled({}, env, {}); puts = 0; lists = 0; fake += 60000; await worker.scheduled({}, env, {});
+  assert.equal(lists, 0, 'cron uses the player index'); assert.ok(puts <= 0, 'cron skips unchanged players: ' + puts);
+  env.PH.put = p0; env.PH.list = l0; }
+process.stdout.write('✓ quota (no writes/lists on unchanged polls or cron)\n');

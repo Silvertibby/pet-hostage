@@ -25,6 +25,7 @@ const text = (t, s = 200) => new Response(t, { status: s, headers: { 'Content-Ty
 
 const normCode = c => (c || '').toString().trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
 // Old states (v0.1 shape) are upgraded on read, keeping code, steps, sync log and push subscription.
+const loadedRaw = new WeakMap(); // v0.6.2: what load() read, so an unchanged record is never written back
 const load = async (env, code) => {
   if (!code) return null;
   const s = await env.PH.get(PKEY(code)); if (!s) return null;
@@ -34,6 +35,7 @@ const load = async (env, code) => {
   normalize(st);
   if (needsBosses) await env.PH.put(PKEY(code), JSON.stringify(st)); // v0.5.2: lock in the remaining mini-boss days once
   if (!st.friendId) await assignFriendId(env, st);
+  loadedRaw.set(st, needsBosses || st.v !== JSON.parse(s).v ? JSON.stringify(st) : s); // compare saves against what's stored
   return st;
 };
 // v0.5.0: a public friend ID, separate from the secret sync code. Index: fid:<ID> -> code.
@@ -66,24 +68,35 @@ async function withLock(key, fn) {
 }
 class Conflict extends Error { constructor() { super('conflict'); this.conflict = true; } }
 const save = async (env, st) => {
+  if (loadedRaw.get(st) === JSON.stringify(st)) return; // v0.6.2: nothing changed -> no write
   const cur = await env.PH.get(PKEY(st.code));
   if (cur && (JSON.parse(cur).rev || 0) !== (st.rev || 0)) throw new Conflict();
   st.rev = (st.rev || 0) + 1;
-  await env.PH.put(PKEY(st.code), JSON.stringify(st));
+  const out = JSON.stringify(st); await env.PH.put(PKEY(st.code), out); loadedRaw.set(st, out);
 };
 // ---- v0.6.0 inbox: cheers and replies live under their own keys (inbox:<friendId>:<id>), never inside the
 // recipient's player record, so sending one can't overwrite anyone's game. Only the owner rewrites its items.
-const IKEY = (fid, id) => `inbox:${fid}:${id}`;
-const INBOX_TTL = 3 * 86400;
-const putItem = (env, fid, it) => env.PH.put(IKEY(fid, it.id), JSON.stringify(it), { expirationTtl: INBOX_TTL });
-const rid = () => Date.now().toString(36) + '-' + [...crypto.getRandomValues(new Uint8Array(3))].map(x => x.toString(16).padStart(2, '0')).join('');
+// v0.6.2 quota fix: one inbox key per player (ibx:<friendId> = array), read with a single get. No list() on hot paths.
+const BKEY = fid => 'ibx:' + fid;
 async function readInbox(env, fid) {
-  const out = []; let cursor;
+  const raw = await env.PH.get(BKEY(fid));
+  if (raw) try { return JSON.parse(raw); } catch { return []; }
+  const out = []; let cursor; // one-time: v0.6.0 per-item keys -> the single key
   do { const r = await env.PH.list({ prefix: `inbox:${fid}:`, cursor });
     for (const k of r.keys) { const v = await env.PH.get(k.name); if (v) try { out.push(JSON.parse(v)); } catch {} }
     cursor = r.list_complete ? null : r.cursor; } while (cursor);
-  return out.sort((a, b) => a.at - b.at);
+  out.sort((a, b) => a.at - b.at); await env.PH.put(BKEY(fid), JSON.stringify(out));
+  return out;
 }
+// Upsert items into a player's inbox: one get + at most one put, and only if something changed. Old items are pruned.
+async function upsertItems(env, fid, items) {
+  const cur = await readInbox(env, fid), before = JSON.stringify(cur), cut = addDays(localParts().date, -3);
+  for (const it of items) { const i = cur.findIndex(x => x.id === it.id); if (i >= 0) cur[i] = it; else cur.push(it); }
+  const next = cur.filter(x => x.date >= cut).sort((a, b) => a.at - b.at).slice(-60);
+  if (JSON.stringify(next) !== before) await env.PH.put(BKEY(fid), JSON.stringify(next));
+}
+const putItem = (env, fid, it) => ({ fid, it }); // queued; flushed in commit, grouped per inbox
+const rid = () => Date.now().toString(36) + '-' + [...crypto.getRandomValues(new Uint8Array(3))].map(x => x.toString(16).padStart(2, '0')).join('');
 const myName = st => st.displayName || petAt(st, st.hostage.rung).name; // display name, else their current pet's name
 const pick = (arr, seed) => { let h = 7; for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return arr[h % arr.length]; };
 // Runs on every request and cron tick. Fills st.cheers (today's unseen banners), counts new cheers, books replies in the
@@ -93,7 +106,7 @@ async function syncInbox(env, st, today, prev) {
   if (!st.friendId) return { changed: false, after: [] };
   const after = []; let changed = false;
   if (st.cheers.length && !st.inboxV) { // v0.5.8 cheers stored on the record: move them to the inbox
-    for (const c of st.cheers) after.push(() => putItem(env, st.friendId, { id: 'm' + c.id + '-' + c.at, kind: 'cheer', from: c.from, name: c.name, msg: c.msg, at: c.at, date: c.date, counted: true }));
+    for (const c of st.cheers) after.push(putItem(env, st.friendId, { id: 'm' + c.id + '-' + c.at, kind: 'cheer', from: c.from, name: c.name, msg: c.msg, at: c.at, date: c.date, counted: true }));
   }
   if (!st.inboxV) { st.inboxV = 1; changed = true; }
   if (!st.replied || typeof st.replied !== 'object') st.replied = {};
@@ -118,13 +131,13 @@ async function syncInbox(env, st, today, prev) {
         const reply = { id: `r-${d}-${st.friendId}`, kind: outcome, from: st.friendId, name: me, msg: line.id, at: Date.now(), date: today, re: it.id };
         bankMove(st, today, 'reply', 0, { to: it.from, name: it.name, outcome, dir: 'out' });
         it.done = outcome; dirty = changed = true;
-        after.push(async () => { await putItem(env, it.from, reply); // deterministic id: a retry overwrites, never duplicates
+        after.push(putItem(env, it.from, reply)); // deterministic id: a retry overwrites, never duplicates
+        after.push(async () => {
           const sc = await env.PH.get(FKEY(it.from)), sst = sc && JSON.parse(await env.PH.get(PKEY(sc)) || 'null'); // read-only, for the push subscription
           if (sst && sst.sub) await push(env, sst, '↩ ' + me, line.text, 'ph-reply-' + reply.id); });
       }
     }
-    if (dirty) after.push(() => putItem(env, st.friendId, it));
-    if (it.date < addDays(today, -2)) after.push(() => env.PH.delete(IKEY(st.friendId, it.id))); // old ones (TTL also cleans up)
+    if (dirty) after.push(putItem(env, st.friendId, it));
   }
   const show = uniq.filter(i => i.date === today && !i.seen).map(({ id, kind, from, name, msg, at, date }) => ({ id, kind, from, name, msg, at, date }));
   if (JSON.stringify(show) !== JSON.stringify(st.cheers)) { st.cheers = show; }
@@ -132,18 +145,24 @@ async function syncInbox(env, st, today, prev) {
 }
 // ---- v0.6.1 mutual friendships: one key per direction, fl:<owner>:<friend> = { at, by, seen }. Adding writes both
 // directions (the other side marked new/unseen), so no one's game record is ever rewritten. Removing deletes only your side.
-const LKEY = (a, b) => `fl:${a}:${b}`;
-async function readLinks(env, fid) {
-  const out = []; let cursor;
+// v0.6.2: stored as one key per player, fr:<friendId> = { <friendId>: { at, by, seen } } (one get, no list()).
+const RKEY = fid => 'fr:' + fid;
+async function readLinkMap(env, fid) {
+  const raw = await env.PH.get(RKEY(fid));
+  if (raw) try { return JSON.parse(raw); } catch { return {}; }
+  const m = {}; let cursor; // one-time: v0.6.1 fl:<a>:<b> keys -> the single key
   do { const r = await env.PH.list({ prefix: `fl:${fid}:`, cursor });
-    for (const k of r.keys) { const v = await env.PH.get(k.name); if (v) try { out.push({ id: k.name.slice(fid.length + 4), ...JSON.parse(v) }); } catch {} }
+    for (const k of r.keys) { const v = await env.PH.get(k.name); if (v) try { m[k.name.slice(fid.length + 4)] = JSON.parse(v); } catch {} }
     cursor = r.list_complete ? null : r.cursor; } while (cursor);
-  return out.sort((a, b) => a.at - b.at);
+  await env.PH.put(RKEY(fid), JSON.stringify(m));
+  return m;
 }
+const writeLinkMap = (env, fid, m) => env.PH.put(RKEY(fid), JSON.stringify(m));
+async function readLinks(env, fid) { const m = await readLinkMap(env, fid); return Object.entries(m).map(([id, v]) => ({ id, ...v })).sort((a, b) => a.at - b.at); }
 async function linkFriends(env, me, other) {
   if (!me || !other || me === other) return;
-  if (!(await env.PH.get(LKEY(me, other)))) await env.PH.put(LKEY(me, other), JSON.stringify({ at: Date.now(), by: me, seen: true }));
-  if (!(await env.PH.get(LKEY(other, me)))) await env.PH.put(LKEY(other, me), JSON.stringify({ at: Date.now(), by: me, seen: false })); // "new friend" for them
+  const a = await readLinkMap(env, me); if (!a[other]) { a[other] = { at: Date.now(), by: me, seen: true }; await writeLinkMap(env, me, a); }
+  const b = await readLinkMap(env, other); if (!b[me]) { b[me] = { at: Date.now(), by: me, seen: false }; await writeLinkMap(env, other, b); } // "new friend" for them
 }
 // One-time backfill: every friend list synced for the cheer check becomes mutual links. Only link keys are written.
 let linksChecked = false;
@@ -164,7 +183,10 @@ async function commit(env, st, today, pre, base) {
   let r = pre;
   if (!r) { const r2 = await syncInbox(env, st, today, base); r = base ? { after: [...base.after, ...r2.after] } : r2; }
   await save(env, st);
-  for (const f of r.after) await f();
+  const groups = new Map();
+  for (const f of r.after) if (typeof f !== 'function') { if (!groups.has(f.fid)) groups.set(f.fid, []); groups.get(f.fid).push(f.it); }
+  for (const [fid, items] of groups) await upsertItems(env, fid, items);
+  for (const f of r.after) if (typeof f === 'function') await f();
 }
 // One-time move of the single-player "state" key to player:<its code>. A copy stays under legacy:state.
 let legacyChecked = false;
@@ -182,11 +204,15 @@ export async function migrateLegacy(env) {
   legacyChecked = true;
 }
 export const _resetLegacyFlag = () => { legacyChecked = false; }; // tests
+// v0.6.2: player index key (idx:players) instead of a list() every cron run. Built once from list() if missing.
 async function allCodes(env) {
+  const raw = await env.PH.get('idx:players'); if (raw) try { return JSON.parse(raw); } catch {}
   const codes = []; let cursor;
   do { const r = await env.PH.list({ prefix: 'player:', cursor }); for (const k of r.keys) codes.push(k.name.slice(7)); cursor = r.list_complete ? null : r.cursor; } while (cursor);
+  await env.PH.put('idx:players', JSON.stringify(codes));
   return codes;
 }
+async function indexPlayer(env, code) { const l = await allCodes(env); if (!l.includes(code)) { l.push(code); await env.PH.put('idx:players', JSON.stringify(l)); } }
 
 function makeCode() {
   const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -285,7 +311,7 @@ async function handle(req, env) {
     if (path === '/status') return json({ multiplayer: true });
     if (path === '/claim' && req.method === 'POST') { // every fresh player gets their own code + ladder
       let c; do { c = makeCode(); } while (await env.PH.get(PKEY(c)));
-      const st = newState(c, today); await save(env, st);
+      const st = newState(c, today); await save(env, st); await indexPlayer(env, c);
       console.log('claim', c);
       return json({ code: st.code, state: view(st) });
     }
@@ -450,12 +476,12 @@ async function handle(req, env) {
       await commit(env, st, today, null, inbox); return json({ ok: true, friends: st.friends, state: view(st) });
     }
     if (path === '/friends/remove') { // only your side; they keep you unless they remove you too
-      const id = normFid(body.id); await env.PH.delete(LKEY(st.friendId, id));
+      const id = normFid(body.id); { const m = await readLinkMap(env, st.friendId); if (m[id]) { delete m[id]; await writeLinkMap(env, st.friendId, m); } }
       st.friends = st.friends.filter(x => x !== id); st.newFriends = st.newFriends.filter(x => x !== id);
       await commit(env, st, today, null, inbox); return json({ ok: true, state: view(st) });
     }
     if (path === '/friends/seen') { // the "new friend" dot was shown
-      for (const id of st.newFriends) { const raw = await env.PH.get(LKEY(st.friendId, id)); if (raw) await env.PH.put(LKEY(st.friendId, id), JSON.stringify({ ...JSON.parse(raw), seen: true })); }
+      if (st.newFriends.length) { const m = await readLinkMap(env, st.friendId); for (const id of st.newFriends) if (m[id]) m[id].seen = true; await writeLinkMap(env, st.friendId, m); }
       st.newFriends = []; await commit(env, st, today, null, inbox); return json({ ok: true, state: view(st) });
     }
     if (path === '/cheer') { // 1,000 Spare Steps -> a preset cheer in the friend's inbox (shown today only) + a push
@@ -474,7 +500,7 @@ async function handle(req, env) {
       const name = myName(st), toName = rst.displayName || petAt(rst, rst.hostage.rung).name;
       const cheer = { id: rid(), kind: 'cheer', from: st.friendId, name, msg: c.id, at: Date.now(), date: today };
       bankMove(st, today, 'cheer', -CHEER_COST, { to, name: toName }); sent[to] = (sent[to] || 0) + 1;
-      await commit(env, st, today, { changed: true, after: [...inbox.after, () => putItem(env, to, cheer), () => push(env, rst, '📣 ' + name, c.text, 'ph-cheer-' + cheer.id)] }); // paid first, then delivered
+      await commit(env, st, today, { changed: true, after: [...inbox.after, putItem(env, to, cheer), () => push(env, rst, '📣 ' + name, c.text, 'ph-cheer-' + cheer.id)] }); // paid first, then delivered
       console.log('cheer', st.friendId, '->', to, c.id);
       return json({ ok: true, state: view(st) });
     }
@@ -482,7 +508,7 @@ async function handle(req, env) {
       const id = String(body.id || ''), it = st.cheers.find(c => c.id === id);
       st.cheers = st.cheers.filter(c => c.id !== id);
       const full = it && inbox.items.find(x => x.id === id);
-      await commit(env, st, today, { changed: true, after: [...inbox.after, ...(full ? [() => putItem(env, st.friendId, { ...full, seen: true })] : [])] }); return json({ ok: true, state: view(st) });
+      await commit(env, st, today, { changed: true, after: [...inbox.after, ...(full ? [putItem(env, st.friendId, { ...full, seen: true })] : [])] }); return json({ ok: true, state: view(st) });
     }
     if (path === '/seen-death') { // the app played the death animation; don't replay it on other devices
       const id = parseInt(body.id, 10);

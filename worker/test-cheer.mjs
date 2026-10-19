@@ -41,7 +41,7 @@ r = await call('/cheer/seen', { code: B, id: b.cheers[0].id }); assert.equal(r.b
 const revB = JSON.parse(await env.PH.get('player:' + B)).rev;
 await poke(A, s => { s.cheerSent = {}; }); r = await call('/cheer', { code: A, to: fb, msg: 'walk' }); assert.equal(r.status, 200);
 assert.equal(JSON.parse(await env.PH.get('player:' + B)).rev, revB, 'recipient record untouched');
-assert.ok([...env.PH.m.keys()].some(k => k.startsWith('inbox:' + fb + ':')));
+assert.ok([...env.PH.m.keys()].some(k => k === 'ibx:' + fb));
 // no manual replies any more
 r = await call('/cheer', { code: B, to: fa, msg: 'paws', reply: 1 }); assert.ok(r.body.error); // v0.6.1: mutual now, but a 'reply' is just a paid cheer
 // auto 'win' reply: the sync that crosses B's goal sends ONE free reply to A (however many cheers A sent)

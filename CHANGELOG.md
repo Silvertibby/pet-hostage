@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.6.2 (2026-10-19)
+- Storage quota fix: no writes for unchanged records, no list() on hot paths (single inbox and friends keys, a player index for the cron).
+
 ## v0.6.1 (2026-10-19)
 - Mutual friends: adding someone adds you to their list too (with a 👥 dot). Removing only removes your side. Existing one-way adds were made mutual.
 - Invite links now survive onboarding: a brand-new player gets the add-friend prompt right after accepting.
