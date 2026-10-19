@@ -114,6 +114,7 @@ export function normalize(st, today = localParts().date) {
   if (typeof st.cheersTotal !== 'number') st.cheersTotal = 0;
   if (!st.cheerSent || typeof st.cheerSent !== 'object') st.cheerSent = {};
   st.cheers = st.cheers.filter(c => c.date === today); // a cheer only lives for the Pacific day it was sent
+  if (today) backfillLedger(st, today);
   for (const d of Object.keys(st.cheerSent)) if (d !== today) delete st.cheerSent[d];
   if (st.hostage) awardRewards(st); // v0.5.4 backfill: everything earned by the best shelf so far (not auto-worn)
   // v0.5.2 migration: a run already in progress keeps today and every closed day as they were; only days after today can be mini-bosses
@@ -147,9 +148,21 @@ export function equipStyle(st, villain, slot, style) {
   if (style === v.styles[slot][0]) delete sty[slot]; else sty[slot] = style;
   return { ok: true };
 }
-export function bankMove(st, date, kind, amount) {
+// ctx (v0.5.9): what it was for. shop: { item: 'villain:slot:color' }; cheer/reply: { to: friendId, name: their name at send time }
+export function bankMove(st, date, kind, amount, ctx) {
   st.bank = Math.max(0, st.bank + amount);
-  st.bankLog = [{ date, kind, amount, bal: st.bank }, ...st.bankLog].slice(0, RULES.BANK_LOG_MAX);
+  st.bankLog = [{ date, kind, amount, bal: st.bank, ...(ctx || {}) }, ...st.bankLog].slice(0, RULES.BANK_LOG_MAX);
+}
+// Backfill context on old ledger entries where it can be derived without guessing.
+function backfillLedger(st, today) {
+  const shop = st.bankLog.filter(e => e.kind === 'shop' && !e.item);
+  if (shop.length) {
+    const taken = new Set(st.bankLog.filter(e => e.item).map(e => e.item)), all = [];
+    for (const [v, slots] of Object.entries(st.cosmetics.owned || {})) for (const [sl, cols] of Object.entries(slots || {})) for (const c of cols || []) { const it = itemFor(v, sl, c); if (it) all.push({ key: `${v}:${sl}:${c}`, price: it.price }); }
+    for (const e of shop) { const m = all.filter(x => !taken.has(x.key) && x.price === -e.amount); if (m.length === 1) { e.item = m[0].key; taken.add(m[0].key); } } // only a unique price match
+  }
+  const sent = st.cheerSent[today] || {}, tos = Object.keys(sent);
+  if (tos.length === 1) for (const e of st.bankLog) if (e.kind === 'cheer' && !e.to && e.date === today) e.to = tos[0]; // one recipient today: unambiguous
 }
 // Raccoon Pause: today (PT) won't count at all. Paid up front, irreversible, one per day, only before today closes.
 export function buyPause(st, today) {
@@ -170,7 +183,7 @@ export function buyItem(st, today, villain, slot, color) {
   if (owns(st.cosmetics, villain, slot, it.color)) return { ok: false, error: 'already owned' };
   if (st.hostage.rung < it.needShelf) return { ok: false, error: `needs ${it.needShelf} on the shelf` };
   if (st.bank < it.price) return { ok: false, error: 'not enough Spare Steps' };
-  bankMove(st, today, 'shop', -it.price);
+  bankMove(st, today, 'shop', -it.price, { item: `${villain}:${slot}:${it.color}` });
   const o = st.cosmetics.owned[villain] = st.cosmetics.owned[villain] || {};
   o[slot] = [...(o[slot] || []), it.color];
   (st.cosmetics.equipped[villain] = st.cosmetics.equipped[villain] || {})[slot] = it.color; // wear it straight away

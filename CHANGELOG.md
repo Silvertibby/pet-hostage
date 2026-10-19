@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.5.9 (2026-10-19)
+- History: each Spare Steps entry says what it was for (📣 cheered Ben, 🛍 Navy coat, ⏸ paused, ↩ replied, 👟 day banked, 💀 emptied). Old entries filled in where derivable.
+
 ## v0.5.8 (2026-10-18)
 - Friend cheers: 📣 send a friend a preset cheer for 1,000 Spare Steps (max 3 per friend per day).
 - Received cheers show as a banner on the home screen (✕ or swipe to dismiss) and expire at midnight PT; total count in History.

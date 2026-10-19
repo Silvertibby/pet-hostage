@@ -24,6 +24,7 @@ let r = await call('/shop/buy', { code: C, villain: 'raccoon', slot: 'hat', colo
 await poke(s => { s.bank = 40000; });
 // client can't set ownership or price: unknown fields are ignored, bad items rejected
 r = await call('/shop/buy', { code: C, villain: 'raccoon', slot: 'hat', color: 'black', price: 1, owned: true }); assert.equal(r.status, 200);
+assert.equal(r.body.state.bankLog[0].item, 'raccoon:hat:black'); // v0.5.9 ledger context
 assert.equal(r.body.state.bank, 35000); assert.deepEqual(r.body.state.cosmetics.owned.raccoon.hat, ['black']); assert.equal(r.body.state.cosmetics.equipped.raccoon.hat, 'black');
 assert.equal(r.body.state.bankLog[0].kind, 'shop');
 r = await call('/shop/buy', { code: C, villain: 'raccoon', slot: 'hat', color: 'black' }); assert.equal(r.body.error, 'already owned');

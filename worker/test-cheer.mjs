@@ -47,6 +47,8 @@ r = await call('/cheer', { code: B, to: fa, msg: 'paws', reply: cid }); assert.e
 assert.equal(r.body.state.cheers.length, 1, 'the replied cheer counts as seen');
 r = await call('/cheer', { code: B, to: fa, msg: 'go', reply: cid }); assert.equal(r.body.error, 'no such cheer'); // one reply per cheer
 a2 = (await call('/state?code=' + A)).body; assert.equal(a2.cheers.length, 1); assert.deepEqual([a2.cheers[0].from, a2.cheers[0].msg, a2.cheers[0].reply], [fb, 'paws', true]);
+{ const rl = r.body.state.bankLog[0]; assert.deepEqual([rl.kind, rl.amount, rl.to], ['reply', 0, fa]); assert.ok(rl.name); }
+assert.ok(a2.bankLog.some(e => e.kind === 'cheer' && e.to === fb && e.name), 'cheer ledger carries recipient id + name');
 // a new (non-reply) cheer still costs 1,000
 r = await call('/cheer', { code: B, to: fa, msg: 'go' }); assert.equal(r.body.error, 'not enough Spare Steps');
 // cheers only live for the Pacific day they were sent: gone after midnight PT even if never seen; history keeps the count

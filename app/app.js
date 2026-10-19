@@ -4,7 +4,7 @@ import { VILLAINS, SLOTS, COLORS, TIERS, colorById, owns, REWARDS, STYLE_INFO, s
 import { drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, itemSprite, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.5.8';
+const VERSION = 'v0.5.9';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
@@ -280,11 +280,20 @@ function bankHtml(s, paused) {
       <span>${BANK_ICON} <b>${fmt(bal)}</b></span>
       <span class="row nowrap">${paused ? `<span class="tag">⏸ paused</span>` : `<button class="btn small ${can ? 'acc' : 'ghost'}" id="pausebtn" ${can ? '' : 'disabled'}>⏸ ${fmt(cost)}</button>`}<button class="btn small" id="goshop" title="Raccoon Shop">🛍</button></span></div></div>`;
 }
-const BANK_KIND = { earn: 'saved', pause: '⏸ paused', reset: '☠ emptied', shop: '🛍 shop', cheer: '📣 cheer' };
+const BANK_KIND = { earn: ['👟', 'day banked'], pause: ['⏸', 'paused'], reset: ['💀', 'emptied'], shop: ['🛍', 'shop'], cheer: ['📣', 'cheer'], reply: ['↩', 'reply'] };
+function bankWho(e) { const f = e.to && loadFriends().find(x => x.id === e.to); return (f && f.nick) || e.name || (e.to ? e.to : 'a friend'); } // local nickname wins
+function bankWhat(e) {
+  const [icon, base] = BANK_KIND[e.kind] || ['•', e.kind];
+  if (e.kind === 'shop' && e.item) { const [, slot, col] = e.item.split(':'), c = colorById(col), sl = SLOTS[slot]; return [icon, c && sl ? `${c.label} ${sl.label.toLowerCase()}` : base]; }
+  if (e.kind === 'cheer') return [icon, `cheered ${esc(bankWho(e))}`];
+  if (e.kind === 'reply') return [icon, `replied to ${esc(bankWho(e))}`];
+  return [icon, base];
+}
 function bankHistoryHtml(s) {
   const log = s.bankLog || [];
   return `<div class="legend"><span>${BANK_ICON} <b>${fmt(s.bank || 0)}</b></span></div>
-    ${log.length ? `<ul class="banklog">${log.slice(0, 6).map(e => `<li><span>${fmtDate(e.date)} · ${BANK_KIND[e.kind] || e.kind}</span><span class="${e.amount < 0 ? 'neg' : 'pos'}">${e.amount > 0 ? '+' : ''}${fmt(e.amount)}</span></li>`).join('')}</ul>` : ''}`;
+    ${log.length ? `<ul class="banklog">${log.slice(0, 8).map(e => { const [icon, what] = bankWhat(e);
+      return `<li><span>${icon} <b class="${e.amount < 0 ? 'neg' : 'pos'}">${e.amount ? (e.amount > 0 ? '+' : '') + fmt(e.amount) : 'free'}</b> · ${what}</span><span class="dim">${fmtDate(e.date)}</span></li>`; }).join('')}</ul>` : ''}`;
 }
 function confirmPause() {
   const s = state, cost = s.pauseCost || PAUSE_COST, ov = $('#overlay'); ov.hidden = false;
@@ -1052,7 +1061,7 @@ function demoState(m) {
     hostage, shelf, ladder, mood, lastDeath, deathSeen: 0,
     deathLog: [lastDeath, { id: 2, date: day(-21), rung: 2, name: 'Acorn', species: 'squirrel', type: 'catapult', rekidnap: { name: 'Nugget', same: false } }, { id: 1, date: day(-33), rung: 0, name: 'Chompsky', species: 'bunny', type: 'pop', rekidnap: { name: 'Chompsky', same: true } }].filter(Boolean),
     cosmetics: demoCosmetics(rung), bank: qs.has('bank') ? +qs.get('bank') : m === 'shop' ? 186500 : m === 'bank' || m === 'paused' ? (m === 'paused' ? 11200 : 41200) : 2350, pauseCost: PAUSE_COST, pausedToday: m === 'paused', friendId: 'DEMO42',
-    bankLog: [{ date: day(-1), kind: 'earn', amount: 2900, bal: 41200 }, { date: day(-2), kind: 'earn', amount: 4100, bal: 38300 }, { date: day(-4), kind: 'pause', amount: -30000, bal: 34200 }, { date: day(-5), kind: 'earn', amount: 5300, bal: 64200 }],
+    bankLog: [{ date: today, kind: 'reply', amount: 0, bal: 41200, to: 'STEPH1', name: 'Steph' }, { date: today, kind: 'cheer', amount: -1000, bal: 41200, to: 'BEN123', name: 'Nugget' }, { date: day(-1), kind: 'shop', amount: -12000, bal: 42200, item: 'raccoon:shirt:navy' }, { date: day(-1), kind: 'earn', amount: 2340, bal: 54200 }, { date: day(-2), kind: 'earn', amount: 4100, bal: 38300 }, { date: day(-4), kind: 'pause', amount: -30000, bal: 34200 }, { date: day(-5), kind: 'earn', amount: 5300, bal: 64200 }],
     stats: { metDays: 27, missedDays: 3, rescues: 4 }, push: !qs.has('nopush'),
     cheers: m === 'cheer' || m === 'cheered' ? [{ id: 7, from: 'BEN123', name: 'Nugget', msg: CHEERS[0].id, at: Date.now() - 9e5, date: today, reply: false }, { id: 8, from: 'STEPH1', name: 'Steph', msg: CHEERS[2].id, at: Date.now() - 6e5, date: today, reply: false }, { id: 6, from: 'BRO777', name: 'Old', msg: CHEERS[1].id, at: Date.now() - 9e7, date: day(-1) }] : [],
     cheersTotal: 5, displayName: null, friends: ['BEN123', 'STEPH1'],

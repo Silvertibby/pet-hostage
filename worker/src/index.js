@@ -344,8 +344,9 @@ export default {
       const name = st.displayName || petAt(st, st.hostage.rung).name; // display name, else their current pet's name
       const cheer = { id: (rst.cheerSeq = (rst.cheerSeq || 0) + 1), from: st.friendId, name, msg: c.id, at: Date.now(), date: today };
       rst.cheers = [...rst.cheers, cheer].slice(-20); rst.cheersTotal++;
-      if (orig) st.cheers = st.cheers.filter(x => x.id !== orig.id); // replied = seen; one reply per cheer
-      else { bankMove(st, today, 'cheer', -CHEER_COST); sent[to] = (sent[to] || 0) + 1; }
+      const toName = rst.displayName || petAt(rst, rst.hostage.rung).name; // recipient's name at send time
+      if (orig) { st.cheers = st.cheers.filter(x => x.id !== orig.id); bankMove(st, today, 'reply', 0, { to, name: toName }); } // replied = seen; one reply per cheer; free
+      else { bankMove(st, today, 'cheer', -CHEER_COST, { to, name: toName }); sent[to] = (sent[to] || 0) + 1; }
       if (orig) cheer.reply = true;
       await push(env, rst, '📣 ' + name, c.text, 'ph-cheer-' + cheer.id);
       await save(env, rst); await save(env, st); console.log('cheer', st.friendId, '->', to, c.id);
