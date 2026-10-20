@@ -2,7 +2,7 @@ import { RULES, localParts, newState, migrate, settle, view, petAt, needFor, goa
 import { note, nudgeText, DISH, ITEM, PET_EMOJI } from './messages.js';
 import { sendPush } from './push.js';
 import { revivedVars } from './revived.js';
-import { CHEER_COST, CHEER_DAILY_MAX, cheerById, cleanName, WIN_LINES, MISS_LINES } from './cheers.js';
+import { CHEER_COST, CHEER_DAILY_MAX, cheerById, cleanName, WIN_LINES, MISS_LINES, replyLine } from './cheers.js';
 import { bankMove } from './game.js';
 
 // Multi-player: one KV key per player, "player:<CODE>". The old single-player key "state" is migrated once.
@@ -91,8 +91,18 @@ async function readInbox(env, fid) {
 // Upsert items into a player's inbox: one get + at most one put, and only if something changed. Old items are pruned.
 async function upsertItems(env, fid, items) {
   const cur = await readInbox(env, fid), before = JSON.stringify(cur), cut = addDays(localParts().date, -3);
-  for (const it of items) { const i = cur.findIndex(x => x.id === it.id); if (i >= 0) cur[i] = it; else cur.push(it); }
-  const next = cur.filter(x => x.date >= cut).sort((a, b) => a.at - b.at).slice(-60);
+  // v0.6.3: reply lines are picked here, avoiding the last few this inbox's owner already got (kept in the same key, no extra writes)
+  let meta = cur.find(x => x.id === '_recent'); if (!meta) { meta = { id: '_recent', kind: 'meta', date: '9999-12-31', at: 0, used: {} }; cur.push(meta); }
+  for (const it of items) {
+    const i = cur.findIndex(x => x.id === it.id);
+    if (it.pick) { const kind = it.pick; delete it.pick;
+      if (i >= 0 && cur[i].msg) it.msg = cur[i].msg; // a retry keeps the line it already got
+      else { const all = kind === 'win' ? WIN_LINES : MISS_LINES, keep = kind === 'win' ? 10 : 3, used = meta.used[kind] = meta.used[kind] || [];
+        const pool = all.filter(l => !used.includes(l.id)); it.msg = pick(pool.length ? pool : all, it.id + ':' + Date.now()).id;
+        meta.used[kind] = [...used, it.msg].slice(-keep); } }
+    if (i >= 0) cur[i] = it; else cur.push(it);
+  }
+  const next = [meta, ...cur.filter(x => x !== meta && x.date >= cut).sort((a, b) => a.at - b.at).slice(-60)];
   if (JSON.stringify(next) !== before) await env.PH.put(BKEY(fid), JSON.stringify(next));
 }
 const putItem = (env, fid, it) => ({ fid, it }); // queued; flushed in commit, grouped per inbox
@@ -115,6 +125,7 @@ async function syncInbox(env, st, today, prev) {
   const seenIds = new Set(); const uniq = items.filter(i => !seenIds.has(i.id) && seenIds.add(i.id));
   const me = myName(st);
   for (const it of uniq) {
+    if (it.kind === 'meta') continue; // v0.6.3: recently used reply lines
     let dirty = false;
     if (it.kind === 'cheer' && !it.counted) { st.cheersTotal++; it.counted = true; dirty = changed = true; }
     if (it.kind !== 'cheer' && !it.booked) { bankMove(st, it.date, 'reply', 0, { to: it.from, name: it.name, outcome: it.kind, dir: 'in' }); it.booked = true; dirty = changed = true; }
@@ -127,14 +138,13 @@ async function syncInbox(env, st, today, prev) {
       const rep = st.replied[d] = st.replied[d] || [];
       if (outcome && rep.includes(it.from)) { it.done = outcome; dirty = true; outcome = null; } // one reply per cheerer per day
       if (outcome) { rep.push(it.from);
-        const line = pick(outcome === 'win' ? WIN_LINES : MISS_LINES, it.id);
-        const reply = { id: `r-${d}-${st.friendId}`, kind: outcome, from: st.friendId, name: me, msg: line.id, at: Date.now(), date: today, re: it.id };
+        const reply = { id: `r-${d}-${st.friendId}`, kind: outcome, from: st.friendId, name: me, msg: null, pick: outcome, at: Date.now(), date: today, re: it.id };
         bankMove(st, today, 'reply', 0, { to: it.from, name: it.name, outcome, dir: 'out' });
         it.done = outcome; dirty = changed = true;
         after.push(putItem(env, it.from, reply)); // deterministic id: a retry overwrites, never duplicates
         after.push(async () => {
           const sc = await env.PH.get(FKEY(it.from)), sst = sc && JSON.parse(await env.PH.get(PKEY(sc)) || 'null'); // read-only, for the push subscription
-          if (sst && sst.sub) await push(env, sst, '↩ ' + me, line.text, 'ph-reply-' + reply.id); });
+          if (sst && sst.sub) await push(env, sst, '↩ ' + me, (replyLine(reply.kind, reply.msg) || {}).text || '↩', 'ph-reply-' + reply.id); });
       }
     }
     if (dirty) after.push(putItem(env, st.friendId, it));
@@ -563,3 +573,4 @@ export function planNudge(st, np) {
     dish: DISH[p.species] || 'stew', item: ITEM[p.species] || 'a hat', day: h.streak + 1, need, final: h.streak + 1 >= need, ...revivedVars(p.injuries, p.deaths || 0), deaths: p.deaths || 0 };
   return { id: n.id, voice, title: voice === 'pet' ? `${PET_EMOJI[p.species] || '🐾'} ${p.name}` : '🦝 The Raccoon', body: nudgeText(voice, n.slot, v) };
 }
+export const _upsertItems = upsertItems; // tests

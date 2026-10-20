@@ -45,3 +45,9 @@ process.stdout.write('✓ friends (mutual links, new-friend flag, others untouch
   assert.equal(lists, 0, 'cron uses the player index'); assert.ok(puts <= 0, 'cron skips unchanged players: ' + puts);
   env.PH.put = p0; env.PH.list = l0; }
 process.stdout.write('✓ quota (no writes/lists on unchanged polls or cron)\n');
+// v0.6.3: a cheerer never gets one of their last 10 'made it' lines again
+{ const { _upsertItems } = await import('./src/index.js'); const got = [];
+  for (let i = 0; i < 30; i++) { const it = { id: 'r-x' + i, kind: 'win', pick: 'win', msg: null, at: fake + i, date: '2026-10-10' }; await _upsertItems(env, 'LINES1', [it]); got.push(it.msg); }
+  for (let i = 10; i < got.length; i++) assert.ok(!got.slice(i - 10, i).includes(got[i]), 'repeat within 10');
+  const raw = JSON.parse(env.PH.m.get('ibx:LINES1')); assert.equal(raw.find(x => x.id === '_recent').used.win.length, 10); }
+process.stdout.write('✓ reply lines (no repeats within the last 10 per cheerer)\n');

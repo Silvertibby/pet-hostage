@@ -49,6 +49,7 @@ r = await call('/sync', { code: B, steps: 9000 }); a2 = (await call('/state?code
 r = await call('/sync', { code: B, steps: 10400 }); assert.equal(r.status, 200);
 a2 = (await call('/state?code=' + A)).body; assert.equal(a2.cheers.length, 1); assert.deepEqual([a2.cheers[0].kind, a2.cheers[0].from], ['win', fb]);
 assert.ok(WIN_LINES.some(l => l.id === a2.cheers[0].msg));
+{ const ib = JSON.parse(env.PH.m.get('ibx:' + fa)), meta = ib.find(x => x.id === '_recent'); assert.deepEqual(meta.used.win, [a2.cheers[0].msg]); assert.ok(WIN_LINES.length >= 40); }
 { const e = a2.bankLog.find(x => x.kind === 'reply'); assert.deepEqual([e.amount, e.to, e.outcome, e.dir], [0, fb, 'win', 'in']); }
 { const bs = (await call('/state?code=' + B)).body; const e = bs.bankLog.find(x => x.kind === 'reply'); assert.deepEqual([e.amount, e.to, e.outcome, e.dir], [0, fa, 'win', 'out']);
   assert.equal(bs.bankLog.filter(x => x.kind === 'reply').length, 1); }

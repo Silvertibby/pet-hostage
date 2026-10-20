@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.6.3 (2026-10-19)
+- New, much larger set of "made it" auto replies, with no repeats for the same cheerer; a few more "missed" ones.
+
 ## v0.6.2 (2026-10-19)
 - Storage quota fix: no writes for unchanged records, no list() on hot paths (single inbox and friends keys, a player index for the cron).
 
