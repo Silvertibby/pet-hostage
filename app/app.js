@@ -4,7 +4,7 @@ import { VILLAINS, SLOTS, COLORS, TIERS, colorById, forSlot, owns, REWARDS, STYL
 import { drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, itemSprite, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.6.4';
+const VERSION = 'v0.6.5';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
@@ -247,7 +247,7 @@ function renderHome() {
     <div class="scenewrap big"><canvas id="scene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas>
       <div class="hudname">${esc(h.name)}</div></div>
     <div class="quest"><div class="qhead"><b>Day ${h.day}/${h.need}</b><div class="dpips">${pips}</div>${tag ? `<span class="tag">${tag}</span>` : ''}</div></div>
-    <div class="steps"><b>${fmt(s.todaySteps)}</b><span>/ ${fmt(s.goal)}</span></div>
+    <div class="steps"><b>${fmt(Math.max(s.todaySteps, syncedHint || 0))}</b><span>/ ${fmt(s.goal)}</span></div>
     <div class="bar ${prog >= 1 ? 'done' : ''}">${Array.from({ length: BAR_SEGMENTS }, (_, i) => `<i class="${i < filled ? 'f' : ''}"></i>`).join('')}</div>
     <div class="sync"><span>${s.lastSync ? `🔄 ${ago(s.lastSync)}` : `<span class="hint">🔄 —</span>`} <span id="upd" class="upd">${updLabel()}</span></span>
       <span class="row nowrap">${s.lastSync ? `<button class="btn small ghost" id="syncnow">Sync</button>` : `<button class="btn small acc" id="gosetup">Set up sync</button>`}<button class="btn small ghost" id="refreshbtn" aria-label="Refresh">↻</button></span></div>
@@ -703,8 +703,10 @@ function syncLogHtml(s) {
   const log = (s.syncLog || []);
   if (!log.length && phonePick() === 'android') return `<span class="dim">🔄 —</span>`;
   if (!log.length) return `<span class="dim">🔄 —</span>`;
-  const line = e => `${e.ok ? '✅' : '❌'} ${timePT(e.at)} · ${ago(e.at)} · ${e.ok ? (e.dry ? 'dry run, ' : '') + fmt(e.steps) + ' steps' : esc(e.reason || 'failed')}${e.raw != null && !e.ok ? ` <span class="dim">(got "${esc(e.raw)}")</span>` : ''}${e.codeNote ? ` <span class="dim">· ${esc(e.codeNote)}</span>` : ''}${e.src === 'garmin' ? ' <span class="dim">· Garmin</span>' : e.src === 'android' ? ' <span class="dim">· Android</span>' : ''}${e.ok && e.reason ? ` <span class="dim">· ${esc(e.reason)}</span>` : ''}`;
-  return `<div>${line(log[0])}</div>` + (log.length > 1 ? `<div class="dim" style="margin-top:6px">${log.slice(1).map(line).join('<br>')}</div>` : '');
+  const line = e => `${e.ok ? '✅' : '❌'} ${timePT(e.at)} · ${e.ok ? (e.dry ? 'dry run, ' : '') + fmt(e.steps) : esc(e.reason || 'failed')}${e.raw != null && String(e.raw) !== String(e.steps) ? ` <span class="dim">(sent ${esc(e.raw)})</span>` : ''}${e.date ? ` <span class="dim">· 📅 ${fmtDate(e.date)}</span>` : ''}${e.yRaw ? ` <span class="dim">· ⏪ ${esc(e.yRaw)}</span>` : ''}${e.src === 'garmin' ? ' <span class="dim">· ⌚ Garmin</span>' : e.src === 'android' ? ' <span class="dim">· Android</span>' : ''}${e.same ? ' <span class="dim">· ⏳</span>' : ''}${e.ok && e.reason ? ` <span class="dim">· ${esc(e.reason)}</span>` : ''}`;
+  const rest = log.slice(1, 6), more = log.slice(6);
+  return `<div>${line(log[0])}</div>` + (rest.length ? `<div class="dim" style="margin-top:6px">${rest.map(line).join('<br>')}</div>` : '')
+    + (more.length ? `<details class="more"><summary>+${more.length}</summary><div class="dim">${more.map(line).join('<br>')}</div></details>` : '');
 }
 function garminHtml(s) {
   const g = s.garmin;
@@ -777,9 +779,11 @@ function recipeHtml(w) {
     <ol class="guide">
       <li>Shortcuts app → <b>+</b> → name it <b>${SHORTCUT_NAME}</b> (exact name, so the Sync button can find it).</li>
       <li>Add <b>Find Health Samples</b> and set, top to bottom:
-        <ul class="guide"><li><b>Type is Steps</b></li><li><b>Start Date is Today</b></li><li>Tap <b>Add Filter</b>, then set it to ${src}. <b>Required</b>: without it your iPhone's steps are added on top.</li><li>Unit: <b>count</b></li><li>Group by: <b>None</b> (Fill Missing: <b>off</b>, if shown)</li><li>Sort by: <b>None</b></li><li>Limit: <b>off</b></li></ul></li>
+        <ul class="guide"><li><b>Type is Steps</b></li><li><b>Start Date is Today</b></li><li>Tap <b>Add Filter</b>, then set it to ${src}. <b>Required</b>: without it your iPhone's steps are added on top. Too low? Health → Steps → Data Sources: tick every source your watch's steps show under.</li><li>Unit: <b>count</b></li><li>Group by: <b>None</b> (Fill Missing: <b>off</b>, if shown)</li><li>Sort by: <b>None</b></li><li>Limit: <b>off</b></li></ul></li>
       <li>Add <b>Calculate Statistics</b> → <b>Sum</b>.</li>
       <li>Add <b>Get Contents of URL</b> (Method: GET): paste your sync URL, then right after <b>steps=</b> insert the Calculate Statistics result (shows as <b>Sum</b> or <b>Statistics Result</b>).</li>
+      <li><i>Optional, ⏪ morning top-up:</i> duplicate the two actions above, set the copy to <b>Start Date is Yesterday</b>, and add <b>&amp;yesterday=</b> + that Sum to the end of the URL. Before 10 AM it can raise yesterday.</li>
+      <li><i>Optional, ↩ come back:</i> add <b>Open URLs</b>: <span class="mono">${APP_URL}?c=${code}&amp;synced=</span> + Sum.</li>
       <li>Let Shortcuts read Steps: tap <b>Allow</b> when iOS asks. Skipped it? Health app → your picture → <b>Apps</b> (or Data Access &amp; Devices) → <b>Shortcuts</b> → turn on <b>Steps</b>.</li>
       <li>Tap ▶︎ once. Allow <b>workers.dev</b>.</li>
       <li><b>Check it:</b> in Pet Hostage, tap <b>Check steps</b>. Today's count should match ${dev}. Much higher? Fix the Source filter. 0? Turn on Steps for Shortcuts (above).</li>
@@ -788,6 +792,7 @@ function recipeHtml(w) {
     <ol class="guide">
       <li>Shortcuts → <b>Automation</b> → <b>+</b> → <b>Time of Day</b>.</li>
       <li><b>11:50 PM</b>, Daily, <b>Run Immediately</b> (older iOS: turn off <b>Ask Before Running</b>). Pick <b>${SHORTCUT_NAME}</b>.</li>
+      <li>🔒 iPhone must be <b>unlocked</b> (Health is locked otherwise). Late at night, run it by hand; the ⏪ morning top-up covers a miss.</li>
       <li>Add a few more the same way, e.g. <b>12, 3, 6, 9 PM</b>.</li>
     </ol>
     <p class="dim">Days end at midnight Pacific. Health is locked while your iPhone is locked, so a run can miss; tap Sync before bed to be safe.${w === 'fitbit' ? ' Fitbit tip: open <b>Google Health</b> before bed so your latest steps reach Apple Health first.' : ''}</p></details>`;
@@ -1038,14 +1043,26 @@ async function doRefresh(why) {
   else if (ok && why !== 'auto') toast('Updated just now', 1400);
 }
 let returnTimers = [], swReg = null, pullQueued = false;
-function onReturn() { // back from Shortcuts after "Sync now": refresh now, then again to catch the sync landing
+function onReturn() { // back from Shortcuts: v0.6.5 poll every 2.5 s for ~30 s until a new sync shows up (KV can lag)
   if (!state || DEMO || document.visibilityState !== 'visible') return;
-  returnTimers.forEach(clearTimeout);
   swReg?.update().catch(() => {}); // pick up a new app shell too
-  doRefresh('auto');
-  returnTimers = [3000, 8000].map(ms => setTimeout(() => doRefresh('auto'), ms));
+  pollForSync(leftSync ?? state.lastSync);
 }
-let lastReturn = 0;
+let leftSync = null, polling = 0, syncedHint = null;
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && state) leftSync = state.lastSync; });
+async function pollForSync(since) {
+  const id = ++polling; returnTimers.forEach(clearTimeout); returnTimers = [];
+  for (let i = 0; i < 12 && id === polling; i++) {
+    await doRefresh('auto');
+    if (state && state.lastSync !== since && (!syncedHint || state.todaySteps >= syncedHint)) break;
+    await new Promise(r => setTimeout(r, 2500));
+  }
+  if (id !== polling) return;
+  if (syncedHint && state && state.todaySteps < syncedHint) toast('⏳ ' + fmt(syncedHint) + '…');
+  syncedHint = null; if (tab === 'home') render();
+  const e = state && state.syncLog && state.syncLog[0];
+  if (e && e.same && state.lastSync !== since) toast('⏳ No new steps in Health yet', 3500);
+}
 const onReturnOnce = () => { if (Date.now() - lastReturn < 1500) return; lastReturn = Date.now(); onReturn(); };
 function setupPull() {
   const p = $('#ptr'), TRIG = 70;
@@ -1119,8 +1136,10 @@ function demoState(m) {
 
 async function boot2() {
   unclaimed = false;
+  { const n = parseInt(qs.get('synced') || '', 10); if (n > 0 && n <= 300000) syncedHint = n; } // v0.6.5: opened by the shortcut
+  const sinceBoot = null;
   await refresh(true);
-  if (state) { welcome = false; $('#tabs').hidden = false; render(); }
+  if (state) { welcome = false; $('#tabs').hidden = false; render(); if (syncedHint) pollForSync(sinceBoot); }
   else if (unclaimed) renderWelcome(code || null);
   else renderOffline();
 }

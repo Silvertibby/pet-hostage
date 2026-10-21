@@ -210,6 +210,7 @@ export function equipItem(st, villain, slot, color) {
   eq[slot] = color; return { ok: true };
 }
 
+export const RESETTLE_KEYS = ['hostage', 'pets', 'stats', 'bank', 'deathCount', 'lastDeath', 'deathLog', 'bestRung', 'dayGoals'];
 export function settle(st, today) {
   normalize(st, today);
   const events = []; const h = st.hostage;
@@ -221,6 +222,8 @@ export function settle(st, today) {
       st.hostage.settledThrough = d; d = addDays(d, 1); continue;
     }
     const goal = goalFor(st.hostage.streak, need, runBosses(st.hostage)), steps = st.days[d] || 0, met = steps >= goal;
+    // v0.6.5 morning top-up: before yesterday settles as a miss, keep what it undoes (inside this record, no extra writes)
+    if (d === addDays(today, -1)) { if (met) delete st.resettle; } if (!met && d === addDays(today, -1)) st.resettle = { date: d, snap: JSON.parse(JSON.stringify(RESETTLE_KEYS.reduce((o, k) => (o[k] = st[k], o), {}))) };
     st.dayGoals[d] = goal; // what that day asked for (history shows 15k days)
     if (met) {
       st.hostage.streak++; st.stats.metDays++;
@@ -296,7 +299,7 @@ export function view(st, now = Date.now()) {
     push: !!st.sub, events: (st.events || []).slice(-5),
     cheers: st.cheers.filter(c => c.date === np.date).map(({ id, kind, from, name, msg, at, date }) => ({ id, kind: kind || 'cheer', from, name, msg, at, date })), cheersTotal: st.cheersTotal, displayName: st.displayName || null, friends: st.friends, newFriends: st.newFriends || [],
     bank: st.bank, bankLog: st.bankLog.slice(0, 10), cosmetics: st.cosmetics, pauseCost: RULES.PAUSE_COST, pausedToday: !!st.paused[np.date], friendId: st.friendId || null,
-    code: st.code, syncLog: (st.syncLog || []).slice(0, 5),
+    code: st.code, syncLog: st.syncLog || [],
     garmin: st.garmin ? { lastSync: st.garmin.lastSync || null, lastSteps: st.garmin.lastSteps ?? null, lastError: st.garmin.lastError || null, lastErrorAt: st.garmin.lastErrorAt || null } : null,
     android: st.android ? { lastSync: st.android.lastSync || null, lastSteps: st.android.lastSteps ?? null, app: st.android.app || null } : null,
     // v0.1 app compat (a stale cached app shouldn't crash before it updates)

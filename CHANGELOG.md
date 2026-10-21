@@ -1,5 +1,13 @@
 # Pet Hostage changelog
 
+## v0.6.5
+- Garmin job can no longer lower a higher shortcut count (it was overwriting it every 15 min).
+- Blank or 0 syncs never lower a day; past days only ever go up.
+- Morning top-up: optional yesterday= (before 10 AM PT) raises yesterday and re-settles it (miss -> made, Spare Steps).
+- Sync log: last 50 + last sync of each of 7 days, with date, sent vs stored, source.
+- Back from Shortcuts: polls every 2.5 s for ~30 s; ?synced=N shows N right away; notice when Health had nothing new.
+- Docs: source hint, locked-iPhone note, top-up and come-back steps.
+
 ## v0.6.4
 - Cheer replies are now sent by the player: a free ↩ Free Reply button on Home once today's goal is met, with a handful of lines to pick from (recent ones skipped). One per cheerer per day.
 - No automatic replies any more (neither on reaching the goal nor at midnight).

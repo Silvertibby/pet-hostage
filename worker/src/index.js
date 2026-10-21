@@ -1,9 +1,8 @@
-import { RULES, localParts, newState, migrate, settle, view, petAt, needFor, goalToday, DEATH_TEXT, normalize, addDays, buyPause, publicView, buyItem, equipItem, equipStyle } from './game.js';
+import { RULES, RESETTLE_KEYS, bankMove, localParts, newState, migrate, settle, view, petAt, needFor, goalToday, DEATH_TEXT, normalize, addDays, buyPause, publicView, buyItem, equipItem, equipStyle } from './game.js';
 import { note, nudgeText, DISH, ITEM, PET_EMOJI } from './messages.js';
 import { sendPush } from './push.js';
 import { revivedVars } from './revived.js';
 import { CHEER_COST, CHEER_DAILY_MAX, cheerById, cleanName, WIN_LINES, MISS_LINES, replyLine } from './cheers.js';
-import { bankMove } from './game.js';
 
 // Multi-player: one KV key per player, "player:<CODE>". The old single-player key "state" is migrated once.
 const PKEY = c => 'player:' + c;
@@ -278,11 +277,41 @@ async function readBody(req) {
 }
 
 const ROUTES = new Set(['/state', '/sync', '/settings', '/subscribe', '/sync-log/clear-test', '/unsubscribe', '/test-nudge', '/seen-death', '/pause', '/shop/buy', '/shop/equip', '/shop/style', '/friends/save', '/friends/remove', '/friends/seen', '/cheer', '/cheer/seen', '/reply/options', '/reply']);
-const SYNC_LOG_MAX = 10;
+const SYNC_LOG_MAX = 50, SYNC_LOG_DAYS = 7; // v0.6.5: last 50, plus the last sync of each of the past 7 days
+const TOPUP_HOUR = 10; // v0.6.5: until 10 AM PT a sync may raise yesterday
+// v0.6.5 morning top-up: a higher count for yesterday, before TOPUP_HOUR. Only ever raises. Returns a log note or null.
+export function topUpYesterday(st, today, hour, val) {
+  const y = addDays(today, -1), old = st.days[y] || 0;
+  if (!(val > old)) return null;
+  if (hour >= TOPUP_HOUR) return null;
+  st.days[y] = val;
+  if (st.hostage.settledThrough < y || st.paused[y]) return `yesterday → ${val}`;
+  const goal = st.dayGoals[y] || RULES.GOAL;
+  if (old >= goal) { bankMove(st, y, 'earn', val - old, { topup: true }); return `yesterday → ${val} (+${val - old})`; }
+  const r = st.resettle;
+  if (val < goal || !r || r.date !== y) return `yesterday → ${val}`;
+  // missed -> made: undo the miss, then settle yesterday again with the new count
+  const names = Object.fromEntries(Object.entries(st.pets || {}).map(([k, p]) => [k, p.name]));
+  const bankSince = st.bank; // a death empties the bank; anything gained since is kept
+  const deathId = st.deathCount;
+  for (const k of RESETTLE_KEYS) st[k] = r.snap[k];
+  for (const [k, n] of Object.entries(names)) if (st.pets[k]) st.pets[k].name = n;
+  st.bank += bankSince; st.days[y] = val; delete st.resettle;
+  st.bankLog = st.bankLog.filter(e => !(e.kind === 'reset' && e.date === y));
+  st.deathSeen = Math.min(st.deathSeen || 0, st.deathCount);
+  const gone = e => !(e.kind === 'death' && e.id === deathId);
+  st.events = (st.events || []).filter(gone); if (st.pendingReport) st.pendingReport = st.pendingReport.filter(gone);
+  const ev = settle(st, today);
+  if (ev.length) st.pendingReport = [...(st.pendingReport || []), ...ev];
+  return `yesterday → ${val} ✓`;
+}
 const viewX = st => ({ ...view(st), canReply: st._canReply || [] }); // v0.6.4: today's cheers waiting for a free Reply
 const REPLY_OPTS = 6;
 function logSync(st, entry) {
-  st.syncLog = [{ at: Date.now(), ...entry }, ...(st.syncLog || [])].slice(0, SYNC_LOG_MAX);
+  const all = [{ at: Date.now(), ...entry }, ...(st.syncLog || [])], keep = all.slice(0, SYNC_LOG_MAX), cut = addDays(localParts().date, -SYNC_LOG_DAYS);
+  const dayOf = e => localParts(e.at).date, have = new Set(keep.map(dayOf));
+  for (const e of all.slice(SYNC_LOG_MAX)) { const d = dayOf(e); if (d >= cut && !have.has(d)) { keep.push(e); have.add(d); } }
+  st.syncLog = keep;
   console.log('sync', JSON.stringify(entry));
 }
 const clip = v => v == null ? null : String(v).slice(0, 80);
@@ -384,6 +413,19 @@ async function handle(req, env) {
         await commit(env, st, today, null, inbox);
         return json({ ok: true, dry: true, steps, date });
       }
+      // v0.6.5: optional yesterday= (the shortcut's sum for yesterday). Blank or bad values are ignored.
+      const yRaw = url.searchParams.get('yesterday') ?? body.yesterday ?? null, yVal = yRaw == null || String(yRaw).trim() === '' ? null : parseSteps(yRaw);
+      const hour = localParts().hour, yNote = [];
+      if (Number.isFinite(yVal) && yVal > 0 && yVal <= 300000) { const t = topUpYesterday(st, today, hour, yVal); if (t) yNote.push(t); }
+      if (date < today) { // a past day: only ever raised (yesterday re-settles before 10 AM)
+        const t = date === addDays(today, -1) ? topUpYesterday(st, today, hour, steps) : (steps > (st.days[date] || 0) ? (st.days[date] = steps, `${date} → ${steps}`) : null);
+        if (t) yNote.push(t);
+        if (isGarmin) { const g = st.garmin || (st.garmin = {}); g.days = g.days || {}; g.days[date] = Math.max(g.days[date] || 0, steps); }
+        st.lastSync = Date.now();
+        logSync(st, { ok: true, steps: st.days[date] || 0, raw: clip(raw), date, method: req.method, test, src, reason: yNote.join(' · ') || 'kept (only raises past days)' });
+        await commit(env, st, today, null, inbox);
+        return json({ ok: true, steps: st.days[date] || 0, state: viewX(st) });
+      }
       const before = st.days[date] || 0;
       // Garmin (src=garmin) is authoritative: it sets the day's count. Once Garmin has reported a day, a laggy
       // Shortcut/Health sync can only raise the count, never lower it. Days with no Garmin report: latest wins.
@@ -392,23 +434,24 @@ async function handle(req, env) {
       let stored = steps, note2;
       if (isGarmin) {
         g.days[date] = Math.max(g.days[date] || 0, steps);
-        stored = g.days[date];
+        stored = Math.max(g.days[date], before); // v0.6.5: never lowers a higher shortcut/Health count
+        if (stored !== steps) note2 = `kept ${stored} (Garmin sent ${steps})`;
         g.lastSync = Date.now(); g.lastSteps = stored; g.lastError = null; g.lastErrorAt = null;
         for (const k of Object.keys(g.days).sort().slice(0, -7)) delete g.days[k];
       } else if (isAndroid) {
         stored = Math.max(g.days[date] || 0, before, steps);
         if (stored !== steps) note2 = `kept ${stored} (higher than the ${steps} Android sent)`;
         st.android = { lastSync: Date.now(), lastSteps: steps, app: clip(url.searchParams.get('app') ?? body.app ?? null) };
-      } else if (empty) {
+      } else if (empty || steps === 0) { // v0.6.5: a blank or 0 (e.g. Health locked) never lowers or zeroes the day
         stored = Math.max(g.days[date] || 0, before, 0);
         note2 = stored ? `empty steps= counted as 0; kept ${stored}` : 'empty steps= counted as 0 (no Health samples yet?)';
       } else if (g.days[date] != null) {
         stored = Math.max(g.days[date], before, steps);
-        if (stored !== steps) note2 = `kept ${stored} (Garmin is authoritative; shortcut sent ${steps})`;
+        if (stored !== steps) note2 = `kept ${stored} (higher than the ${steps} sent)`;
       }
       st.days[date] = stored;
       st.lastSync = Date.now(); st.lastSteps = stored;
-      logSync(st, { ok: true, steps: stored, raw: clip(raw), date, method: req.method, codeNote, test, src, reason: note2 });
+      logSync(st, { ok: true, steps: stored, raw: clip(raw), date, method: req.method, codeNote, test, src, same: !isGarmin && !(steps > before) || undefined, reason: [note2, ...yNote].filter(Boolean).join(' · ') || undefined, yRaw: yRaw == null ? undefined : clip(yRaw) });
       const v = vars(st);
       const goal = goalToday(st);
       if (date === today && before < goal && stored >= goal && !(st.sent[today] || []).includes('paid')) {

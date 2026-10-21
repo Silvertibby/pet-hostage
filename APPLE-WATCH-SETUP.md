@@ -34,3 +34,9 @@ Good to know
 - iPhone locks Health data while the phone is locked, so an automatic run can occasionally miss. Tapping Sync on the Pet Hostage home screen before bed is a safe habit.
 - Fitbit? See [FITBIT-SETUP.md](FITBIT-SETUP.md).
 - Other watch (Samsung, etc.)? Same steps, but first turn on Apple Health syncing in your watch's app, and in step 4 set Source is your watch's app.
+
+## v0.6.5 extras (optional)
+- **Too low?** Health → Steps → Data Sources & Access lists every app writing your steps. If your watch's steps show under more than one name, add a filter for each (set the filter to "Any").
+- **Morning top-up:** duplicate Find Health Samples + Calculate Statistics, set the copy's Start Date to Yesterday, and add `&yesterday=` + that Sum to the end of the sync URL. Before 10 AM PT it can raise yesterday's count (never lower it), and a missed day that now reaches the goal counts as made.
+- **Come back automatically:** add Open URLs at the end: `https://silvertibby.github.io/pet-hostage/?c=YOURCODE&synced=` + Sum. The app shows that number right away and checks until the server catches up.
+- **Locked iPhone:** Health can't be read while the phone is locked ("Protected health data is inaccessible"). Automations only work if the phone is unlocked when they run. Run the late-evening sync by hand; the morning top-up covers a missed one. A blank or 0 never lowers your count.
