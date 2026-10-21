@@ -381,6 +381,7 @@ async function handle(req, env) {
     if (path === '/sync') {
       const src = clip(url.searchParams.get('src') ?? body.src ?? null) || undefined; // 'garmin' = server-side Garmin job
       const isGarmin = src === 'garmin';
+      if (isGarmin) return json({ ok: false, ignored: true, reason: 'Garmin pull is off' }); // v0.6.6: shortcut only; no write
       // The Android companion app reads Health Connect's deduped daily total (Garmin writes there too). Trusted like
       // Garmin in one way: it can only ever raise a day's count, never lower it.
       const isAndroid = src === 'android';
@@ -445,10 +446,8 @@ async function handle(req, env) {
       } else if (empty || steps === 0) { // v0.6.5: a blank or 0 (e.g. Health locked) never lowers or zeroes the day
         stored = Math.max(g.days[date] || 0, before, 0);
         note2 = stored ? `empty steps= counted as 0; kept ${stored}` : 'empty steps= counted as 0 (no Health samples yet?)';
-      } else if (g.days[date] != null) {
-        stored = Math.max(g.days[date], before, steps);
-        if (stored !== steps) note2 = `kept ${stored} (higher than the ${steps} sent)`;
-      }
+      } // v0.6.6: no 'Garmin is authoritative' rule: the shortcut's count wins for today
+
       st.days[date] = stored;
       st.lastSync = Date.now(); st.lastSteps = stored;
       logSync(st, { ok: true, steps: stored, raw: clip(raw), date, method: req.method, codeNote, test, src, same: !isGarmin && !(steps > before) || undefined, reason: [note2, ...yNote].filter(Boolean).join(' · ') || undefined, yRaw: yRaw == null ? undefined : clip(yRaw) });

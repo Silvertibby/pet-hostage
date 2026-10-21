@@ -55,17 +55,15 @@ assert.equal(ben.shelf.length, 0); assert.equal(ben.hostage.rung, 0); assert.equ
 // seen-death is per player
 await call('/seen-death', { code: '3YS267ZCSA', id: ben.lastDeath.id });
 assert.equal((await call('/state?code=3YS267ZCSA')).body.deathSeen, ben.lastDeath.id); assert.equal((await call(`/state?code=${F}`)).body.deathSeen, 0);
-// Garmin source: authoritative; shortcut can raise but not lower; failures logged
+// v0.6.6: Garmin pull is off (ignored, nothing stored); the shortcut's count wins for today, blank/0 never lower
 {
   at('2026-10-12T21:00:00-07:00'); const C = '3YS267ZCSA';
-  let g = await call(`/sync?code=${C}&steps=5000`); // shortcut first, no garmin yet: latest wins
-  g = await call(`/sync?code=${C}&steps=4000&src=garmin`); assert.match(g.body, /Got 5,000/); // v0.6.5: Garmin never lowers
-  g = await call(`/sync?code=${C}&steps=8000`); assert.match(g.body, /Got 8,000/); // shortcut can raise
-  g = await call(`/sync?code=${C}&steps=3000`); assert.match(g.body, /Got 8,000/); // ...but not lower
-  g = await call(`/sync?code=${C}&steps=6000&src=garmin`); assert.match(g.body, /Got 8,000/); // v0.6.5: garmin never lowers
-  g = await call(`/sync?code=${C}&src=garmin&error=login%20failed`); assert.equal(g.body.logged, true);
-  let s = (await call(`/state?code=${C}`)).body; assert.equal(s.todaySteps, 8000); assert.equal(s.garmin.lastSteps, 8000); assert.match(s.garmin.lastError, /login failed/);
-  await call(`/sync?code=${C}&steps=6100&src=garmin`); s = (await call(`/state?code=${C}`)).body; assert.equal(s.garmin.lastError, null); assert.equal(s.syncLog[0].src, 'garmin');
+  let g = await call(`/sync?code=${C}&steps=5000`);
+  g = await call(`/sync?code=${C}&steps=9000&src=garmin`); assert.equal(g.body.ignored, true);
+  let s = (await call(`/state?code=${C}`)).body; assert.equal(s.todaySteps, 5000);
+  g = await call(`/sync?code=${C}&steps=8000`); assert.match(g.body, /Got 8,000/);
+  g = await call(`/sync?code=${C}&steps=7000`); assert.match(g.body, /Got 7,000/); // shortcut wins (fixes double counts)
+  g = await call(`/sync?code=${C}&steps=0`); assert.match(g.body, /Got 7,000/);
 }
 Date.now = realNow; console.log = silent;
 console.log('✓ multi-player sim (legacy migration, Ben\'s URL, separate claims/steps/names/settlement, unknown code rejected and stored nowhere)');

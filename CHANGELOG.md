@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.6.6
+- Shortcut only: the server-side Garmin pull is off (src=garmin syncs are ignored) and the 'Garmin is authoritative' rule is gone. Blank/0 never lowers; past days only go up.
+
 ## v0.6.5
 - Garmin job can no longer lower a higher shortcut count (it was overwriting it every 15 min).
 - Blank or 0 syncs never lower a day; past days only ever go up.

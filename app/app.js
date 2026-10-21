@@ -4,7 +4,7 @@ import { VILLAINS, SLOTS, COLORS, TIERS, colorById, forSlot, owns, REWARDS, STYL
 import { drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, itemSprite, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.6.5';
+const VERSION = 'v0.6.6';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
@@ -829,7 +829,6 @@ function wirePickers() {
 function renderSync() {
   view.innerHTML = `
     <div class="card" id="synclog">${syncLogHtml(state)}</div>
-    ${garminHtml(state)}
     <h2>${benLike() ? 'BACKUP' : 'SET UP'}</h2>
     <div id="pickers">${pickerHtml()}</div>
     <div id="syncsteps">${stepsHtml(phonePick(), watchPick())}</div>

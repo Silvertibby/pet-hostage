@@ -1,4 +1,4 @@
-// v0.6.5: longer sync log, morning top-up of yesterday, Garmin never lowers, blank/0 never lowers
+// v0.6.5: longer sync log, morning top-up of yesterday, Garmin ignored, blank/0 never lowers
 import assert from 'node:assert';
 import worker from './src/index.js';
 console.log = () => {};
@@ -27,13 +27,12 @@ await sync('steps=60&yesterday=13000'); s = await st(A); assert.equal(s.bank, 70
 await sync('steps=70&yesterday=11000'); s = await st(A); assert.equal(s.bank, 7000);
 // after 10 AM: ignored
 at('2026-10-11T10:30:00-07:00'); await sync('steps=80&yesterday=20000'); s = await st(A); assert.equal(s.bank, 7000);
-// Garmin never lowers a higher shortcut count
-await sync('steps=9000'); await sync('steps=700&src=garmin'); s = await st(A); assert.equal(s.todaySteps, 9000);
-await sync('steps=9500&src=garmin'); s = await st(A); assert.equal(s.todaySteps, 9500);
+// Garmin ignored a higher shortcut count
+await sync('steps=9500'); await sync('steps=20000&src=garmin'); s = await st(A); assert.equal(s.todaySteps, 9500, 'garmin ignored');
 await sync('steps=9500'); s = await st(A); assert.equal(s.syncLog[0].same, true, 'not higher -> flagged');
 // sync log: 50 kept + last of each of 7 days, all in the player record
 for (let i = 0; i < 60; i++) await sync('steps=' + (9600 + i));
 s = await st(A); assert.ok(s.syncLog.length >= 50 && s.syncLog.length <= 57);
 assert.ok(s.syncLog.some(e => e.date === '2026-10-09'), 'older day kept');
 const ks = [...env.PH.m.keys()]; assert.ok(!ks.some(k => /log/.test(k)), 'no new keys');
-process.stdout.write('✓ v0.6.5 top-up (re-settle, earn, raise-only, 10 AM cutoff), Garmin never lowers, blank/0 safe, 50+7-day sync log\n');
+process.stdout.write('✓ v0.6.5 top-up (re-settle, earn, raise-only, 10 AM cutoff), Garmin ignored, blank/0 safe, 50+7-day sync log\n');
