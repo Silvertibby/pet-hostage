@@ -44,26 +44,38 @@ assert.equal(JSON.parse(await env.PH.get('player:' + B)).rev, revB, 'recipient r
 assert.ok([...env.PH.m.keys()].some(k => k === 'ibx:' + fb));
 // no manual replies any more
 r = await call('/cheer', { code: B, to: fa, msg: 'paws', reply: 1 }); assert.ok(r.body.error); // v0.6.1: mutual now, but a 'reply' is just a paid cheer
-// auto 'win' reply: the sync that crosses B's goal sends ONE free reply to A (however many cheers A sent)
-r = await call('/sync', { code: B, steps: 9000 }); a2 = (await call('/state?code=' + A)).body; assert.equal(a2.cheers.length, 0);
+// v0.6.4: no automatic replies. Once B's goal is met, B gets ONE free Reply per cheerer, picked from options
+r = await call('/sync', { code: B, steps: 9000 }); assert.deepEqual(r.body.state.canReply, []);
+r = await call('/reply/options', { code: B, id: 'nope' }); assert.equal(r.status, 409);
 r = await call('/sync', { code: B, steps: 10400 }); assert.equal(r.status, 200);
-a2 = (await call('/state?code=' + A)).body; assert.equal(a2.cheers.length, 1); assert.deepEqual([a2.cheers[0].kind, a2.cheers[0].from], ['win', fb]);
-assert.ok(WIN_LINES.some(l => l.id === a2.cheers[0].msg));
-{ const ib = JSON.parse(env.PH.m.get('ibx:' + fa)), meta = ib.find(x => x.id === '_recent'); assert.deepEqual(meta.used.win, [a2.cheers[0].msg]); assert.ok(WIN_LINES.length >= 40); }
+a2 = (await call('/state?code=' + A)).body; assert.equal(a2.cheers.length, 0, 'nothing sent automatically');
+let bs = (await call('/state?code=' + B)).body; assert.equal(bs.canReply.length, 1); assert.equal(bs.canReply[0].from, fa);
+const wBefore = env.PH.m.get('player:' + B);
+r = await call('/reply/options', { code: B, id: bs.canReply[0].id }); assert.equal(r.body.opts.length, 6); assert.ok(r.body.opts.every(id => WIN_LINES.some(l => l.id === id)));
+assert.equal(env.PH.m.get('player:' + B), wBefore, 'options are read-only');
+const pickId = r.body.opts[2];
+r = await call('/reply', { code: B, id: bs.canReply[0].id, msg: 'bogus' }); assert.equal(r.status, 409);
+r = await call('/reply', { code: B, id: bs.canReply[0].id, msg: pickId }); assert.equal(r.status, 200); assert.deepEqual(r.body.state.canReply, []); assert.equal(r.body.state.bank, bs.bank, 'free');
+a2 = (await call('/state?code=' + A)).body; assert.equal(a2.cheers.length, 1); assert.deepEqual([a2.cheers[0].kind, a2.cheers[0].from, a2.cheers[0].msg], ['win', fb, pickId]);
+{ const ib = JSON.parse(env.PH.m.get('ibx:' + fa)), meta = ib.find(x => x.id === '_recent'); assert.deepEqual(meta.used.win, [pickId]); assert.ok(WIN_LINES.length >= 40); assert.ok(!ib.some(x => 'want' in x)); }
 { const e = a2.bankLog.find(x => x.kind === 'reply'); assert.deepEqual([e.amount, e.to, e.outcome, e.dir], [0, fb, 'win', 'in']); }
-{ const bs = (await call('/state?code=' + B)).body; const e = bs.bankLog.find(x => x.kind === 'reply'); assert.deepEqual([e.amount, e.to, e.outcome, e.dir], [0, fa, 'win', 'out']);
-  assert.equal(bs.bankLog.filter(x => x.kind === 'reply').length, 1); }
+bs = (await call('/state?code=' + B)).body; { const e = bs.bankLog.find(x => x.kind === 'reply'); assert.deepEqual([e.amount, e.to, e.outcome, e.dir], [0, fa, 'win', 'out']); }
+assert.equal(bs.bankLog.filter(x => x.kind === 'reply').length, 1); assert.deepEqual(bs.canReply, []);
+r = await call('/reply', { code: B, id: 'x', msg: pickId }); assert.equal(r.status, 409, 'one reply per cheer');
 await call('/sync', { code: B, steps: 12000 }); a2 = (await call('/state?code=' + A)).body; assert.equal(a2.bankLog.filter(x => x.kind === 'reply').length, 1, 'no repeat');
 assert.ok(a2.bankLog.some(e => e.kind === 'cheer' && e.to === fb && e.name), 'cheer ledger carries recipient id + name');
-// auto 'miss' reply: B cheers A, A ends the day short -> just after midnight A's game sends 'miss' to B, valid for the new day
+// recently used lines aren't offered again to the same friend
+{ const ib = JSON.parse(env.PH.m.get('ibx:' + fa)); ib.find(x => x.id === '_recent').used.win = WIN_LINES.slice(0, 10).map(l => l.id); env.PH.m.set('ibx:' + fa, JSON.stringify(ib));
+  await poke(B, s => { s.replied = {}; }); await poke(A, s => { s.bank = 5000; s.cheerSent = {}; }); await call('/cheer', { code: A, to: fb, msg: 'go' });
+  bs = (await call('/state?code=' + B)).body; assert.equal(bs.canReply.length, 1);
+  r = await call('/reply/options', { code: B, id: bs.canReply[0].id }); assert.ok(r.body.opts.every(id => !WIN_LINES.slice(0, 10).some(l => l.id === id))); }
+// no automatic 'miss' at midnight either
 await poke(B, s => { s.bank = 3000; s.friends = [fa]; });
 r = await call('/cheer', { code: B, to: fa, msg: 'go' }); assert.equal(r.status, 200);
 fake = Date.parse('2026-10-10T00:05:00-07:00');
-a = (await call('/state?code=' + A)).body; assert.ok(a.cheers.every(c => c.date === '2026-10-10'), 'yesterday banners gone');
-b = (await call('/state?code=' + B)).body; assert.equal(b.cheers.length, 1); assert.deepEqual([b.cheers[0].kind, b.cheers[0].date], ['miss', '2026-10-10']);
-assert.ok(MISS_LINES.some(l => l.id === b.cheers[0].msg));
-assert.ok(b.bankLog.some(e => e.kind === 'reply' && e.outcome === 'miss' && e.dir === 'in'));
-assert.equal(b.cheersTotal, 4);
+a = (await call('/state?code=' + A)).body; assert.ok(a.cheers.every(c => c.date === '2026-10-10'), 'yesterday banners gone'); assert.deepEqual(a.canReply, []);
+b = (await call('/state?code=' + B)).body; assert.equal(b.cheers.length, 0); assert.ok(!b.bankLog.some(e => e.outcome === 'miss'));
+void MISS_LINES;
 // double-spend guard: two cheers at once with exactly 1,000 banked -> one goes through
 await poke(A, s => { s.bank = 1000; s.cheerSent = {}; s.friends = [fb, 'ZZZZZZ']; });
 const both = await Promise.all([call('/cheer', { code: A, to: fb, msg: 'go' }), call('/cheer', { code: A, to: fb, msg: 'star' })]);
@@ -73,4 +85,4 @@ assert.equal(a.bankLog.filter(e => e.kind === 'cheer' && e.date === '2026-10-10'
 await poke(B, s => { s.inboxV = 0; s.cheers = [{ id: 5, from: fa, name: 'Old', msg: 'go', at: fake - 1000, date: '2026-10-10' }]; });
 b = (await call('/state?code=' + B)).body; assert.ok(b.cheers.some(c => c.name === 'Old' && typeof c.id === 'string'));
 assert.equal(CHEERS.length, 6); assert.equal(CHEER_COST, 1000);
-process.stdout.write('✓ cheers (friend check, cost, presets, limit, name, seen, inbox keys, auto win/miss replies, double-spend guard, migration)\n');
+process.stdout.write('✓ cheers (friend check, cost, presets, limit, name, seen, inbox keys, free manual Reply, no auto replies, double-spend guard, migration)\n');

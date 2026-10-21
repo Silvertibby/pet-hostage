@@ -95,8 +95,9 @@ async function upsertItems(env, fid, items) {
   let meta = cur.find(x => x.id === '_recent'); if (!meta) { meta = { id: '_recent', kind: 'meta', date: '9999-12-31', at: 0, used: {} }; cur.push(meta); }
   for (const it of items) {
     const i = cur.findIndex(x => x.id === it.id);
-    if (it.pick) { const kind = it.pick; delete it.pick;
+    if (it.pick) { const kind = it.pick; delete it.pick; const want = it.want; delete it.want;
       if (i >= 0 && cur[i].msg) it.msg = cur[i].msg; // a retry keeps the line it already got
+      else if (want) { it.msg = want; const keep = kind === 'win' ? 10 : 3; meta.used[kind] = [...(meta.used[kind] || []), it.msg].slice(-keep); }
       else { const all = kind === 'win' ? WIN_LINES : MISS_LINES, keep = kind === 'win' ? 10 : 3, used = meta.used[kind] = meta.used[kind] || [];
         const pool = all.filter(l => !used.includes(l.id)); it.msg = pick(pool.length ? pool : all, it.id + ':' + Date.now()).id;
         meta.used[kind] = [...used, it.msg].slice(-keep); } }
@@ -108,9 +109,10 @@ async function upsertItems(env, fid, items) {
 const putItem = (env, fid, it) => ({ fid, it }); // queued; flushed in commit, grouped per inbox
 const rid = () => Date.now().toString(36) + '-' + [...crypto.getRandomValues(new Uint8Array(3))].map(x => x.toString(16).padStart(2, '0')).join('');
 const myName = st => st.displayName || petAt(st, st.hostage.rung).name; // display name, else their current pet's name
+const seededRand = seed => { let h = 2166136261; for (const ch of seed) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return ((h >>> 0) % 10000) / 10000; }; };
 const pick = (arr, seed) => { let h = 7; for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return arr[h % arr.length]; };
 // Runs on every request and cron tick. Fills st.cheers (today's unseen banners), counts new cheers, books replies in the
-// ledger, and sends the automatic replies: 'win' as soon as today's goal is met, 'miss' once a cheered day closed short.
+// ledger, and lists today's cheers the player can answer with a free Reply (v0.6.4: nothing is sent automatically).
 // Returns writes to do AFTER the player record saved, so a conflict-retry never double-sends.
 async function syncInbox(env, st, today, prev) {
   if (!st.friendId) return { changed: false, after: [] };
@@ -123,34 +125,21 @@ async function syncInbox(env, st, today, prev) {
   for (const k of Object.keys(st.replied)) if (k < addDays(today, -3)) delete st.replied[k];
   const items = prev ? prev.items : [...await readInbox(env, st.friendId), ...st.cheers.filter(c => typeof c.id === 'number').map(c => ({ id: 'm' + c.id + '-' + c.at, kind: 'cheer', from: c.from, name: c.name, msg: c.msg, at: c.at, date: c.date, counted: true }))];
   const seenIds = new Set(); const uniq = items.filter(i => !seenIds.has(i.id) && seenIds.add(i.id));
-  const me = myName(st);
+  const metToday = !st.paused[today] && (st.days[today] || 0) >= goalToday(st), canReply = [];
   for (const it of uniq) {
     if (it.kind === 'meta') continue; // v0.6.3: recently used reply lines
     let dirty = false;
     if (it.kind === 'cheer' && !it.counted) { st.cheersTotal++; it.counted = true; dirty = changed = true; }
     if (it.kind !== 'cheer' && !it.booked) { bankMove(st, it.date, 'reply', 0, { to: it.from, name: it.name, outcome: it.kind, dir: 'in' }); it.booked = true; dirty = changed = true; }
-    if (it.kind === 'cheer' && !it.done) {
-      const d = it.date, steps = st.days[d] || 0, met = d === today ? steps >= goalToday(st) : steps >= (st.dayGoals[d] || RULES.GOAL);
-      let outcome = null;
-      if (st.paused[d]) { if (d < today) { it.done = 'paused'; dirty = true; } } // paused days stay silent
-      else if (met) outcome = 'win';
-      else if (d < today) outcome = 'miss';
-      const rep = st.replied[d] = st.replied[d] || [];
-      if (outcome && rep.includes(it.from)) { it.done = outcome; dirty = true; outcome = null; } // one reply per cheerer per day
-      if (outcome) { rep.push(it.from);
-        const reply = { id: `r-${d}-${st.friendId}`, kind: outcome, from: st.friendId, name: me, msg: null, pick: outcome, at: Date.now(), date: today, re: it.id };
-        bankMove(st, today, 'reply', 0, { to: it.from, name: it.name, outcome, dir: 'out' });
-        it.done = outcome; dirty = changed = true;
-        after.push(putItem(env, it.from, reply)); // deterministic id: a retry overwrites, never duplicates
-        after.push(async () => {
-          const sc = await env.PH.get(FKEY(it.from)), sst = sc && JSON.parse(await env.PH.get(PKEY(sc)) || 'null'); // read-only, for the push subscription
-          if (sst && sst.sub) await push(env, sst, '↩ ' + me, (replyLine(reply.kind, reply.msg) || {}).text || '↩', 'ph-reply-' + reply.id); });
-      }
-    }
+    if (it.kind === 'cheer' && !it.done && it.date < today && st.paused[it.date]) { it.done = 'paused'; dirty = true; } // paused days stay silent
+    // v0.6.4: no automatic replies. Today's cheers on a met goal offer a free Reply the player sends themselves.
+    if (it.kind === 'cheer' && !it.done && it.date === today && metToday && !(st.replied[today] || []).includes(it.from) && !canReply.some(c => c.from === it.from))
+      canReply.push({ id: it.id, from: it.from, name: it.name });
     if (dirty) after.push(putItem(env, st.friendId, it));
   }
   const show = uniq.filter(i => i.date === today && !i.seen).map(({ id, kind, from, name, msg, at, date }) => ({ id, kind, from, name, msg, at, date }));
   if (JSON.stringify(show) !== JSON.stringify(st.cheers)) { st.cheers = show; }
+  Object.defineProperty(st, '_canReply', { value: canReply, enumerable: false, configurable: true, writable: true }); // never saved
   return { changed, after, items: uniq };
 }
 // ---- v0.6.1 mutual friendships: one key per direction, fl:<owner>:<friend> = { at, by, seen }. Adding writes both
@@ -288,8 +277,10 @@ async function readBody(req) {
   return body;
 }
 
-const ROUTES = new Set(['/state', '/sync', '/settings', '/subscribe', '/sync-log/clear-test', '/unsubscribe', '/test-nudge', '/seen-death', '/pause', '/shop/buy', '/shop/equip', '/shop/style', '/friends/save', '/friends/remove', '/friends/seen', '/cheer', '/cheer/seen']);
+const ROUTES = new Set(['/state', '/sync', '/settings', '/subscribe', '/sync-log/clear-test', '/unsubscribe', '/test-nudge', '/seen-death', '/pause', '/shop/buy', '/shop/equip', '/shop/style', '/friends/save', '/friends/remove', '/friends/seen', '/cheer', '/cheer/seen', '/reply/options', '/reply']);
 const SYNC_LOG_MAX = 10;
+const viewX = st => ({ ...view(st), canReply: st._canReply || [] }); // v0.6.4: today's cheers waiting for a free Reply
+const REPLY_OPTS = 6;
 function logSync(st, entry) {
   st.syncLog = [{ at: Date.now(), ...entry }, ...(st.syncLog || [])].slice(0, SYNC_LOG_MAX);
   console.log('sync', JSON.stringify(entry));
@@ -323,7 +314,7 @@ async function handle(req, env) {
       let c; do { c = makeCode(); } while (await env.PH.get(PKEY(c)));
       const st = newState(c, today); await save(env, st); await indexPlayer(env, c);
       console.log('claim', c);
-      return json({ code: st.code, state: view(st) });
+      return json({ code: st.code, state: viewX(st) });
     }
 
     if (path === '/friend') { // read-only, by public friend ID; no code needed or revealed
@@ -356,7 +347,7 @@ async function handle(req, env) {
     if (st.friendId) { const links = await readLinks(env, st.friendId); // the server friend list (mutual links)
       st.friends = links.map(l => l.id); st.newFriends = links.filter(l => !l.seen).map(l => l.id); }
     const inbox = await syncInbox(env, st, today);
-    if (path === '/state') { if (events.length || inbox.changed || inbox.after.length) await commit(env, st, today, inbox); return json(view(st)); }
+    if (path === '/state') { if (events.length || inbox.changed || inbox.after.length) await commit(env, st, today, inbox); return json(viewX(st)); }
 
     if (path === '/sync') {
       const src = clip(url.searchParams.get('src') ?? body.src ?? null) || undefined; // 'garmin' = server-side Garmin job
@@ -430,7 +421,7 @@ async function handle(req, env) {
       if (url.searchParams.has('plain') || req.method === 'GET') return text(left
         ? `Got ${n(stored)} steps. ${n(left)} to go or ${v.name} gets it. (Day ${v.day} of ${v.need})`
         : `Got ${n(stored)} steps. Ransom paid. Day ${v.day} of ${v.need} for ${v.name}.${v.day >= v.need ? ' Rescue at midnight!' : ''}`);
-      return json({ ok: true, steps: stored, state: view(st) });
+      return json({ ok: true, steps: stored, state: viewX(st) });
     }
 
     if (req.method !== 'POST') return json({ error: 'not found' }, 404);
@@ -439,7 +430,7 @@ async function handle(req, env) {
       // The goal is fixed by the rules (10,000; 15,000 on a final day) and ignored if sent. Only the current hostage's name can change.
       if (typeof body.name === 'string' && body.name.trim()) petAt(st, st.hostage.rung).name = body.name.trim().slice(0, 24);
       if (typeof body.displayName === 'string') { const d = cleanName(body.displayName); if (d) st.displayName = d; else delete st.displayName; } // v0.5.8: shown on cheers
-      await commit(env, st, today, null, inbox); return json(view(st));
+      await commit(env, st, today, null, inbox); return json(viewX(st));
     }
     if (path === '/subscribe') {
       const s = body.subscription;
@@ -460,65 +451,89 @@ async function handle(req, env) {
     if (path === '/pause') { // Raccoon Pause: needs an explicit confirm flag from the app's dialog
       if (body.confirm !== true) return json({ error: 'confirm required' }, 400);
       const r = buyPause(st, today);
-      if (!r.ok) return json({ error: r.error, state: view(st) }, 409);
+      if (!r.ok) return json({ error: r.error, state: viewX(st) }, 409);
       await commit(env, st, today, null, inbox); console.log('pause', st.code, today);
-      return json({ ok: true, state: view(st) });
+      return json({ ok: true, state: viewX(st) });
     }
     if (path === '/shop/buy') { // price, shelf requirement and balance are checked here; the client never sets ownership
       const r = buyItem(st, today, String(body.villain || 'raccoon'), String(body.slot || ''), String(body.color || ''));
-      if (!r.ok) return json({ error: r.error, state: view(st) }, 409);
+      if (!r.ok) return json({ error: r.error, state: viewX(st) }, 409);
       await commit(env, st, today, null, inbox); console.log('shop', st.code, body.slot, body.color);
-      return json({ ok: true, state: view(st) });
+      return json({ ok: true, state: viewX(st) });
     }
     if (path === '/shop/equip') {
       const r = equipItem(st, String(body.villain || 'raccoon'), String(body.slot || ''), body.color == null ? null : String(body.color));
-      if (!r.ok) return json({ error: r.error, state: view(st) }, 409);
-      await commit(env, st, today, null, inbox); return json({ ok: true, state: view(st) });
+      if (!r.ok) return json({ error: r.error, state: viewX(st) }, 409);
+      await commit(env, st, today, null, inbox); return json({ ok: true, state: viewX(st) });
     }
     if (path === '/shop/style') { // v0.5.4: wear a rescue-reward style (only ones the server has unlocked)
       const r = equipStyle(st, String(body.villain || 'raccoon'), String(body.slot || ''), body.style == null ? null : String(body.style));
-      if (!r.ok) return json({ error: r.error, state: view(st) }, 409);
-      await commit(env, st, today, null, inbox); return json({ ok: true, state: view(st) });
+      if (!r.ok) return json({ error: r.error, state: viewX(st) }, 409);
+      await commit(env, st, today, null, inbox); return json({ ok: true, state: viewX(st) });
     }
     if (path === '/friends/save') { // v0.6.1: adds any of this device's friend IDs as mutual links (never removes)
       const ids = [...new Set((Array.isArray(body.ids) ? body.ids : []).map(normFid).filter(id => id && id !== st.friendId))].slice(0, 50);
       for (const id of ids) if (!st.friends.includes(id) && (await env.PH.get(FKEY(id)))) { await linkFriends(env, st.friendId, id); st.friends.push(id); }
-      await commit(env, st, today, null, inbox); return json({ ok: true, friends: st.friends, state: view(st) });
+      await commit(env, st, today, null, inbox); return json({ ok: true, friends: st.friends, state: viewX(st) });
     }
     if (path === '/friends/remove') { // only your side; they keep you unless they remove you too
       const id = normFid(body.id); { const m = await readLinkMap(env, st.friendId); if (m[id]) { delete m[id]; await writeLinkMap(env, st.friendId, m); } }
       st.friends = st.friends.filter(x => x !== id); st.newFriends = st.newFriends.filter(x => x !== id);
-      await commit(env, st, today, null, inbox); return json({ ok: true, state: view(st) });
+      await commit(env, st, today, null, inbox); return json({ ok: true, state: viewX(st) });
     }
     if (path === '/friends/seen') { // the "new friend" dot was shown
       if (st.newFriends.length) { const m = await readLinkMap(env, st.friendId); for (const id of st.newFriends) if (m[id]) m[id].seen = true; await writeLinkMap(env, st.friendId, m); }
-      st.newFriends = []; await commit(env, st, today, null, inbox); return json({ ok: true, state: view(st) });
+      st.newFriends = []; await commit(env, st, today, null, inbox); return json({ ok: true, state: viewX(st) });
     }
     if (path === '/cheer') { // 1,000 Spare Steps -> a preset cheer in the friend's inbox (shown today only) + a push
       const to = normFid(body.to), c = cheerById(String(body.msg || ''));
-      if (!c) return json({ error: 'no such cheer', state: view(st) }, 409);
-      if (!to || to === st.friendId) return json({ error: 'not a friend', state: view(st) }, 409);
+      if (!c) return json({ error: 'no such cheer', state: viewX(st) }, 409);
+      if (!to || to === st.friendId) return json({ error: 'not a friend', state: viewX(st) }, 409);
       if (!st.friends.includes(to)) {
         if (body.add && (await env.PH.get(FKEY(to)))) { await linkFriends(env, st.friendId, to); st.friends = [...st.friends, to]; }
-        else return json({ error: 'not a friend', state: view(st) }, 409);
+        else return json({ error: 'not a friend', state: viewX(st) }, 409);
       }
       const sent = st.cheerSent[today] = st.cheerSent[today] || {};
-      if ((sent[to] || 0) >= CHEER_DAILY_MAX) return json({ error: 'cheer limit', state: view(st) }, 409);
-      if (st.bank < CHEER_COST) return json({ error: 'not enough Spare Steps', state: view(st) }, 409);
+      if ((sent[to] || 0) >= CHEER_DAILY_MAX) return json({ error: 'cheer limit', state: viewX(st) }, 409);
+      if (st.bank < CHEER_COST) return json({ error: 'not enough Spare Steps', state: viewX(st) }, 409);
       const rc = await env.PH.get(FKEY(to)), raw = rc && await env.PH.get(PKEY(rc)), rst = raw && JSON.parse(raw); // read-only: never saved
-      if (!rst || rst.friendId !== to) return json({ error: 'not a friend', state: view(st) }, 409);
+      if (!rst || rst.friendId !== to) return json({ error: 'not a friend', state: viewX(st) }, 409);
       const name = myName(st), toName = rst.displayName || petAt(rst, rst.hostage.rung).name;
       const cheer = { id: rid(), kind: 'cheer', from: st.friendId, name, msg: c.id, at: Date.now(), date: today };
       bankMove(st, today, 'cheer', -CHEER_COST, { to, name: toName }); sent[to] = (sent[to] || 0) + 1;
       await commit(env, st, today, { changed: true, after: [...inbox.after, putItem(env, to, cheer), () => push(env, rst, '📣 ' + name, c.text, 'ph-cheer-' + cheer.id)] }); // paid first, then delivered
       console.log('cheer', st.friendId, '->', to, c.id);
-      return json({ ok: true, state: view(st) });
+      return json({ ok: true, state: viewX(st) });
     }
     if (path === '/cheer/seen') { // dismissed on the home screen
       const id = String(body.id || ''), it = st.cheers.find(c => c.id === id);
       st.cheers = st.cheers.filter(c => c.id !== id);
       const full = it && inbox.items.find(x => x.id === id);
-      await commit(env, st, today, { changed: true, after: [...inbox.after, ...(full ? [putItem(env, st.friendId, { ...full, seen: true })] : [])] }); return json({ ok: true, state: view(st) });
+      await commit(env, st, today, { changed: true, after: [...inbox.after, ...(full ? [putItem(env, st.friendId, { ...full, seen: true })] : [])] }); return json({ ok: true, state: viewX(st) });
+    }
+    // v0.6.4 free Reply (player-chosen, no Spare Steps): one per cheerer per day, only once today's goal is met
+    if (path === '/reply/options' || path === '/reply') {
+      const c = (st._canReply || []).find(x => x.id === String(body.id || ''));
+      if (!c) return json({ error: 'nothing to reply to', state: viewX(st) }, 409);
+      if (path === '/reply/options') { // read-only: a handful the friend hasn't had lately
+        const used = ((await readInbox(env, c.from)).find(x => x.id === '_recent') || { used: {} }).used.win || [];
+        let pool = WIN_LINES.filter(l => !used.includes(l.id)); if (pool.length < REPLY_OPTS) pool = WIN_LINES.slice();
+        const r = seededRand(c.id + ':' + today), opts = [];
+        while (opts.length < REPLY_OPTS && pool.length) opts.push(pool.splice(Math.floor(r() * pool.length), 1)[0].id);
+        return json({ opts });
+      }
+      const line = replyLine('win', String(body.msg || ''));
+      if (!line) return json({ error: 'no such reply', state: viewX(st) }, 409);
+      const me = myName(st), rep = st.replied[today] = st.replied[today] || []; rep.push(c.from);
+      const reply = { id: `r-${today}-${st.friendId}`, kind: 'win', from: st.friendId, name: me, msg: null, pick: 'win', want: line.id, at: Date.now(), date: today, re: c.id };
+      bankMove(st, today, 'reply', 0, { to: c.from, name: c.name, outcome: 'win', dir: 'out' });
+      const done = inbox.items.filter(x => x.kind === 'cheer' && x.from === c.from && x.date === today && !x.done).map(x => ({ ...x, done: 'win' }));
+      st._canReply = st._canReply.filter(x => x.from !== c.from);
+      await commit(env, st, today, { changed: true, after: [...inbox.after, ...done.map(x => putItem(env, st.friendId, x)), putItem(env, c.from, reply), async () => {
+        const sc = await env.PH.get(FKEY(c.from)), sst = sc && JSON.parse(await env.PH.get(PKEY(sc)) || 'null'); // read-only, for the push subscription
+        if (sst && sst.sub) await push(env, sst, '↩ ' + me, line.text, 'ph-reply-' + reply.id); }] });
+      console.log('reply', st.friendId, '->', c.from, line.id);
+      return json({ ok: true, state: viewX(st) });
     }
     if (path === '/seen-death') { // the app played the death animation; don't replay it on other devices
       const id = parseInt(body.id, 10);
@@ -554,7 +569,6 @@ async function tickPlayer(env, code) {
     }
     for (const k of Object.keys(st.sent)) if (k < np.date) delete st.sent[k];
     await commit(env, st, np.date); // (no base: one pass)
-    // midnight: 'miss' replies for cheered days that closed short
 }
 
 // Which nudge (if any) is due now for this player. Pure, so the tests can drive it.

@@ -1,5 +1,9 @@
 # Pet Hostage changelog
 
+## v0.6.4
+- Cheer replies are now sent by the player: a free ↩ Free Reply button on Home once today's goal is met, with a handful of lines to pick from (recent ones skipped). One per cheerer per day.
+- No automatic replies any more (neither on reaching the goal nor at midnight).
+
 ## v0.6.3 (2026-10-19)
 - New, much larger set of "made it" auto replies, with no repeats for the same cheerer; a few more "missed" ones.
 

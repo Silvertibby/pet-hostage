@@ -1,10 +1,10 @@
 import { maybeRevived, revivedVars } from './revived.js';
-import { CHEERS, CHEER_COST, cheerById, DISPLAY_NAME_MAX, replyLine } from './cheers.js';
+import { CHEERS, CHEER_COST, cheerById, DISPLAY_NAME_MAX, replyLine, WIN_LINES } from './cheers.js';
 import { VILLAINS, SLOTS, COLORS, TIERS, colorById, forSlot, owns, REWARDS, STYLE_INFO, styleKey, hasStyle, rewardFor } from './shop.js';
 import { drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, itemSprite, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.6.3';
+const VERSION = 'v0.6.4';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
@@ -243,7 +243,7 @@ function renderHome() {
   const paused = !!(h.paused || s.pausedToday);
   const tag = paused ? '⏸ paused' : h.todayMet ? (h.day >= h.need ? '🎉 rescue at midnight' : '✓ banked') : isFinal(h) ? '🔥 final day · 15k' : isBoss(h) ? '⚔️ mini-boss · 15k' : '';
   view.innerHTML = `
-    <div id="cheerbar">${cheerBarHtml(s)}</div>
+    <div id="cheerbar">${cheerBarHtml(s)}</div>${replyBtnHtml(s)}
     <div class="scenewrap big"><canvas id="scene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas>
       <div class="hudname">${esc(h.name)}</div></div>
     <div class="quest"><div class="qhead"><b>Day ${h.day}/${h.need}</b><div class="dpips">${pips}</div>${tag ? `<span class="tag">${tag}</span>` : ''}</div></div>
@@ -262,7 +262,7 @@ function renderHome() {
       ${bankHistoryHtml(s)}
       ${(s.deathLog || []).length ? `<div class="legend">${s.deathLog.slice(0, 3).map(d => `<button class="btn small ghost" data-replay="${d.id}">☠ ${esc(d.name)} ${fmtDate(d.date)}</button>`).join(' ')}</div>` : ''}</details>
   `;
-  startScene($('#scene')); noteAvatar($('#rac')); wireCheerBar();
+  startScene($('#scene')); noteAvatar($('#rac')); wireCheerBar(); wireReplyBtn();
   $('#gosetup')?.addEventListener('click', () => go('sync'));
   $('#pausebtn')?.addEventListener('click', confirmPause);
   $('#goshop')?.addEventListener('click', () => go('shop'));
@@ -533,6 +533,28 @@ function cheerBarHtml(s) {
   return `<div class="cheerbar ${isReply ? 'reply ' + kind : ''}" id="cheercard" data-id="${esc(String(c.id))}">${isReply ? '' : `<span class="cheerhearts" aria-hidden="true"><i>💖</i><i>✨</i><i>💛</i></span>`}
     <div class="cbody"><b>${isReply ? '↩ ' : ''}${esc(cheerSender(c))}</b><span>${esc(line ? line.text : '📣')}</span></div>
     ${q.length > 1 ? `<span class="ccount">1/${q.length}</span>` : ''}<button class="btn small ghost" id="cdismiss" aria-label="Dismiss">✕</button></div>`;
+}
+// v0.6.4: free Reply, sent by the player (no automatic replies). One per cheerer per day, once today's goal is met.
+const canReplyNow = s => (s.canReply || []).filter(() => goalMet(s));
+const replyBtnHtml = s => canReplyNow(s).length ? `<div class="row" style="justify-content:center;margin:6px 0"><button class="btn small" id="freply">↩ Free Reply</button></div>` : '';
+function wireReplyBtn() { const b = $('#freply'); if (b) b.addEventListener('click', () => openReplyPicker(canReplyNow(state)[0])); }
+async function openReplyPicker(c) {
+  if (!c) return;
+  const ov = $('#overlay'), close = () => { ov.hidden = true; ov.innerHTML = ''; }; ov.hidden = false;
+  const name = cheerSender(c);
+  ov.innerHTML = `<div class="ovbox cheer"><h2>↩ ${esc(name)}</h2><div class="cheergrid dim">…</div><div class="row"><button class="btn ghost" id="rno">✕</button></div></div>`;
+  $('#rno').addEventListener('click', close);
+  let opts;
+  try { opts = DEMO ? WIN_LINES.slice().sort(() => Math.random() - 0.5).slice(0, 6).map(l => l.id) : (await api('/reply/options', { id: c.id })).opts; }
+  catch (e) { close(); toast('⚠️ ' + (e.message || 'try again')); return; }
+  const grid = ov.querySelector('.cheergrid'); if (!grid) return; grid.classList.remove('dim');
+  grid.innerHTML = opts.map(id => replyLine('win', id)).filter(Boolean).map(l => `<button class="btn cheerpick" data-msg="${l.id}">${esc(l.text)}</button>`).join('');
+  grid.querySelectorAll('[data-msg]').forEach(b => b.addEventListener('click', async () => {
+    grid.querySelectorAll('button').forEach(x => { x.disabled = true; });
+    try { if (DEMO) state.canReply = (state.canReply || []).filter(x => x.from !== c.from); else state = (await api('/reply', { id: c.id, msg: b.dataset.msg })).state;
+      close(); toast('↩ ✓'); render(); }
+    catch (e) { close(); toast('⚠️ ' + (e.message || 'try again')); if (e.body && e.body.state) { state = e.body.state; render(); } }
+  }));
 }
 function wireCheerBar() {
   const card = $('#cheercard'); if (!card) return;
@@ -1090,7 +1112,7 @@ function demoState(m) {
     bankLog: [{ date: today, kind: 'reply', amount: 0, bal: 41200, to: 'STEPH1', name: 'Steph', outcome: 'win', dir: 'in' }, { date: today, kind: 'refund', amount: 12000, bal: 41200, item: 'raccoon:shirt:navy' }, { date: today, kind: 'cheer', amount: -1000, bal: 41200, to: 'BEN123', name: 'Nugget' }, { date: day(-1), kind: 'shop', amount: -12000, bal: 42200, item: 'raccoon:shirt:forest' }, { date: day(-1), kind: 'earn', amount: 2340, bal: 54200 }, { date: day(-2), kind: 'earn', amount: 4100, bal: 38300 }, { date: day(-4), kind: 'pause', amount: -30000, bal: 34200 }, { date: day(-5), kind: 'earn', amount: 5300, bal: 64200 }],
     stats: { metDays: 27, missedDays: 3, rescues: 4 }, push: !qs.has('nopush'),
     cheers: m === 'win' || m === 'miss' ? [{ id: 'r1', kind: m, from: 'STEPH1', name: 'Steph', msg: m === 'win' ? 'w1' : 'm2', at: Date.now() - 5e5, date: today }, { id: 'c2', kind: 'cheer', from: 'BEN123', name: 'Nugget', msg: CHEERS[1].id, at: Date.now() - 3e5, date: today }] : m === 'cheer' || m === 'cheered' ? [{ id: 7, from: 'BEN123', name: 'Nugget', msg: CHEERS[0].id, at: Date.now() - 9e5, date: today, reply: false }, { id: 8, from: 'STEPH1', name: 'Steph', msg: CHEERS[2].id, at: Date.now() - 6e5, date: today, reply: false }, { id: 6, from: 'BRO777', name: 'Old', msg: CHEERS[1].id, at: Date.now() - 9e7, date: day(-1) }] : [],
-    cheersTotal: 5, displayName: null, friends: ['BEN123', 'STEPH1'], newFriends: qs.has('newfriend') ? ['STEPH1'] : [],
+    canReply: qs.has('reply') ? [{ id: 'c9', from: 'STEPH1', name: 'Steph' }] : [], cheersTotal: 5, displayName: null, friends: ['BEN123', 'STEPH1'], newFriends: qs.has('newfriend') ? ['STEPH1'] : [],
     baseGoal: GOAL, days: Array.from({ length: 14 }, (_, i) => ({ date: day(i - 13), goal: i === 13 ? goal : m === 'boss' && i === 9 ? FINAL_GOAL : GOAL, paused: m !== 'boss' && (i === 9 || (m === 'paused' && i === 13)), steps: i === 13 ? (todaySteps || null) : (m === 'nosync' ? null : hist[i]) })),
   };
 }
