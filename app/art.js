@@ -213,6 +213,13 @@ const EYES = {
 };
 
 // mood: happy | worried | scared | ghost | dead | char. injuries: ['pop','anvil',...]. opts.walk = phase (radians)
+// v0.7.2 Couch Potato: ONE continuous lumpy, sagging potato (no head/body/arms), breathing slowly
+function lump(l, t) {
+  const br = Math.sin(t * 1.1) * 0.5, o = { shade: 'g', sd: 1.6 };
+  ell(l, CX, 30 - br * 0.4, 16.5 + br, 7.2 + br * 0.5, 'w', o); // the sag, melted onto the floor
+  ell(l, CX - 3.5, 23.5 - br * 0.4, 10.5, 8.2, 'w', o); ell(l, CX + 4.5, 25 - br * 0.4, 10, 6.8, 'w', o); // lumpy top
+  ell(l, CX - 12.5, 33, 4, 3.2, 'w', o); ell(l, CX + 13, 32.6, 4.4, 3.4, 'w', o); // flopped-out sides
+}
 export function critter(species, mood, t, injuries = [], opts = {}) {
   const sp = SPECIES[species] || SPECIES.bunny;
   const g = grid(36, 38), k = 'k';
@@ -224,21 +231,22 @@ export function critter(species, mood, t, injuries = [], opts = {}) {
   const fL = walk ? Math.sin(ph) * 1.5 : 0, fR = -fL, feet = sp.feet || 'w';
   if (!ghost) {
     if (!sp.fat) layer(g, l => { ell(l, 12.8 + fL, 35.2 - Math.max(0, fL), 3.3, 1.9, feet, { shade: sp.feet ? null : 'g', sd: 0.7 }); ell(l, 23.2 + fR, 35.2 - Math.max(0, fR), 3.3, 1.9, feet, { shade: sp.feet ? null : 'g', sd: 0.7 }); }, k);
-    layer(g, l => { if (sp.fat) { const br = Math.sin(t * 1.1) * 0.5; ell(l, CX, 32.4 - br * 0.5, 15.5 + br, 5.2 + br * 0.6, 'w', { shade: 'g', sd: 1.6 }); ell(l, CX, 32.8, 9, 3.4, sp.belly || 'w'); } /* melted onto the floor, slow breathing */ else { ell(l, CX, 31.2, 7.6, 5.6, 'w', { shade: 'g', sd: 1.4 }); if (sp.belly) ell(l, CX, 32.2, 4, 3.2, sp.belly); } }, k);
+    layer(g, l => { if (sp.fat) { /* v0.7.2: drawn as one lump below */ } else { ell(l, CX, 31.2, 7.6, 5.6, 'w', { shade: 'g', sd: 1.4 }); if (sp.belly) ell(l, CX, 32.2, 4, 3.2, sp.belly); } }, k);
   } else {
     layer(g, l => { for (let y = 0; y < 10; y++) {
       const w = 7 - y * 0.55 + Math.sin(t * 4 + y * 0.9) * 0.7, x0 = CX + Math.sin(t * 2 + y * 0.6) * (y * 0.3);
       for (let x = Math.floor(x0 - w); x <= x0 + w; x++) set(l, x, 26 + y, y > 6 && (x + y) % 3 === 0 ? null : 'w'); } }, k);
   }
-  layer(g, l => sp.fat ? ell(l, CX, HY + 4 + Math.round(Math.sin(t * 1.1) * 0.6), HRX + 3.4, HRY - 1.8, 'w', { shade: 'g', sd: 1.6 }) : ell(l, CX, HY, HRX, HRY, 'w', { shade: 'g', sd: 1.3 }), k); // big round head (v0.7.0: the couch potato is wider and slumped)
+  layer(g, l => sp.fat ? lump(l, t) : ell(l, CX, HY, HRX, HRY, 'w', { shade: 'g', sd: 1.3 }), k); // big round head (v0.7.0: the couch potato is wider and slumped)
   if (sp.head) sp.head(g, t);
   // tiny paws: tucked on the tummy, raised in a little cheer when happy, clasped when pleading
   if (!ghost) {
     const cheer = mood === 'happy' && !walk && Math.sin(t * 5) > 0.3, plead = mood === 'worried';
     const [px, py] = cheer ? [7.5, 26] : plead ? [16.2, 29.4] : [15, 30.4], arms = sp.arms || 'w';
-    layer(g, l => { ell(l, px, py, 1.7, 1.5, arms); ell(l, MC(px), py, 1.7, 1.5, arms); }, k);
+    if (!sp.fat) layer(g, l => { ell(l, px, py, 1.7, 1.5, arms); ell(l, MC(px), py, 1.7, 1.5, arms); }, k);
   }
   const E = { cx: CX, eyesY: 20, lx: 11, rx: 24 };
+  void E;
   // eyes
   const blink = (t % 4.2) < 0.13 && !dead && !ghost;
   let ep = mood === 'worried' || mood === 'scared' ? EYES.teary : EYES.open;

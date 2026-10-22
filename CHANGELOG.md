@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.7.2
+- Couch Potato drawn as one continuous lumpy potato (no separate head, body or arms), face on the lump.
+
 ## v0.7.1
 - Couch Potato art: eyes fully closed, snot bubble, drifting Zzz, slow breathing, wider melted body with no feet.
 
