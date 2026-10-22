@@ -1,5 +1,10 @@
 # Pet Hostage changelog
 
+## v0.7.3
+- Default hostage room is now plain black with one hanging bulb.
+- Brick walls (red, orange, grey, white, mossy, pink) in the Raccoon Shop: 10,000 Spare Steps each, after 2 rescues, confirm on buy, use/take down, friends see yours.
+- Bulb drawn from a skin table (only 'basic' for now) so bulb skins can be added later.
+
 ## v0.7.2
 - Couch Potato drawn as one continuous lumpy potato (no separate head, body or arms), face on the lump.
 

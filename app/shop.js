@@ -67,3 +67,17 @@ export function itemFor(villain, slot, color) {
 }
 export const emptyCosmetics = () => ({ owned: {}, equipped: {}, unlocked: {} });
 export const owns = (cos, villain, slot, color) => !!(cos && cos.owned && cos.owned[villain] && (cos.owned[villain][slot] || []).includes(color));
+// v0.7.3 room skins. The default room is plain black with one hanging bulb. Brick walls: Raccoon Shop, 10,000 each,
+// unlocked after 2 rescues. Bulbs are a separate slot so bulb skins can be added later (only the basic one exists).
+export const WALL_PRICE = 10000, WALL_NEED_RESCUED = 2;
+export const WALLS = [ // brick / brick shade / mortar
+  { id: 'red', label: 'Red brick', hex: ['#b8452e', '#8e3220', '#e6d8c4'] },
+  { id: 'orange', label: 'Orange brick', hex: ['#d0702e', '#a4521c', '#efe0c8'] },
+  { id: 'grey', label: 'Grey brick', hex: ['#7c7a82', '#5e5c64', '#c4c2c8'] },
+  { id: 'white', label: 'White brick', hex: ['#e8e4dc', '#c8c2b6', '#9a948a'] },
+  { id: 'moss', label: 'Mossy brick', hex: ['#6a7a3e', '#4c5a2a', '#a8b880'] },
+  { id: 'pink', label: 'Pink brick', hex: ['#f2a6be', '#d4829e', '#fff0f4'] },
+];
+export const wallById = id => WALLS.find(w => w.id === id) || null;
+export const BULBS = { basic: { label: 'Bulb' } };
+export const roomOf = cos => { const r = (cos && cos.room) || {}; return { walls: r.walls || [], wall: wallById(r.wall) ? r.wall : null, bulb: BULBS[r.bulb] ? r.bulb : 'basic' }; };

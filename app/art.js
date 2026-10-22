@@ -500,22 +500,42 @@ function px(ctx, x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(Math.round(x),
 
 // Layout (v0.4.1): cage on the left, The Raccoon standing on the right, all inside the visible 100x88 window.
 const LAMP0 = 50, CAGE_X = 20, PET_X = 30, RAC_X = 80, RAC_Y = 45;
+// v0.7.3 room: the wall (default plain black, or a brick skin) + one hanging bulb. Bulbs are looked up by id so
+// bulb skins can be added to BULB_ART later; only 'basic' exists.
+let ROOM = { wall: null, bulb: 'basic' };
+export function setRoomLook(r) { ROOM = { wall: (r && r.wall) || null, bulb: (r && r.bulb) || 'basic' }; }
+export const WALL_ART = {
+  red: ['#b8452e', '#8e3220', '#e6d8c4'], orange: ['#d0702e', '#a4521c', '#efe0c8'], grey: ['#7c7a82', '#5e5c64', '#c4c2c8'],
+  white: ['#e8e4dc', '#c8c2b6', '#9a948a'], moss: ['#6a7a3e', '#4c5a2a', '#a8b880'], pink: ['#f2a6be', '#d4829e', '#fff0f4'],
+};
+const dim = (hex, f) => { const n = parseInt(hex.slice(1), 16); return '#' + [n >> 16, (n >> 8) & 255, n & 255].map(v => Math.round(v * f).toString(16).padStart(2, '0')).join(''); };
+export function drawWall(ctx, wall, dark, w = SCENE_W, h = 92) {
+  const c = WALL_ART[wall];
+  if (!c) { px(ctx, 0, 0, w, h, dark ? '#050407' : '#0b0a0f'); return; } // the boring default: a black room
+  const f = dark ? 0.45 : 0.62, [b, sh, m] = c.map(x => dim(x, f)); // the bulb is the only light, so bricks sit in shadow
+  px(ctx, 0, 0, w, h, m);
+  for (let y = 0; y < h; y += 6) for (let x = (y / 6) % 2 ? -6 : 0; x < w; x += 12) {
+    px(ctx, x, y, 11, 5, b); px(ctx, x, y + 4, 11, 1, sh); if ((x * 7 + y * 3) % 5 === 0) px(ctx, x + 3, y + 1, 2, 1, sh); }
+}
+const BULB_ART = {
+  basic(ctx, t, dark, x) { // cord, brass cap, warm glass bulb
+    px(ctx, x - 1, 18, 3, 2, '#777'); px(ctx, x - 2, 20, 5, 4, dark ? '#776a3a' : '#ffe27a'); px(ctx, x - 1, 24, 3, 1, dark ? '#776a3a' : '#ffd84a');
+    if (!dark) px(ctx, x - 1, 21, 1, 1, '#fffbe0');
+  },
+};
 function room(ctx, t, dark, LAMP = LAMP0) {
-  px(ctx, 0, 0, SCENE_W, SCENE_H, dark ? '#1b1626' : '#2c2340');
-  for (let y = 0; y < 92; y += 6) for (let x = (y / 6) % 2 ? -6 : 0; x < SCENE_W; x += 12) {
-    px(ctx, x, y, 11, 5, dark ? '#211b2e' : '#352a4b'); px(ctx, x, y, 11, 1, dark ? '#251f33' : '#3e3256');
-  }
-  px(ctx, 0, 92, SCENE_W, 20, '#3a2b25');
-  for (let x = 0; x < SCENE_W; x += 16) px(ctx, x, 92, 1, 20, '#2a1d19');
-  px(ctx, 0, 92, SCENE_W, 1, '#55403a');
+  drawWall(ctx, ROOM.wall, dark);
+  px(ctx, 0, 92, SCENE_W, 20, ROOM.wall ? '#3a2b25' : '#141118');
+  for (let x = 0; x < SCENE_W; x += 16) px(ctx, x, 92, 1, 20, ROOM.wall ? '#2a1d19' : '#0c0a10');
+  px(ctx, 0, 92, SCENE_W, 1, ROOM.wall ? '#55403a' : '#26222c');
   const sw = Math.sin(t * 1.4) * 3;
-  for (let y = 0; y < 20; y++) px(ctx, LAMP + sw * (y / 20), y, 1, 1, '#111');
-  ctx.save(); ctx.globalAlpha = dark ? 0.05 : 0.09; ctx.fillStyle = '#ffe9a0';
+  for (let y = 0; y < 18; y++) px(ctx, LAMP + sw * (y / 20), y, 1, 1, ROOM.wall ? '#111' : '#2a2632');
+  ctx.save(); ctx.globalAlpha = dark ? 0.05 : ROOM.wall ? 0.09 : 0.12; ctx.fillStyle = '#ffe9a0';
   ctx.beginPath(); ctx.moveTo(LAMP + sw, 22); ctx.lineTo(LAMP - 46 + sw * 3, 112); ctx.lineTo(LAMP + 46 + sw * 3, 112); ctx.closePath(); ctx.fill(); ctx.restore();
   if (!dark) for (let i = 0; i < 9; i++) { // dust motes drifting in the lamp light
     const f = ((t * (0.03 + i * 0.004) + i * 0.137) % 1), y = 30 + f * 70, x = LAMP + sw * 2 + Math.sin(t * 0.7 + i * 2.1) * (6 + f * 30);
     ctx.save(); ctx.globalAlpha = 0.35 * Math.sin(Math.PI * f); px(ctx, x, y, 1, 1, '#fff3c4'); ctx.restore(); }
-  px(ctx, LAMP - 2 + sw, 20, 5, 4, dark ? '#776a3a' : '#ffe27a'); px(ctx, LAMP - 1 + sw, 24, 3, 1, dark ? '#776a3a' : '#ffd84a'); px(ctx, LAMP - 1 + sw, 19, 3, 1, '#666');
+  (BULB_ART[ROOM.bulb] || BULB_ART.basic)(ctx, t, dark, Math.round(LAMP + sw));
 }
 function cage(ctx, x, y, w, h, open = 0) {
   px(ctx, x, y, w, 2, '#9aa0ad'); px(ctx, x, y + h - 2, w, 2, '#9aa0ad');
@@ -859,8 +879,8 @@ function drawPeril(ctx, st, t) {
 }
 
 export function drawScene(ctx, st, t) { // st.look (optional) = whose villain outfit to draw, e.g. a friend's
-  const prev = LOOK; if (st && 'look' in st) LOOK = st.look || {};
-  try { drawScene0(ctx, st, t); } finally { LOOK = prev; }
+  const prev = LOOK, prevRoom = ROOM; if (st && 'look' in st) LOOK = st.look || {}; if (st && 'room' in st) setRoomLook(st.room);
+  try { drawScene0(ctx, st, t); } finally { LOOK = prev; ROOM = prevRoom; }
 }
 function drawScene0(ctx, st, t) {
   ctx.save(); ctx.translate(-VIEW_X, -VIEW_Y);

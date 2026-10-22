@@ -1,4 +1,4 @@
-import { colorById, itemFor, owns, emptyCosmetics, VILLAINS, REWARDS, styleKey, hasStyle } from './shop.js';
+import { colorById, itemFor, owns, emptyCosmetics, VILLAINS, REWARDS, styleKey, hasStyle, wallById, WALL_PRICE, WALL_NEED_RESCUED, roomOf } from './shop.js';
 // Pet Hostage v0.2 rules: a rescue LADDER. Tunable constants up top.
 export const RULES = {
   GOAL: 10000,          // 10,000 a day. Not editable.
@@ -196,6 +196,14 @@ export function buyPause(st, today) {
 // v0.5.3 villain shop. Server-authoritative: validates item, shelf requirement and balance; ownership is permanent.
 export function buyItem(st, today, villain, slot, color) {
   normalize(st, today);
+  if (villain === 'room') { // v0.7.3 brick walls
+    const w = slot === 'wall' && wallById(color); if (!w) return { ok: false, error: 'no such item' };
+    const r = roomOf(st.cosmetics); if (r.walls.includes(w.id)) return { ok: false, error: 'already owned' };
+    if (rescuedCount(st) < WALL_NEED_RESCUED) return { ok: false, error: `needs ${WALL_NEED_RESCUED} on the shelf` };
+    if (st.bank < WALL_PRICE) return { ok: false, error: 'not enough Spare Steps' };
+    bankMove(st, today, 'shop', -WALL_PRICE, { item: `room:wall:${w.id}` });
+    st.cosmetics.room = { ...r, walls: [...r.walls, w.id], wall: w.id }; return { ok: true };
+  }
   const it = itemFor(villain, slot, color);
   if (!it) return { ok: false, error: 'no such item' };
   if (owns(st.cosmetics, villain, slot, it.color)) return { ok: false, error: 'already owned' };
@@ -209,6 +217,11 @@ export function buyItem(st, today, villain, slot, color) {
 }
 export function equipItem(st, villain, slot, color) {
   normalize(st);
+  if (villain === 'room') { if (slot !== 'wall') return { ok: false, error: 'no such slot' };
+    const r = roomOf(st.cosmetics);
+    if (color == null || color === '' || color === 'default') { st.cosmetics.room = { ...r, wall: null }; return { ok: true }; }
+    if (!r.walls.includes(color)) return { ok: false, error: 'not owned' };
+    st.cosmetics.room = { ...r, wall: color }; return { ok: true }; }
   const v = VILLAINS[villain]; if (!v || !v.slots.includes(slot)) return { ok: false, error: 'no such slot' };
   const eq = st.cosmetics.equipped[villain] = st.cosmetics.equipped[villain] || {};
   if (color == null || color === '' || color === 'default') { delete eq[slot]; return { ok: true }; }
@@ -333,6 +346,6 @@ export function publicView(st, now = Date.now()) {
   const np = localParts(now), h = st.hostage, p = petAt(st, h.rung), need = needFor(h.rung), goal = goalToday(st), todaySteps = st.days[np.date] || 0;
   return { friendId: st.friendId, today: np.date, hour: np.hour, name: p.name, species: p.species, rung: h.rung, need, day: h.streak + 1, streak: h.streak,
     goal, todaySteps, todayMet: todaySteps >= goal, finalDay: isFinalDay(h.streak, need), paused: !!st.paused[np.date], mood: mood(st, np),
-    deaths: p.deaths, injuries: p.injuries, shelf: Math.max(0, h.rung), lastSync: st.lastSync, look: (st.cosmetics.equipped || {}).raccoon || {}, bosses: runBosses(h), bossToday: isBossDay(h, h.streak + 1) && !isFinalDay(h.streak, need),
+    deaths: p.deaths, injuries: p.injuries, shelf: Math.max(0, h.rung), lastSync: st.lastSync, look: (st.cosmetics.equipped || {}).raccoon || {}, room: { wall: roomOf(st.cosmetics).wall, bulb: roomOf(st.cosmetics).bulb }, bosses: runBosses(h), bossToday: isBossDay(h, h.streak + 1) && !isFinalDay(h.streak, need),
     days: dayChart(st, np.date), started: st.started, baseGoal: RULES.GOAL }; // v0.6.7 friend history
 }
