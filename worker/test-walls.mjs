@@ -20,4 +20,9 @@ assert.ok(equipItem(st, 'room', 'wall', 'red').ok);
 st.bank = 9999; assert.equal(buyItem(st, today, 'room', 'wall', 'grey').error, 'not enough Spare Steps');
 assert.equal(publicView(st).room.wall, 'red'); assert.equal(view(st).cosmetics.room.wall, 'red');
 assert.ok(buyItem(st, today, 'raccoon', 'hat', 'navy').error !== undefined || true); // raccoon shop untouched
+// v0.7.4 premium backdrops: priced/unlocked by coolness
+{ const sc = WALLS.filter(w => w.scene); assert.ok(sc.length >= 6); assert.ok(sc.every(w => w.price > 100000 - 1 && w.price <= 300000 && w.need >= 3 && w.need <= 10));
+  const s2 = newState('WALLS2', today); s2.bank = 1e6; s2.bestRung = 4;
+  assert.equal(buyItem(s2, today, 'room', 'wall', 'moon').error, 'needs 9 on the shelf');
+  assert.ok(buyItem(s2, today, 'room', 'wall', 'boat').ok); assert.equal(s2.bank, 1e6 - 125000); assert.equal(roomOf(s2.cosmetics).wall, 'boat'); }
 process.stdout.write('✓ brick walls (10k, 2 rescues, buy/equip/unequip, friend view, default black)\n');

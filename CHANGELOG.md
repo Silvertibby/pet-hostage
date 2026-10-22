@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.7.4
+- Premium backdrops in the wall slot: night forest 100k/3, rowboat 125k/4, sewer lair 150k/5, getaway van 175k/6, rooftop 200k/7, haunted carnival 250k/8, moon base 300k/9 (price / rescues). Each has its own floor and a hanger for the bulb.
+
 ## v0.7.3
 - Default hostage room is now plain black with one hanging bulb.
 - Brick walls (red, orange, grey, white, mossy, pink) in the Raccoon Shop: 10,000 Spare Steps each, after 2 rescues, confirm on buy, use/take down, friends see yours.

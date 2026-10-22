@@ -78,6 +78,18 @@ export const WALLS = [ // brick / brick shade / mortar
   { id: 'moss', label: 'Mossy brick', hex: ['#6a7a3e', '#4c5a2a', '#a8b880'] },
   { id: 'pink', label: 'Pink brick', hex: ['#f2a6be', '#d4829e', '#fff0f4'] },
 ];
+// v0.7.4 premium backdrops, same wall slot: priced and unlocked by coolness (ladder has 10 animals, so 3..9 rescues)
+WALLS.push(
+  { id: 'forest', label: 'Night forest', scene: true, price: 100000, need: 3 },
+  { id: 'boat', label: 'Rowboat at sea', scene: true, price: 125000, need: 4 },
+  { id: 'sewer', label: 'Sewer lair', scene: true, price: 150000, need: 5 },
+  { id: 'van', label: 'Getaway van', scene: true, price: 175000, need: 6 },
+  { id: 'rooftop', label: 'Rooftop at night', scene: true, price: 200000, need: 7 },
+  { id: 'carnival', label: 'Haunted carnival', scene: true, price: 250000, need: 8 },
+  { id: 'moon', label: 'Moon base', scene: true, price: 300000, need: 9 },
+);
+export const wallPrice = w => (w && w.price) || WALL_PRICE;
+export const wallNeed = w => (w && w.need) || WALL_NEED_RESCUED;
 export const wallById = id => WALLS.find(w => w.id === id) || null;
 export const BULBS = { basic: { label: 'Bulb' } };
 export const roomOf = cos => { const r = (cos && cos.room) || {}; return { walls: r.walls || [], wall: wallById(r.wall) ? r.wall : null, bulb: BULBS[r.bulb] ? r.bulb : 'basic' }; };

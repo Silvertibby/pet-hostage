@@ -1,10 +1,10 @@
 import { maybeRevived, revivedVars } from './revived.js';
 import { CHEERS, CHEER_COST, cheerById, DISPLAY_NAME_MAX, replyLine, WIN_LINES } from './cheers.js';
-import { VILLAINS, SLOTS, COLORS, TIERS, colorById, forSlot, owns, REWARDS, STYLE_INFO, styleKey, hasStyle, rewardFor, WALLS, WALL_PRICE, WALL_NEED_RESCUED, wallById, roomOf } from './shop.js';
+import { VILLAINS, SLOTS, COLORS, TIERS, colorById, forSlot, owns, REWARDS, STYLE_INFO, styleKey, hasStyle, rewardFor, WALLS, wallPrice, wallNeed, wallById, roomOf } from './shop.js';
 import { drawWall, drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, itemSprite, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.7.3';
+const VERSION = 'v0.7.4';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
@@ -371,24 +371,24 @@ function renderShop() {
 const slotTabs = tabs => tabs.map(sl => `<button class="${sl === shopSlot ? 'on' : ''}" data-slot="${sl}" title="${esc(sl === 'wall' ? 'Wall' : SLOTS[sl].label)}">${sl === 'wall' ? '🧱' : SLOTS[sl].icon}</button>`).join('');
 // v0.7.3 brick walls for the hostage room (default: plain black). Same picker pattern as the color slots.
 function renderWallShop(tabs, bank) {
-  const room = roomOf(state.cosmetics), ok = rescued() >= WALL_NEED_RESCUED;
+  const room = roomOf(state.cosmetics), have = rescued(), ok = x => have >= wallNeed(x);
   const pick = shopPick && shopPick.slot === 'wall' ? shopPick.color : (room.wall || 'default'), w = wallById(pick);
   const own = w && room.walls.includes(w.id), on = w ? room.wall === w.id : !room.wall;
   const action = !w ? (on ? '' : `<button class="btn acc" id="sact" data-do="default">Use</button>`)
     : own ? (on ? `<button class="btn ghost" id="sact" data-do="default">Take down</button>` : `<button class="btn acc" id="sact" data-do="wear">Use</button>`)
-    : !ok ? `<span class="dim">🔒 ${WALL_NEED_RESCUED} 🏆</span>`
-    : `<button class="btn acc" id="sact" data-do="buy" ${bank >= WALL_PRICE ? '' : 'disabled'}>👟 ${fmt(WALL_PRICE)}</button>`;
+    : !ok(w) ? `<span class="dim">🔒 ${wallNeed(w)} 🏆</span>`
+    : `<button class="btn acc" id="sact" data-do="buy" ${bank >= wallPrice(w) ? '' : 'disabled'}>👟 ${fmt(wallPrice(w))}</button>`;
   const cell = x => { const o = room.walls.includes(x.id), sel = room.wall === x.id;
-    return `<button class="scell ${sel ? 'on' : ''} ${o ? 'own' : ''} ${!o && !ok ? 'locked' : ''} ${pick === x.id ? 'sel' : ''}" data-color="${x.id}" title="${esc(x.label)}"><canvas class="px wsw" data-wall="${x.id}" width="24" height="18"></canvas><span class="ssub">${sel ? '✓' : o ? '●' : ok ? fmt(WALL_PRICE) : '🔒'}</span></button>`; };
+    return `<button class="scell ${sel ? 'on' : ''} ${o ? 'own' : ''} ${!o && !ok(x) ? 'locked' : ''} ${pick === x.id ? 'sel' : ''}" data-color="${x.id}" title="${esc(x.label)}"><canvas class="px wsw" data-wall="${x.id}" width="24" height="18"></canvas><span class="ssub">${sel ? '✓' : o ? '●' : ok(x) ? fmt(wallPrice(x)) : `🔒 ${wallNeed(x)}`}</span></button>`; };
   view.innerHTML = `
     <p class="row" style="justify-content:space-between"><button class="btn small ghost" id="sback">←</button><span>👟 <b>${fmt(bank)}</b></span></p>
     <h2>${esc(VILLAINS[VILLAIN].shop.toUpperCase())}</h2>
     <div class="shoptop"><canvas id="spreview" class="px" width="34" height="62"></canvas>
       <div><div class="seg icons" id="slotseg">${slotTabs(tabs)}</div><div class="sact">${action}</div></div></div>
-    <div class="sgrid"><button class="scell ${!room.wall ? 'on' : ''} ${pick === 'default' ? 'sel' : ''}" data-color="default" title="Black"><canvas class="px wsw" data-wall="" width="24" height="18"></canvas><span class="ssub">${!room.wall ? '✓' : ''}</span></button>${WALLS.map(cell).join('')}</div>`;
+    <div class="sgrid"><button class="scell ${!room.wall ? 'on' : ''} ${pick === 'default' ? 'sel' : ''}" data-color="default" title="Black"><canvas class="px wsw" data-wall="" width="24" height="18"></canvas><span class="ssub">${!room.wall ? '✓' : ''}</span></button>${WALLS.filter(x => !x.scene).map(cell).join('')}</div><div class="sgrid">${WALLS.filter(x => x.scene).map(cell).join('')}</div>`;
   view.querySelectorAll('canvas[data-wall]').forEach(cv => drawWall(cv.getContext('2d'), cv.dataset.wall || null, false, 24, 18));
   const cv = $('#spreview'), ctx = cv.getContext('2d'), t0 = performance.now();
-  const loop = now => { if (!cv.isConnected) return; const t = qs.has('t') ? +qs.get('t') + (now - t0) / 1000 : (now - t0) / 1000; drawWall(ctx, w ? w.id : null, false, 34, 62); blit(ctx, raccoonBody(t, 'idle'), 0, 14); anim = requestAnimationFrame(loop); };
+  const loop = now => { if (!cv.isConnected) return; const t = qs.has('t') ? +qs.get('t') + (now - t0) / 1000 : (now - t0) / 1000; drawWall(ctx, w ? w.id : null, false, 34, 62, t); blit(ctx, raccoonBody(t, 'idle'), 0, 14); anim = requestAnimationFrame(loop); };
   anim = requestAnimationFrame(loop);
   $('#sback').addEventListener('click', () => { shopPick = null; go('home'); });
   view.querySelectorAll('[data-slot]').forEach(b => b.addEventListener('click', () => { shopSlot = b.dataset.slot; shopPick = null; render(); }));
@@ -401,12 +401,12 @@ async function useWall(id) {
 }
 function confirmWall(w) { // every spend is confirmed
   const ov = $('#overlay'); ov.hidden = false;
-  ov.innerHTML = `<div class="ovbox"><h2>🧱 ${esc(w.label)}</h2><p>👟 <b>${fmt(WALL_PRICE)}</b>?</p><p class="dim small">👟 ${fmt(state.bank)} → ${fmt(state.bank - WALL_PRICE)}</p>
-    <div class="row" style="justify-content:space-between"><button class="btn ghost" id="bno">Cancel</button><button class="btn acc" id="byes">Buy · ${fmt(WALL_PRICE)}</button></div></div>`;
+  ov.innerHTML = `<div class="ovbox"><h2>🧱 ${esc(w.label)}</h2><p>👟 <b>${fmt(wallPrice(w))}</b>?</p><p class="dim small">👟 ${fmt(state.bank)} → ${fmt(state.bank - wallPrice(w))}</p>
+    <div class="row" style="justify-content:space-between"><button class="btn ghost" id="bno">Cancel</button><button class="btn acc" id="byes">Buy · ${fmt(wallPrice(w))}</button></div></div>`;
   const close = () => { ov.hidden = true; ov.innerHTML = ''; };
   $('#bno').addEventListener('click', close);
   $('#byes').addEventListener('click', async e => { e.target.disabled = true;
-    if (DEMO) { const r = roomOf(state.cosmetics); state.cosmetics.room = { ...r, walls: [...r.walls, w.id], wall: w.id }; state.bank -= WALL_PRICE; close(); render(); return; }
+    if (DEMO) { const r = roomOf(state.cosmetics); state.cosmetics.room = { ...r, walls: [...r.walls, w.id], wall: w.id }; state.bank -= wallPrice(w); close(); render(); return; }
     try { const r = await api('/shop/buy', { villain: 'room', slot: 'wall', color: w.id }); state = r.state; close(); render(); toast('🧱 ✓'); }
     catch (err) { close(); if (err.body && err.body.state) { state = err.body.state; render(); } toast(err.message === 'not enough Spare Steps' ? 'Not enough Spare Steps.' : "Couldn't buy: " + err.message); } });
 }

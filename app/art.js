@@ -509,7 +509,8 @@ export const WALL_ART = {
   white: ['#e8e4dc', '#c8c2b6', '#9a948a'], moss: ['#6a7a3e', '#4c5a2a', '#a8b880'], pink: ['#f2a6be', '#d4829e', '#fff0f4'],
 };
 const dim = (hex, f) => { const n = parseInt(hex.slice(1), 16); return '#' + [n >> 16, (n >> 8) & 255, n & 255].map(v => Math.round(v * f).toString(16).padStart(2, '0')).join(''); };
-export function drawWall(ctx, wall, dark, w = SCENE_W, h = 92) {
+export function drawWall(ctx, wall, dark, w = SCENE_W, h = 92, t = 0) {
+  if (SCENE_ART[wall]) { ctx.save(); if (w !== SCENE_W) { ctx.scale(w / SCENE_W, h / SCENE_H); } SCENE_ART[wall](ctx, t); if (dark) { ctx.globalAlpha = 0.45; px(ctx, 0, 0, SCENE_W, SCENE_H, '#000'); } ctx.restore(); return; }
   const c = WALL_ART[wall];
   if (!c) { px(ctx, 0, 0, w, h, dark ? '#050407' : '#0b0a0f'); return; } // the boring default: a black room
   const f = dark ? 0.45 : 0.62, [b, sh, m] = c.map(x => dim(x, f)); // the bulb is the only light, so bricks sit in shadow
@@ -517,6 +518,69 @@ export function drawWall(ctx, wall, dark, w = SCENE_W, h = 92) {
   for (let y = 0; y < h; y += 6) for (let x = (y / 6) % 2 ? -6 : 0; x < w; x += 12) {
     px(ctx, x, y, 11, 5, b); px(ctx, x, y + 4, 11, 1, sh); if ((x * 7 + y * 3) % 5 === 0) px(ctx, x + 3, y + 1, 2, 1, sh); }
 }
+// v0.7.4 premium backdrops: full 128x112 scenes with their own floor and something at the top for the bulb cord to hang from.
+const stars0 = (ctx, t, n, h, seed = 7) => { for (let i = 0; i < n; i++) { const x = (i * 37 + seed * 13) % 128, y = (i * 23 + seed) % h; if (Math.sin(t * 2 + i) > -0.6) px(ctx, x, y, 1, 1, i % 4 ? '#c8c8e8' : '#fff6c0'); } };
+const tw = (x, y) => (x * 7 + y * 13) % 11;
+export const SCENE_ART = {
+  forest(ctx, t) { // moonlit woods; the bulb hangs off a big branch
+    px(ctx, 0, 0, 128, 112, '#0e1a22'); stars0(ctx, t, 18, 40); px(ctx, 94, 18, 9, 9, '#e8e2c0'); px(ctx, 96, 18, 7, 7, '#0e1a22');
+    for (let i = 0; i < 9; i++) { const x = i * 16 - 4 + (i % 2) * 5, h = 40 + (i * 17) % 22, c = i % 2 ? '#13281e' : '#183324';
+      for (let y = 0; y < h; y += 2) px(ctx, x + 8 - y / 3, 92 - h + y, (y / 3) * 2 + 2, 2, c); px(ctx, x + 7, 88, 3, 4, '#2a1a12'); }
+    px(ctx, 0, 0, 128, 4, '#2a1a12'); px(ctx, 30, 4, 50, 2, '#2a1a12'); for (const x of [36, 58, 74]) px(ctx, x, 6, 3, 2, '#1f3a26');
+    px(ctx, 0, 92, 128, 20, '#1d3a22'); for (let x = 0; x < 128; x += 3) px(ctx, x, 91 - (x % 2), 1, 2, '#2c5430');
+    for (let i = 0; i < 5; i++) if (Math.sin(t * 1.5 + i * 2) > 0.3) px(ctx, 20 + i * 21, 60 + (i * 7) % 20, 1, 1, '#d8ff7a'); // fireflies
+  },
+  boat(ctx, t) { // a rowboat at sea; the bulb hangs off the mast boom
+    px(ctx, 0, 0, 128, 112, '#0c1630'); stars0(ctx, t, 22, 50, 3);
+    for (let y = 70; y < 112; y += 3) { const o = Math.round(Math.sin(t * 1.2 + y * 0.4) * 2); for (let x = -4; x < 132; x += 8) px(ctx, x + o, y, 5, 1, y % 2 ? '#1a3a6a' : '#14305a'); }
+    px(ctx, 0, 70, 128, 1, '#2a5a8a');
+    const bob = Math.round(Math.sin(t * 1.2) * 1);
+    px(ctx, 6, 88 + bob, 116, 6, '#6a3a1e'); px(ctx, 10, 94 + bob, 108, 6, '#52301a'); px(ctx, 16, 100 + bob, 96, 4, '#3e2414'); px(ctx, 6, 87 + bob, 116, 2, '#8a5228');
+    px(ctx, 110, 0, 3, 88, '#5a3a22'); px(ctx, 20, 2, 92, 2, '#5a3a22'); // mast + boom
+  },
+  sewer(ctx, t) { // the raccoon's sewer lair; the bulb hangs off a pipe
+    px(ctx, 0, 0, 128, 112, '#141a16');
+    for (let y = 0; y < 86; y += 8) for (let x = (y / 8) % 2 ? -8 : 0; x < 128; x += 16) { px(ctx, x, y, 15, 7, '#1e2a22'); px(ctx, x, y, 15, 1, '#26362a'); }
+    ctx.save(); ctx.globalAlpha = 0.5; px(ctx, 0, 30, 128, 2, '#0a0e0b'); ctx.restore();
+    px(ctx, 0, 2, 128, 6, '#4a5258'); px(ctx, 0, 3, 128, 1, '#6a747a'); for (const x of [18, 70, 110]) px(ctx, x, 1, 3, 8, '#3a4248');
+    if ((t * 2) % 3 < 1) px(ctx, 92, 9 + ((t * 30) % 70), 1, 2, '#6ac07a'); // drip
+    px(ctx, 0, 86, 128, 6, '#2a332c'); px(ctx, 0, 92, 128, 20, '#1e3a24');
+    for (let x = 0; x < 128; x += 6) px(ctx, x + Math.round(Math.sin(t * 2 + x) * 1), 96 + (x % 3) * 4, 3, 1, '#3a6a3e');
+    for (const [x, y] of [[8, 60], [118, 66]]) { px(ctx, x, y, 4, 2, '#e8c040'); px(ctx, x + 1, y - 1, 2, 1, '#e8c040'); } // stolen loot
+  },
+  van(ctx, t) { // inside the getaway van; the bulb hangs from the roof, city lights stream past the back windows
+    px(ctx, 0, 0, 128, 112, '#1c1a20'); px(ctx, 0, 0, 128, 6, '#2a2830');
+    for (const wx of [20, 76]) { px(ctx, wx, 22, 32, 26, '#0a0c18'); for (let i = 0; i < 6; i++) { const x = wx + 32 - ((t * 40 + i * 13) % 34); if (x > wx) px(ctx, x, 26 + (i * 5) % 18, 3, 1, i % 2 ? '#ffd860' : '#ff7a5a'); } px(ctx, wx - 1, 21, 34, 1, '#4a4652'); px(ctx, wx - 1, 48, 34, 1, '#4a4652'); }
+    for (let x = 0; x < 128; x += 8) px(ctx, x, 6, 1, 80, '#25232b');
+    px(ctx, 0, 92, 128, 20, '#2a2a2e'); for (let x = 0; x < 128; x += 4) px(ctx, x, 92, 2, 20, '#232327');
+    for (const [x, c] of [[6, '#c03a3a'], [116, '#3a8ac0']]) px(ctx, x, 80, 8, 12, c); // duffel bags
+  },
+  rooftop(ctx, t) { // a rooftop at night; the bulb hangs off a wire strung between antennas
+    px(ctx, 0, 0, 128, 112, '#141432'); stars0(ctx, t, 20, 30, 11); px(ctx, 14, 10, 8, 8, '#f0e8c8');
+    for (let i = 0; i < 10; i++) { const x = i * 13, h = 26 + (i * 19) % 30; px(ctx, x, 92 - h, 12, h, i % 2 ? '#1e1e3e' : '#24244a');
+      for (let y = 92 - h + 4; y < 88; y += 6) for (let wx = x + 2; wx < x + 11; wx += 4) if (tw(wx, y) < 4) px(ctx, wx, y, 2, 2, Math.sin(t + wx) > 0.9 ? '#2a2a50' : '#ffd86a'); }
+    px(ctx, 4, 0, 1, 30, '#5a5a6a'); px(ctx, 120, 0, 1, 30, '#5a5a6a'); px(ctx, 4, 3, 117, 1, '#3a3a4a');
+    if (Math.sin(t * 3) > 0) px(ctx, 3, 0, 3, 2, '#ff3a3a');
+    px(ctx, 0, 92, 128, 20, '#3a3844'); px(ctx, 0, 92, 128, 2, '#5a5866'); px(ctx, 96, 80, 14, 12, '#4a4856'); px(ctx, 94, 78, 18, 2, '#5a5866');
+  },
+  carnival(ctx, t) { // a haunted carnival; the bulb hangs off the tent's string lights
+    px(ctx, 0, 0, 128, 112, '#1a0e24'); stars0(ctx, t, 12, 30, 5);
+    const cx = 100, cy = 52; for (let i = 0; i < 8; i++) { const a = t * 0.3 + i * Math.PI / 4; px(ctx, cx + Math.cos(a) * 24, cy + Math.sin(a) * 24, 3, 3, i % 2 ? '#c03a6a' : '#6a3ac0'); px(ctx, cx + Math.cos(a) * 12, cy + Math.sin(a) * 12, 1, 1, '#4a3a5a'); }
+    px(ctx, cx - 1, cy, 2, 40, '#3a2a4a');
+    for (let i = 0; i < 6; i++) { const x = i * 10; px(ctx, x, 30 + i * 2, 10, 62 - i * 2, i % 2 ? '#7a1e3a' : '#e8d8c8'); } px(ctx, 0, 26, 64, 4, '#5a1a2e'); // striped tent
+    px(ctx, 0, 0, 128, 2, '#2a1a3a'); for (let x = 2; x < 128; x += 9) px(ctx, x, 2 + (x % 3), 2, 2, Math.sin(t * 4 + x) > 0 ? '#ffd860' : '#7a5a2a');
+    px(ctx, 0, 92, 128, 20, '#2a1a1e'); for (let x = 0; x < 128; x += 5) px(ctx, x, 93 + (x % 4), 2, 1, '#3a2a2e');
+    ctx.save(); ctx.globalAlpha = 0.25 + 0.1 * Math.sin(t * 2); px(ctx, 6, 96, 30, 6, '#9a8ab8'); ctx.restore(); // ground fog
+  },
+  moon(ctx, t) { // a moon base; the bulb hangs from the dome's ceiling truss, Earth out the window
+    px(ctx, 0, 0, 128, 112, '#070710'); stars0(ctx, t, 30, 80, 9);
+    px(ctx, 84, 18, 18, 18, '#2a6ac0'); px(ctx, 88, 22, 8, 5, '#3a9a4a'); px(ctx, 92, 29, 7, 4, '#3a9a4a'); px(ctx, 84, 18, 18, 2, '#e8f0ff');
+    ctx.save(); ctx.globalAlpha = 0.25; px(ctx, 0, 0, 128, 92, '#3a4a6a'); ctx.restore(); // dome glass
+    px(ctx, 0, 0, 128, 3, '#8a8a9a'); for (let x = 0; x < 128; x += 16) { px(ctx, x, 3, 1, 89, '#5a5a6a'); }
+    px(ctx, 0, 92, 128, 20, '#8a8a8a'); for (const [x, r] of [[20, 4], [60, 6], [104, 3]]) { px(ctx, x - r, 98, r * 2, 3, '#6a6a6a'); px(ctx, x - r + 1, 98, r * 2 - 2, 1, '#5a5a5a'); }
+    if (Math.sin(t * 2.5) > 0) px(ctx, 10, 82, 2, 2, '#3aff7a'); px(ctx, 8, 80, 8, 12, '#c8c8d0'); // blinking console
+  },
+};
 const BULB_ART = {
   basic(ctx, t, dark, x) { // cord, brass cap, warm glass bulb
     px(ctx, x - 1, 18, 3, 2, '#777'); px(ctx, x - 2, 20, 5, 4, dark ? '#776a3a' : '#ffe27a'); px(ctx, x - 1, 24, 3, 1, dark ? '#776a3a' : '#ffd84a');
@@ -524,12 +588,13 @@ const BULB_ART = {
   },
 };
 function room(ctx, t, dark, LAMP = LAMP0) {
-  drawWall(ctx, ROOM.wall, dark);
+  drawWall(ctx, ROOM.wall, dark, SCENE_W, 92, t);
+  if (!SCENE_ART[ROOM.wall]) {
   px(ctx, 0, 92, SCENE_W, 20, ROOM.wall ? '#3a2b25' : '#141118');
   for (let x = 0; x < SCENE_W; x += 16) px(ctx, x, 92, 1, 20, ROOM.wall ? '#2a1d19' : '#0c0a10');
-  px(ctx, 0, 92, SCENE_W, 1, ROOM.wall ? '#55403a' : '#26222c');
+  px(ctx, 0, 92, SCENE_W, 1, ROOM.wall ? '#55403a' : '#26222c'); }
   const sw = Math.sin(t * 1.4) * 3;
-  for (let y = 0; y < 18; y++) px(ctx, LAMP + sw * (y / 20), y, 1, 1, ROOM.wall ? '#111' : '#2a2632');
+  for (let y = SCENE_ART[ROOM.wall] ? 3 : 0; y < 18; y++) px(ctx, LAMP + sw * (y / 20), y, 1, 1, ROOM.wall ? '#111' : '#2a2632');
   ctx.save(); ctx.globalAlpha = dark ? 0.05 : ROOM.wall ? 0.09 : 0.12; ctx.fillStyle = '#ffe9a0';
   ctx.beginPath(); ctx.moveTo(LAMP + sw, 22); ctx.lineTo(LAMP - 46 + sw * 3, 112); ctx.lineTo(LAMP + 46 + sw * 3, 112); ctx.closePath(); ctx.fill(); ctx.restore();
   if (!dark) for (let i = 0; i < 9; i++) { // dust motes drifting in the lamp light

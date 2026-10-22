@@ -1,4 +1,4 @@
-import { colorById, itemFor, owns, emptyCosmetics, VILLAINS, REWARDS, styleKey, hasStyle, wallById, WALL_PRICE, WALL_NEED_RESCUED, roomOf } from './shop.js';
+import { colorById, itemFor, owns, emptyCosmetics, VILLAINS, REWARDS, styleKey, hasStyle, wallById, wallPrice, wallNeed, roomOf } from './shop.js';
 // Pet Hostage v0.2 rules: a rescue LADDER. Tunable constants up top.
 export const RULES = {
   GOAL: 10000,          // 10,000 a day. Not editable.
@@ -199,9 +199,9 @@ export function buyItem(st, today, villain, slot, color) {
   if (villain === 'room') { // v0.7.3 brick walls
     const w = slot === 'wall' && wallById(color); if (!w) return { ok: false, error: 'no such item' };
     const r = roomOf(st.cosmetics); if (r.walls.includes(w.id)) return { ok: false, error: 'already owned' };
-    if (rescuedCount(st) < WALL_NEED_RESCUED) return { ok: false, error: `needs ${WALL_NEED_RESCUED} on the shelf` };
-    if (st.bank < WALL_PRICE) return { ok: false, error: 'not enough Spare Steps' };
-    bankMove(st, today, 'shop', -WALL_PRICE, { item: `room:wall:${w.id}` });
+    if (rescuedCount(st) < wallNeed(w)) return { ok: false, error: `needs ${wallNeed(w)} on the shelf` };
+    if (st.bank < wallPrice(w)) return { ok: false, error: 'not enough Spare Steps' };
+    bankMove(st, today, 'shop', -wallPrice(w), { item: `room:wall:${w.id}` });
     st.cosmetics.room = { ...r, walls: [...r.walls, w.id], wall: w.id }; return { ok: true };
   }
   const it = itemFor(villain, slot, color);
