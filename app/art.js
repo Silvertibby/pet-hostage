@@ -545,13 +545,28 @@ function drawRaccoon(ctx, st, t, pose, x = RAC_X) {
   blit(ctx, raccoonBody(t, pose), x + (rr ? (Math.sin(t * 40) > 0 ? 1 : -1) : 0), RAC_Y - Math.round(rr * 4));
   return rr;
 }
+// Thought bubble (cloud + trailing circles toward his head) with an angry grawlix inside. No words.
+function angryBubble(ctx, x, y) {
+  const O = '#1f1a28', W = '#fff6e8', R = '#e83a3a';
+  const blob = (bx, by, w, h) => { px(ctx, bx + 1, by, w - 2, h, O); px(ctx, bx, by + 1, w, h - 2, O); };
+  const fill = (bx, by, w, h) => { px(ctx, bx + 1, by + 1, w - 2, h - 2, W); };
+  const parts = [[0, 3, 7, 7], [4, 0, 8, 7], [10, 1, 7, 7], [13, 4, 5, 6], [3, 5, 12, 6]]; // cloud puffs
+  for (const p of parts) blob(p[0] + x, p[1] + y, p[2], p[3]);
+  for (const p of parts) fill(p[0] + x, p[1] + y, p[2], p[3]);
+  blob(x + 2, y + 12, 3, 3); px(ctx, x + 3, y + 13, 1, 1, W); // trailing circles, down-left to the head
+  px(ctx, x, y + 16, 2, 2, O);
+  const gx = x + 3, gy = y + 3;
+  px(ctx, gx + 1, gy, 1, 5, R); px(ctx, gx + 3, gy, 1, 5, R); px(ctx, gx, gy + 1, 5, 1, R); px(ctx, gx, gy + 3, 5, 1, R); // #
+  px(ctx, gx + 6, gy, 3, 1, R); px(ctx, gx + 6, gy + 4, 4, 1, R); px(ctx, gx + 6, gy + 1, 1, 3, R); px(ctx, gx + 8, gy + 1, 1, 2, R); px(ctx, gx + 9, gy + 1, 1, 3, R); // @
+  px(ctx, gx + 11, gy, 1, 3, R); px(ctx, gx + 11, gy + 4, 1, 1, R); // !
+}
 function drawFreed(ctx, st, t) {
   room(ctx, t, false, st.final ? (PERIL_LAMP[st.species] || LAMP0) : LAMP0);
   if (st.final) { ctx.save(); ctx.globalAlpha = 0.75; (PERIL[st.species] || PERIL.bunny)(ctx, st, t, true); ctx.restore(); } // final day banked: the defused contraption
   else cage(ctx, CAGE_X, 46, 56, 47, 1); // empty, door off
   const pose = 'leash';
   const rr = drawRaccoon(ctx, st, t, pose);
-  if (Math.sin(t * 1.7) > 0.6 || rr) { const ax = RAC_X + 22, ay = RAC_Y + 3; px(ctx, ax, ay, 2, 1, '#ff5a5a'); px(ctx, ax - 1, ay + 1, 1, 2, '#ff5a5a'); px(ctx, ax + 2, ay + 1, 1, 2, '#ff5a5a'); px(ctx, ax, ay + 3, 2, 1, '#ff5a5a'); } // anger mark
+  if (Math.sin(t * 1.7) > 0.6 || rr) angryBubble(ctx, RAC_X + 14, RAC_Y - 20); // v0.6.8: thought bubble with a grawlix
   const w = walker(t);
   let y = 55, sx = 1, sy = 1, phase;
   if (w.walking) { phase = t * 9; y -= Math.abs(Math.sin(phase)) * 1.5; }

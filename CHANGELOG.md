@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.6.8
+- Banked-day raccoon: the flashing anger mark is now a pixel thought bubble with a #@! grawlix (same timing).
+
 ## v0.6.7
 - Friend view: 📈 History chart (last 14 days, made/missed/paused), same chart as Home. Comes in the existing /friend read; counts and goals only.
 
