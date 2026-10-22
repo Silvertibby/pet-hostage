@@ -4,7 +4,7 @@ import { VILLAINS, SLOTS, COLORS, TIERS, colorById, forSlot, owns, REWARDS, STYL
 import { drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, itemSprite, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.6.6';
+const VERSION = 'v0.6.7';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
@@ -230,16 +230,18 @@ function noteAvatar(canvas) {
   ctx.drawImage(off, Math.round((canvas.width - w) / 2), 0, w, canvas.height);
 }
 
+function chartHtml(s) { // v0.6.7: shared by Home and the friend view
+  const maxSteps = Math.max(s.goal * 1.3, ...s.days.map(d => d.steps || 0));
+  return s.days.map(d => {
+    const cls = d.paused ? 'paused' : d.steps == null ? (d.date < s.started || d.date === s.today ? '' : 'none') : (d.steps >= (d.goal || s.baseGoal || GOAL) ? 'met' : d.date === s.today ? '' : 'miss');
+    return `<div class="${cls} ${d.date === s.today ? 'today' : ''} ${(d.goal || 0) > (s.baseGoal || GOAL) ? 'boss' : ''}" style="height:${Math.round(100 * (d.steps || 0) / maxSteps)}%" title="${d.date}: ${d.steps ?? 'no data'}${(d.goal || 0) > (s.baseGoal || GOAL) ? ' (15k day)' : ''}"></div>`;
+  }).join('');
+}
 function renderHome() {
   const s = state, h = s.hostage;
   const prog = Math.min(1, s.todaySteps / s.goal);
   const filled = Math.floor(prog * BAR_SEGMENTS);
   const pips = pipsHtml(h);
-  const maxSteps = Math.max(s.goal * 1.3, ...s.days.map(d => d.steps || 0));
-  const chart = s.days.map(d => {
-    const cls = d.paused ? 'paused' : d.steps == null ? (d.date < s.started || d.date === s.today ? '' : 'none') : (d.steps >= (d.goal || s.baseGoal || GOAL) ? 'met' : d.date === s.today ? '' : 'miss');
-    return `<div class="${cls} ${d.date === s.today ? 'today' : ''} ${(d.goal || 0) > (s.baseGoal || GOAL) ? 'boss' : ''}" style="height:${Math.round(100 * (d.steps || 0) / maxSteps)}%" title="${d.date}: ${d.steps ?? 'no data'}${(d.goal || 0) > (s.baseGoal || GOAL) ? ' (15k day)' : ''}"></div>`;
-  }).join('');
   const paused = !!(h.paused || s.pausedToday);
   const tag = paused ? '⏸ paused' : h.todayMet ? (h.day >= h.need ? '🎉 rescue at midnight' : '✓ banked') : isFinal(h) ? '🔥 final day · 15k' : isBoss(h) ? '⚔️ mini-boss · 15k' : '';
   view.innerHTML = `
@@ -257,7 +259,7 @@ function renderHome() {
       <div class="note"><div class="cut">${cutout(homeNote(s))}</div></div></details>
     <details class="more"><summary>📈 History</summary>
       <div class="legend"><span>🏆 ${s.shelf.length}${s.cheersTotal ? ` · 📣 ${s.cheersTotal}` : ''}</span><span>✓ ${s.stats.metDays} · ✗ ${s.stats.missedDays}</span></div>
-      <div class="chart">${chart}</div>
+      <div class="chart">${chartHtml(s)}</div>
       <div class="legend"><span>${s.days[0].date.slice(5)}</span><span>today</span></div>
       ${bankHistoryHtml(s)}
       ${(s.deathLog || []).length ? `<div class="legend">${s.deathLog.slice(0, 3).map(d => `<button class="btn small ghost" data-replay="${d.id}">☠ ${esc(d.name)} ${fmtDate(d.date)}</button>`).join(' ')}</div>` : ''}</details>
@@ -482,6 +484,7 @@ function renderFriendView(id) {
       <div class="card small">${x.nick ? `<b>${esc(x.nick)}</b>'s` : 'Their'} ${esc(speciesLabel(f.species))}, rung ${f.rung + 1} · ${f.shelf} on the shelf${f.deaths ? ` · patched up after ${f.deaths} death${f.deaths > 1 ? 's' : ''}` : ''}${f.lastSync ? ` · synced ${ago(f.lastSync)}` : ''}</div>
       <details class="more"><summary>Nickname</summary><div class="row nowrap"><input id="fnick" type="text" class="field" maxlength="24" placeholder="${esc(f.name)}'s human" value="${esc(x.nick || '')}"><button class="btn small" id="fnicksave">Save</button></div>
         <p><button class="btn small ghost" id="fremove">Remove friend</button></p></details>`;
+    if (f.days && f.days.length) view.querySelector('.card.small').insertAdjacentHTML('afterend', `<details class="more"><summary>📈 History</summary><div class="chart">${chartHtml(f)}</div><div class="legend"><span>${f.days[0].date.slice(5)}</span><span>today</span></div></details>`);
     const ctx = $('#fscene').getContext('2d'), t0 = performance.now(), canvas = $('#fscene');
     const fst = { look: f.look || {}, mood: f.mood, species: f.species, injuries: f.injuries, deaths: f.deaths || 0, freed: !!f.todayMet, final: !!f.finalDay || !!f.bossToday, paused: !!f.paused };
     const loop = now => { if (!canvas.isConnected) return; drawScene(ctx, fst, qs.has('t') ? +qs.get('t') : (now - t0) / 1000); anim = requestAnimationFrame(loop); };
@@ -601,7 +604,7 @@ function demoFriend(id) {
     BRO777: { name: 'Chompsky', species: 'bunny', rung: 0, need: 3, streak: 1, todaySteps: 4300, mood: 'scared', deaths: 1, injuries: ['pop'] },
     NAPPER: { name: 'Acorn', species: 'squirrel', rung: 2, need: 7, streak: 4, todaySteps: 2100, mood: 'happy', deaths: 1, injuries: ['catapult'], paused: true } };
   const b = D[id] || D.STEPH1, finalDay = b.streak + 1 >= b.need, bosses = demoBosses(b.rung), bossToday = !finalDay && bosses.includes(b.streak + 1), goal = finalDay || bossToday ? FINAL_GOAL : GOAL;
-  return { friendId: id, ...b, day: b.streak + 1, goal, finalDay, bosses, bossToday, todayMet: b.todaySteps >= goal, paused: !!b.paused, shelf: b.rung, lastSync: Date.now() - 14 * 60000 };
+  return { friendId: id, ...b, day: b.streak + 1, goal, finalDay, bosses, bossToday, todayMet: b.todaySteps >= goal, paused: !!b.paused, shelf: b.rung, lastSync: Date.now() - 14 * 60000, started: state.started, baseGoal: GOAL, today: state.today, days: state.days.map((d, i, a) => i === a.length - 1 ? { ...d, steps: b.todaySteps, goal } : { ...d, steps: d.steps && Math.round(d.steps * (0.6 + (i % 5) / 8)) }) };
 }
 
 // Notifications are off: a big banner so the hostage can beg (and the raccoon can taunt) twice a day.

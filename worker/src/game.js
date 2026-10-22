@@ -273,11 +273,12 @@ export function mood(st, np) {
 
 const petView = (st, r) => { const p = petAt(st, r); return { rung: r, name: p.name, species: p.species, need: needFor(r), deaths: p.deaths, injuries: p.injuries, rescuedOn: p.rescuedOn, rescues: p.rescues }; };
 
+// last 14 days for the history chart (also shown to friends: counts, goals, paused only)
+const dayChart = (st, today) => { const days = []; for (let i = 13; i >= 0; i--) { const d = addDays(today, -i); days.push({ date: d, steps: st.days[d] ?? null, paused: !!st.paused[d], goal: d === today ? goalToday(st) : (st.dayGoals[d] ?? null) }); } return days; };
 export function view(st, now = Date.now()) {
   const np = localParts(now);
-  const days = [];
   normalize(st, np.date);
-  for (let i = 13; i >= 0; i--) { const d = addDays(np.date, -i); days.push({ date: d, steps: st.days[d] ?? null, paused: !!st.paused[d], goal: d === np.date ? goalToday(st) : (st.dayGoals[d] ?? null) }); }
+  const days = dayChart(st, np.date);
   const h = st.hostage, todaySteps = st.days[np.date] || 0, goal = goalToday(st);
   const hostage = { ...petView(st, h.rung), streak: h.streak, since: h.since, todayMet: todaySteps >= goal, finalDay: isFinalDay(h.streak, needFor(h.rung)), goal };
   hostage.day = h.streak + 1; // today's day number toward rescue
@@ -314,5 +315,6 @@ export function publicView(st, now = Date.now()) {
   const np = localParts(now), h = st.hostage, p = petAt(st, h.rung), need = needFor(h.rung), goal = goalToday(st), todaySteps = st.days[np.date] || 0;
   return { friendId: st.friendId, today: np.date, hour: np.hour, name: p.name, species: p.species, rung: h.rung, need, day: h.streak + 1, streak: h.streak,
     goal, todaySteps, todayMet: todaySteps >= goal, finalDay: isFinalDay(h.streak, need), paused: !!st.paused[np.date], mood: mood(st, np),
-    deaths: p.deaths, injuries: p.injuries, shelf: h.rung, lastSync: st.lastSync, look: (st.cosmetics.equipped || {}).raccoon || {}, bosses: runBosses(h), bossToday: isBossDay(h, h.streak + 1) && !isFinalDay(h.streak, need) };
+    deaths: p.deaths, injuries: p.injuries, shelf: h.rung, lastSync: st.lastSync, look: (st.cosmetics.equipped || {}).raccoon || {}, bosses: runBosses(h), bossToday: isBossDay(h, h.streak + 1) && !isFinalDay(h.streak, need),
+    days: dayChart(st, np.date), started: st.started, baseGoal: RULES.GOAL }; // v0.6.7 friend history
 }

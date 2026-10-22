@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.6.7
+- Friend view: 📈 History chart (last 14 days, made/missed/paused), same chart as Home. Comes in the existing /friend read; counts and goals only.
+
 ## v0.6.6
 - Shortcut only: the server-side Garmin pull is off (src=garmin syncs are ignored) and the 'Garmin is authoritative' rule is gone. Blank/0 never lowers; past days only go up.
 

@@ -35,4 +35,7 @@ for (let i = 0; i < 60; i++) await sync('steps=' + (9600 + i));
 s = await st(A); assert.ok(s.syncLog.length >= 50 && s.syncLog.length <= 57);
 assert.ok(s.syncLog.some(e => e.date === '2026-10-09'), 'older day kept');
 const ks = [...env.PH.m.keys()]; assert.ok(!ks.some(k => /log/.test(k)), 'no new keys');
+// v0.6.7: friend view carries the 14-day chart, never the code
+{ const fid = (await st(A)).friendId, f = (await call('/friend?id=' + fid)).body;
+  assert.equal(f.days.length, 14); assert.ok(f.days.some(d => d.date === '2026-10-09' && d.steps === 14000)); assert.ok(!JSON.stringify(f).includes(A)); assert.ok(!('syncLog' in f)); }
 process.stdout.write('✓ v0.6.5 top-up (re-settle, earn, raise-only, 10 AM cutoff), Garmin ignored, blank/0 safe, 50+7-day sync log\n');
