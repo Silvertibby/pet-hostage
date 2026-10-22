@@ -129,8 +129,8 @@ function startScene(canvas) {
 }
 
 // ---- tap the pet / the raccoon: speech bubbles ----
-const DISH = { potato: 'mashed potatoes', bunny: 'bunny soup', hamster: 'hamster kebab', squirrel: 'squirrel pot pie', hedgehog: 'hedgehog crisps', kitten: 'kitten casserole', duckling: "duck à l'orange", piglet: 'bacon', panda: 'panda dumplings', capybara: 'capybara hot pot', unicorn: 'fresh-squeezed unicorn' };
-const ITEM = { potato: 'a sack of fries', bunny: 'a hat', hamster: 'a keychain', squirrel: 'a scarf', hedgehog: 'a hairbrush', kitten: 'a pair of mittens', duckling: 'a pillow', piglet: 'a football', panda: 'a rug', capybara: 'a bath mat', unicorn: 'a party hat' };
+const DISH = { potato: 'compost', bunny: 'bunny soup', hamster: 'hamster kebab', squirrel: 'squirrel pot pie', hedgehog: 'hedgehog crisps', kitten: 'kitten casserole', duckling: "duck à l'orange", piglet: 'bacon', panda: 'panda dumplings', capybara: 'capybara hot pot', unicorn: 'fresh-squeezed unicorn' };
+const ITEM = { potato: 'a doorstop', bunny: 'a hat', hamster: 'a keychain', squirrel: 'a scarf', hedgehog: 'a hairbrush', kitten: 'a pair of mittens', duckling: 'a pillow', piglet: 'a football', panda: 'a rug', capybara: 'a bath mat', unicorn: 'a party hat' };
 const LINES = {
   pet: {
     behind: ["{name} needs {left} more steps or I'm {item}.", "Please walk. I'm too cute to be {dish}.", '{left} steps! You can do it! (Please do it.)',
