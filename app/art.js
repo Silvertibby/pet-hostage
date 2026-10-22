@@ -148,6 +148,15 @@ export const SPECIES = {
       if (Math.sin(t * 2.6) > 0.8) { set(g, 21, 1, 't'); set(g, 22, 0, 'j'); set(g, 20, 0, 'j'); } // a twinkle on the horn
       ell(g, CX, 23.6, 4.6, 2.6, 'c'); // soft muzzle
     } },
+  // v0.6.9 Easter egg: a pet potato. Lumpy tan body, freckle spots, googly eyes and a tiny sprout. No ears.
+  potato: { label: 'potato', googly: true, pal: { k: '#7a5a34', w: '#e2b878', g: '#d0a060', c: '#ecc88e', p: '#c8945a', P: '#6a4a2a', q: '#f0a08a', m: '#5a3a1e', e: '#1f1a28', i: '#1f1a28', I: '#1f1a28', j: '#ffffff', L: '#6ac04a', D: '#3e8a2e', s: '#b08048' },
+    ears() {},
+    head(g, t) {
+      for (const [x, y] of [[9, 12], [25, 11], [13, 9], [22, 14], [7, 21], [28, 24], [12, 27]]) set(g, x, y, 's'); // freckle spots
+      const w = Math.sin(t * 2.4) > 0.6 ? 1 : 0; // sprout sways now and then
+      set(g, 18, 7, 'D'); set(g, 18, 6, 'D'); set(g, 18 + w, 5, 'D');
+      set(g, 16 + w, 4, 'L'); set(g, 17 + w, 4, 'L'); set(g, 17 + w, 5, 'L'); set(g, 19 + w, 3, 'L'); set(g, 20 + w, 3, 'L'); set(g, 19 + w, 4, 'L');
+    }, belly: 'c' },
 };
 export const SPECIES_ORDER = ['bunny', 'hamster', 'squirrel', 'hedgehog', 'kitten', 'duckling', 'piglet', 'panda', 'capybara', 'unicorn'];
 
@@ -232,6 +241,10 @@ export function critter(species, mood, t, injuries = [], opts = {}) {
   const emap = mood === 'char' || (dead && sp.lightX) ? { e: 't' } : {};
   pat(g, 9, 17, ep, emap); pat(g, M(13), 17, ep, emap);
   if (ep === EYES.open) both(g, 8, 18, 'e'); // lash flick
+  if (sp.googly && (ep === EYES.open || ep === EYES.teary)) { // v0.6.9 googly eyes: big whites, pupils that roll around
+    const ox = Math.round(Math.sin(t * 3.1)), oy = Math.round(Math.cos(t * 2.3)) > 0 ? 1 : 0;
+    for (const x0 of [8, M(14)]) { pat(g, x0, 16, ['.eeee.', 'ejjjje', 'ejjjje', 'ejjjje', 'ejjjje', '.eeee.']);
+      const px0 = x0 + 2 + ox, py0 = 18 + oy; set(g, px0, py0, 'e'); set(g, px0 + 1, py0, 'e'); set(g, px0, py0 + 1, 'e'); set(g, px0 + 1, py0 + 1, 'e'); } }
   // blush
   ell(g, 7.6, 23.6, 2.5, 1.3, 'q'); ell(g, MC(7.6), 23.6, 2.5, 1.3, 'q'); both(g, 7, 23, 't');
   if (sp.whiskers) for (const [x, y] of [[3, 22], [4, 22], [3, 24], [4, 24]]) both(g, x, y, 'd');

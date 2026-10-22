@@ -56,7 +56,7 @@ assert.ok(!JSON.stringify(r.body).includes(A), 'code never exposed'); assert.equ
 for (const k of ['code', 'syncLog', 'sub', 'bank', 'bankLog']) assert.ok(!(k in r.body), k);
 r = await call('/friend?id=ZZZZZZ'); assert.equal(r.status, 404);
 r = await call('/friend?id=' + A); assert.equal(r.status, 404, 'a sync code is not a friend ID');
-r = await call(`/friends?ids=${fid},${oldFid},NOPE22`); assert.equal(r.body.friends.length, 3); assert.equal(r.body.friends[2].missing, true); assert.equal(r.body.friends[1].name, 'Fluffy');
+r = await call(`/friends?ids=${fid},${oldFid},NOPE22`); assert.equal(r.body.friends.length, 3); assert.equal(r.body.friends[2].missing, true); assert.ok(['Fluffy', 'Spud'].includes(r.body.friends[1].name)); // v0.6.9: idle 5+ days on the bunny -> potato
 // friend view shows paused
 at('2026-10-15T09:00:00-07:00');
 const B = (await call('/claim', {})).body.code; const Bs = JSON.parse(await env.PH.get('player:' + B)); Bs.bank = 31000; await env.PH.put('player:' + B, JSON.stringify(Bs));

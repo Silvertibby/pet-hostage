@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.6.9
+- Easter egg: 5 bunny deaths in a row (pauses skipped) and the next hostage is a pet potato (off-ladder rung -1, kept in its own field). One made 10k day frees it and the bunny returns; potato misses don't kill or reset the bank. Repeatable after 5 more. Morning top-up can undo it. Counter starts at 0 for existing players.
+
 ## v0.6.8
 - Banked-day raccoon: the flashing anger mark is now a pixel thought bubble with a #@! grawlix (same timing).
 

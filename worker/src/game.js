@@ -36,7 +36,7 @@ const ROMAN = ['', '', ' II', ' III', ' IV', ' V', ' VI', ' VII', ' VIII', ' IX'
 
 export const needFor = rung => RULES.BASE_DAYS + RULES.STEP_DAYS * rung;
 // The goal for the hostage's next unsettled day: day (streak+1) of need. The final day is the 15k challenge.
-export const isFinalDay = (streak, need) => streak + 1 >= need;
+export const isFinalDay = (streak, need) => need > 1 && streak + 1 >= need; // the 1-day potato has no 15k final
 // v0.5.2 mini-bosses: from Acorn (rung 2, 7 days) on, floor((days-4)/3) extra 15k days, spread evenly,
 // never day 1 and never the day before the final day. The final day stays the 15k boss.
 export const MINIBOSS_FROM_RUNG = 2;
@@ -51,11 +51,15 @@ export const runBosses = h => Array.isArray(h.bosses) ? h.bosses : bossDaysFor(h
 export const isBossDay = (h, day) => runBosses(h).includes(day);
 export const goalFor = (streak, need, bosses = []) => isFinalDay(streak, need) || bosses.includes(streak + 1) ? RULES.FINAL_GOAL : RULES.GOAL;
 export const goalToday = st => goalFor(st.hostage.streak, needFor(st.hostage.rung), runBosses(st.hostage));
+// v0.6.9 Easter egg: five bunny deaths in a row and a pet potato (rung -1, 1 day at 10k) is taken instead.
+// Its misses don't kill or escalate; one made day sends you back to the bunny. Can happen again after 5 more.
+export const POTATO_RUNG = -1, POTATO_AFTER = 5, POTATO = { species: 'potato', name: 'Spud' };
 export function animalFor(rung) {
+  if (rung === POTATO_RUNG) return { ...POTATO };
   const a = ANIMALS[rung % ANIMALS.length], lap = Math.floor(rung / ANIMALS.length) + 1;
   return { species: a.species, name: a.name + (ROMAN[lap] ?? ' #' + lap) };
 }
-export const deathTypeFor = (rung, priorDeaths) => DEATHS[(rung + priorDeaths) % DEATHS.length];
+export const deathTypeFor = (rung, priorDeaths) => DEATHS[(((rung + priorDeaths) % DEATHS.length) + DEATHS.length) % DEATHS.length];
 
 export function localParts(ts = Date.now(), tz = RULES.TZ) {
   const f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
@@ -68,6 +72,7 @@ export function addDays(date, n) {
 }
 
 export function petAt(st, rung) {
+  if (rung === POTATO_RUNG) { if (!st.potato) { st.potato = { ...POTATO, deaths: 0, injuries: [], rescuedOn: null, rescues: 0, firstKidnapped: null }; } return st.potato; }
   if (!st.pets[rung]) { const a = animalFor(rung); st.pets[rung] = { ...a, deaths: 0, injuries: [], rescuedOn: null, rescues: 0, firstKidnapped: null }; }
   return st.pets[rung];
 }
@@ -210,7 +215,7 @@ export function equipItem(st, villain, slot, color) {
   eq[slot] = color; return { ok: true };
 }
 
-export const RESETTLE_KEYS = ['hostage', 'pets', 'stats', 'bank', 'deathCount', 'lastDeath', 'deathLog', 'bestRung', 'dayGoals'];
+export const RESETTLE_KEYS = ['hostage', 'pets', 'potato', 'bunnyMisses', 'stats', 'bank', 'deathCount', 'lastDeath', 'deathLog', 'bestRung', 'dayGoals'];
 export function settle(st, today) {
   normalize(st, today);
   const events = []; const h = st.hostage;
@@ -225,7 +230,17 @@ export function settle(st, today) {
     // v0.6.5 morning top-up: before yesterday settles as a miss, keep what it undoes (inside this record, no extra writes)
     if (d === addDays(today, -1)) { if (met) delete st.resettle; } if (!met && d === addDays(today, -1)) st.resettle = { date: d, snap: JSON.parse(JSON.stringify(RESETTLE_KEYS.reduce((o, k) => (o[k] = st[k], o), {}))) };
     st.dayGoals[d] = goal; // what that day asked for (history shows 15k days)
+    if (r === POTATO_RUNG) { // the potato: a made day frees it, a miss just keeps it (no death, no bank reset)
+      if (met) { st.hostage.streak++; st.stats.metDays++; if (steps > goal) bankMove(st, d, 'earn', steps - goal);
+        p.rescuedOn = d; p.rescues++; st.bunnyMisses = 0; kidnap(st, 0, addDays(d, 1));
+        const n = petAt(st, 0);
+        events.push({ kind: 'day', date: d, steps, goal, met, rung: r, name: p.name, streak: 1, need });
+        events.push({ kind: 'rescue', date: d, rung: r, name: p.name, species: p.species, gifts: [], potato: true, next: { rung: 0, name: n.name, species: n.species, need: needFor(0) } });
+      } else { st.stats.missedDays++; events.push({ kind: 'day', date: d, steps, goal, met, rung: r, name: p.name, streak: 0, need }); }
+      st.hostage.settledThrough = d; d = addDays(d, 1); continue;
+    }
     if (met) {
+      st.bunnyMisses = 0;
       st.hostage.streak++; st.stats.metDays++;
       if (steps > goal) bankMove(st, d, 'earn', steps - goal);
       events.push({ kind: 'day', date: d, steps, goal, met, rung: r, name: p.name, streak: st.hostage.streak, need });
@@ -240,7 +255,9 @@ export function settle(st, today) {
       const type = deathTypeFor(r, p.deaths);
       p.deaths++; p.injuries.push(type); st.stats.missedDays++;
       if (st.bank > 0) bankMove(st, d, 'reset', -st.bank); // a death empties the whole bank
-      const back = Math.max(0, r - 1);
+      st.bunnyMisses = r === 0 ? (st.bunnyMisses || 0) + 1 : 0;
+      let back = Math.max(0, r - 1);
+      if (r === 0 && st.bunnyMisses >= POTATO_AFTER) { back = POTATO_RUNG; st.bunnyMisses = 0; }
       kidnap(st, back, addDays(d, 1));
       const b = petAt(st, back);
       st.deathCount++;
@@ -315,6 +332,6 @@ export function publicView(st, now = Date.now()) {
   const np = localParts(now), h = st.hostage, p = petAt(st, h.rung), need = needFor(h.rung), goal = goalToday(st), todaySteps = st.days[np.date] || 0;
   return { friendId: st.friendId, today: np.date, hour: np.hour, name: p.name, species: p.species, rung: h.rung, need, day: h.streak + 1, streak: h.streak,
     goal, todaySteps, todayMet: todaySteps >= goal, finalDay: isFinalDay(h.streak, need), paused: !!st.paused[np.date], mood: mood(st, np),
-    deaths: p.deaths, injuries: p.injuries, shelf: h.rung, lastSync: st.lastSync, look: (st.cosmetics.equipped || {}).raccoon || {}, bosses: runBosses(h), bossToday: isBossDay(h, h.streak + 1) && !isFinalDay(h.streak, need),
+    deaths: p.deaths, injuries: p.injuries, shelf: Math.max(0, h.rung), lastSync: st.lastSync, look: (st.cosmetics.equipped || {}).raccoon || {}, bosses: runBosses(h), bossToday: isBossDay(h, h.streak + 1) && !isFinalDay(h.streak, need),
     days: dayChart(st, np.date), started: st.started, baseGoal: RULES.GOAL }; // v0.6.7 friend history
 }
