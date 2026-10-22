@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.7.0
+- The potato egg is now the Couch Potato: renamed, redrawn fat/slumped/sleepy, new lazy pet lines and a greedy raccoon who wants his bunny back. Behavior unchanged.
+
 ## v0.6.9
 - Easter egg: 5 bunny deaths in a row (pauses skipped) and the next hostage is a pet potato (off-ladder rung -1, kept in its own field). One made 10k day frees it and the bunny returns; potato misses don't kill or reset the bank. Repeatable after 5 more. Morning top-up can undo it. Counter starts at 0 for existing players.
 

@@ -53,7 +53,7 @@ export const goalFor = (streak, need, bosses = []) => isFinalDay(streak, need) |
 export const goalToday = st => goalFor(st.hostage.streak, needFor(st.hostage.rung), runBosses(st.hostage));
 // v0.6.9 Easter egg: five bunny deaths in a row and a pet potato (rung -1, 1 day at 10k) is taken instead.
 // Its misses don't kill or escalate; one made day sends you back to the bunny. Can happen again after 5 more.
-export const POTATO_RUNG = -1, POTATO_AFTER = 5, POTATO = { species: 'potato', name: 'Spud' };
+export const POTATO_RUNG = -1, POTATO_AFTER = 5, POTATO = { species: 'potato', name: 'Couch Potato' };
 export function animalFor(rung) {
   if (rung === POTATO_RUNG) return { ...POTATO };
   const a = ANIMALS[rung % ANIMALS.length], lap = Math.floor(rung / ANIMALS.length) + 1;
@@ -72,7 +72,8 @@ export function addDays(date, n) {
 }
 
 export function petAt(st, rung) {
-  if (rung === POTATO_RUNG) { if (!st.potato) { st.potato = { ...POTATO, deaths: 0, injuries: [], rescuedOn: null, rescues: 0, firstKidnapped: null }; } return st.potato; }
+  if (rung === POTATO_RUNG) { if (st.potato && st.potato.name === 'Spud') st.potato.name = POTATO.name; // v0.7.0 rename
+    if (!st.potato) { st.potato = { ...POTATO, deaths: 0, injuries: [], rescuedOn: null, rescues: 0, firstKidnapped: null }; } return st.potato; }
   if (!st.pets[rung]) { const a = animalFor(rung); st.pets[rung] = { ...a, deaths: 0, injuries: [], rescuedOn: null, rescues: 0, firstKidnapped: null }; }
   return st.pets[rung];
 }
