@@ -149,13 +149,17 @@ export const SPECIES = {
       ell(g, CX, 23.6, 4.6, 2.6, 'c'); // soft muzzle
     } },
   // v0.6.9 Easter egg, v0.7.0 Couch Potato: a fat slumped spud, half-lidded sleepy eyes, a droopy sprout and a z now and then.
-  potato: { label: 'couch potato', fat: true, sleepy: true, pal: { k: '#7a5a34', w: '#e2b878', g: '#c99a5a', c: '#ecc88e', p: '#c8945a', P: '#6a4a2a', q: '#f0a08a', m: '#5a3a1e', e: '#2e1d20', i: '#5a3a22', I: '#8a6a42', j: '#ffffff', L: '#6ac04a', D: '#3e8a2e', s: '#b08048', z: '#cfd8ff' },
+  potato: { label: 'couch potato', fat: true, sleepy: true, pal: { k: '#7a5a34', w: '#e2b878', g: '#c99a5a', c: '#ecc88e', p: '#c8945a', P: '#6a4a2a', q: '#f0a08a', m: '#5a3a1e', e: '#2e1d20', i: '#5a3a22', I: '#8a6a42', j: '#ffffff', L: '#6ac04a', D: '#3e8a2e', s: '#b08048', z: '#d8e4ff', Z: '#7a8ac8' },
     ears() {},
     head(g, t) {
       for (const [x, y] of [[6, 14], [29, 13], [12, 11], [23, 12], [5, 22], [30, 23], [10, 27], [26, 27]]) set(g, x, y, 's'); // freckle spots
-      set(g, 18, 9, 'D'); set(g, 18, 8, 'D'); set(g, 19, 7, 'D'); // a sprout that's given up: drooping sideways
-      set(g, 20, 7, 'L'); set(g, 21, 7, 'L'); set(g, 21, 8, 'L'); set(g, 22, 8, 'L'); set(g, 20, 6, 'L');
-      if ((t % 3) < 1.6) { const o = Math.floor((t % 3) * 1.5); for (const [x, y] of [[29, 4], [30, 4], [31, 4], [30, 5], [29, 6], [30, 6], [31, 6]]) set(g, x + o, y - o, 'z'); } // zzz
+      set(g, 18, 12, 'D'); set(g, 18, 11, 'D'); set(g, 19, 10, 'D'); // a sprout that's given up: drooping sideways
+      set(g, 20, 10, 'L'); set(g, 21, 10, 'L'); set(g, 21, 11, 'L'); set(g, 22, 11, 'L'); set(g, 20, 9, 'L');
+      const bub = 1 + Math.max(0, Math.sin(t * 1.1)) * 1.6; // snot bubble swells with each breath
+      layer(g, l => ell(l, 21.5, 25.5, bub, bub, 'z'), 'Z'); set(g, 21, 25, 'j');
+      const Zg = ['####', '..#.', '.#..', '####'];
+      for (let i = 0; i < 3; i++) { const ph = (t * 0.35 + i / 3) % 1, x = 25 + i * 3 + Math.round(Math.sin(ph * 6) * 1), y = 13 - Math.round(ph * 13);
+        if (y >= 0) pat(g, x, y, Zg.map(r => r.replace(/#/g, 'z'))); } // Zzz drifting up
     }, belly: 'c' },
 };
 export const SPECIES_ORDER = ['bunny', 'hamster', 'squirrel', 'hedgehog', 'kitten', 'duckling', 'piglet', 'panda', 'capybara', 'unicorn'];
@@ -204,6 +208,7 @@ const EYES = {
   blink: ['.....', '.....', '.....', 'eeeee', '.....'],
   ghost: ['.....', '.....', '.....', 'e...e', '.eee.'],
   x: ['.....', 'e...e', '.e.e.', '..e..', '.e.e.', 'e...e'],
+  sleep: ['.....', '.....', '.....', '.....', 'e...e', '.eee.'], // v0.7.1 fully closed (couch potato)
   chill: ['.....', '.....', '.....', 'eeeee', 'eiiIe', 'eiItI', '.eee.'], // half-lidded (capybara, happy)
 };
 
@@ -218,14 +223,14 @@ export function critter(species, mood, t, injuries = [], opts = {}) {
   layer(g, l => sp.ears(l, t, dr, sway), k);
   const fL = walk ? Math.sin(ph) * 1.5 : 0, fR = -fL, feet = sp.feet || 'w';
   if (!ghost) {
-    layer(g, l => { ell(l, 12.8 + fL, 35.2 - Math.max(0, fL), 3.3, 1.9, feet, { shade: sp.feet ? null : 'g', sd: 0.7 }); ell(l, 23.2 + fR, 35.2 - Math.max(0, fR), 3.3, 1.9, feet, { shade: sp.feet ? null : 'g', sd: 0.7 }); }, k);
-    layer(g, l => { if (sp.fat) { ell(l, CX, 30.2, 12.4, 6.8, 'w', { shade: 'g', sd: 1.6 }); ell(l, CX, 31.6, 7, 4, sp.belly || 'w'); } else { ell(l, CX, 31.2, 7.6, 5.6, 'w', { shade: 'g', sd: 1.4 }); if (sp.belly) ell(l, CX, 32.2, 4, 3.2, sp.belly); } }, k);
+    if (!sp.fat) layer(g, l => { ell(l, 12.8 + fL, 35.2 - Math.max(0, fL), 3.3, 1.9, feet, { shade: sp.feet ? null : 'g', sd: 0.7 }); ell(l, 23.2 + fR, 35.2 - Math.max(0, fR), 3.3, 1.9, feet, { shade: sp.feet ? null : 'g', sd: 0.7 }); }, k);
+    layer(g, l => { if (sp.fat) { const br = Math.sin(t * 1.1) * 0.5; ell(l, CX, 32.4 - br * 0.5, 15.5 + br, 5.2 + br * 0.6, 'w', { shade: 'g', sd: 1.6 }); ell(l, CX, 32.8, 9, 3.4, sp.belly || 'w'); } /* melted onto the floor, slow breathing */ else { ell(l, CX, 31.2, 7.6, 5.6, 'w', { shade: 'g', sd: 1.4 }); if (sp.belly) ell(l, CX, 32.2, 4, 3.2, sp.belly); } }, k);
   } else {
     layer(g, l => { for (let y = 0; y < 10; y++) {
       const w = 7 - y * 0.55 + Math.sin(t * 4 + y * 0.9) * 0.7, x0 = CX + Math.sin(t * 2 + y * 0.6) * (y * 0.3);
       for (let x = Math.floor(x0 - w); x <= x0 + w; x++) set(l, x, 26 + y, y > 6 && (x + y) % 3 === 0 ? null : 'w'); } }, k);
   }
-  layer(g, l => sp.fat ? ell(l, CX, HY + 1.5, HRX + 2.4, HRY - 0.6, 'w', { shade: 'g', sd: 1.6 }) : ell(l, CX, HY, HRX, HRY, 'w', { shade: 'g', sd: 1.3 }), k); // big round head (v0.7.0: the couch potato is wider and slumped)
+  layer(g, l => sp.fat ? ell(l, CX, HY + 4 + Math.round(Math.sin(t * 1.1) * 0.6), HRX + 3.4, HRY - 1.8, 'w', { shade: 'g', sd: 1.6 }) : ell(l, CX, HY, HRX, HRY, 'w', { shade: 'g', sd: 1.3 }), k); // big round head (v0.7.0: the couch potato is wider and slumped)
   if (sp.head) sp.head(g, t);
   // tiny paws: tucked on the tummy, raised in a little cheer when happy, clasped when pleading
   if (!ghost) {
@@ -237,7 +242,7 @@ export function critter(species, mood, t, injuries = [], opts = {}) {
   // eyes
   const blink = (t % 4.2) < 0.13 && !dead && !ghost;
   let ep = mood === 'worried' || mood === 'scared' ? EYES.teary : EYES.open;
-  if (ghost) ep = EYES.ghost; else if (dead) ep = EYES.x; else if (blink) ep = EYES.blink; else if (sp.sleepy || (mood === 'happy' && sp.chill)) ep = EYES.chill; else if (mood === 'happy' && Math.sin(t * 1.3) > 0.85) ep = EYES.squint;
+  if (ghost) ep = EYES.ghost; else if (dead) ep = EYES.x; else if (blink && !sp.sleepy) ep = EYES.blink; else if (sp.sleepy) ep = EYES.sleep; else if (mood === 'happy' && sp.chill) ep = EYES.chill; else if (mood === 'happy' && Math.sin(t * 1.3) > 0.85) ep = EYES.squint;
   const emap = mood === 'char' || (dead && sp.lightX) ? { e: 't' } : {};
   pat(g, 9, 17, ep, emap); pat(g, M(13), 17, ep, emap);
   if (ep === EYES.open) both(g, 8, 18, 'e'); // lash flick

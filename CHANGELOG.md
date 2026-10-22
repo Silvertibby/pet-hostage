@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.7.1
+- Couch Potato art: eyes fully closed, snot bubble, drifting Zzz, slow breathing, wider melted body with no feet.
+
 ## v0.7.0
 - The potato egg is now the Couch Potato: renamed, redrawn fat/slumped/sleepy, new lazy pet lines and a greedy raccoon who wants his bunny back. Behavior unchanged.
 
