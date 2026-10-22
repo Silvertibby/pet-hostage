@@ -200,3 +200,14 @@ canvas.sicon { height: min(calc(var(--ih, 10) * 3px), 48px); width: auto; max-wi
 .cheerbar.reply.win b { color: #8ff09a; } .cheerbar.reply.miss b { color: #ff8a8a; }
 .cheerprev { text-align: center; font-size: 18px; margin: 8px 0; }
 #tabs button.dot { position: relative; } #tabs button.dot::after { content: ""; position: absolute; top: 6px; right: 26%; width: 8px; height: 8px; border-radius: 50%; background: var(--acc); }
+/* v0.7.5: shop grids never overflow narrow phones; readable wall/backdrop thumbnails; tidy lock badge */
+.sgrid { grid-template-columns: repeat(auto-fill, minmax(min(62px, 100%), 1fr)); }
+.sgrid.walls { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.scell { min-width: 0; overflow: hidden; }
+.scell .ssub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.scell canvas.wsw { width: 100%; max-width: 48px; height: auto; aspect-ratio: 4 / 3; border: 1px solid #000; border-radius: 2px; }
+.scell canvas.wsw.scene { filter: brightness(1.7) saturate(1.15); }
+.sgrid.walls .scell.locked { opacity: 1; }
+.sgrid.walls .scell.locked canvas.wsw { filter: brightness(.9) saturate(.5); }
+.sgrid.walls .scell.locked canvas.wsw.scene { filter: brightness(1.25) saturate(.5); }
+.scell .lock { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; color: var(--dim); }

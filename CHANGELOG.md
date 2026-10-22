@@ -1,5 +1,8 @@
 # Pet Hostage changelog
 
+## v0.7.5
+- Shop wall tab: fixed 5-column grid that can't overflow narrow iPhones, bigger brighter thumbnails (locked ones dimmed, still readable), compact lock badge. All shop grids: cells can shrink, labels never push past the edge.
+
 ## v0.7.4
 - Premium backdrops in the wall slot: night forest 100k/3, rowboat 125k/4, sewer lair 150k/5, getaway van 175k/6, rooftop 200k/7, haunted carnival 250k/8, moon base 300k/9 (price / rescues). Each has its own floor and a hanger for the bulb.
 

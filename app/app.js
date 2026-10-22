@@ -4,7 +4,7 @@ import { VILLAINS, SLOTS, COLORS, TIERS, colorById, forSlot, owns, REWARDS, STYL
 import { drawWall, drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, itemSprite, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.7.4';
+const VERSION = 'v0.7.5';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
@@ -379,14 +379,14 @@ function renderWallShop(tabs, bank) {
     : !ok(w) ? `<span class="dim">🔒 ${wallNeed(w)} 🏆</span>`
     : `<button class="btn acc" id="sact" data-do="buy" ${bank >= wallPrice(w) ? '' : 'disabled'}>👟 ${fmt(wallPrice(w))}</button>`;
   const cell = x => { const o = room.walls.includes(x.id), sel = room.wall === x.id;
-    return `<button class="scell ${sel ? 'on' : ''} ${o ? 'own' : ''} ${!o && !ok(x) ? 'locked' : ''} ${pick === x.id ? 'sel' : ''}" data-color="${x.id}" title="${esc(x.label)}"><canvas class="px wsw" data-wall="${x.id}" width="24" height="18"></canvas><span class="ssub">${sel ? '✓' : o ? '●' : ok(x) ? fmt(wallPrice(x)) : `🔒 ${wallNeed(x)}`}</span></button>`; };
+    return `<button class="scell ${sel ? 'on' : ''} ${o ? 'own' : ''} ${!o && !ok(x) ? 'locked' : ''} ${pick === x.id ? 'sel' : ''}" data-color="${x.id}" title="${esc(x.label)}"><canvas class="px wsw ${x.scene ? 'scene' : ''}" data-wall="${x.id}" width="48" height="36"></canvas><span class="ssub">${sel ? '✓' : o ? '●' : ok(x) ? fmt(wallPrice(x)) : `<span class="lock">🔒${wallNeed(x)}</span>`}</span></button>`; };
   view.innerHTML = `
     <p class="row" style="justify-content:space-between"><button class="btn small ghost" id="sback">←</button><span>👟 <b>${fmt(bank)}</b></span></p>
     <h2>${esc(VILLAINS[VILLAIN].shop.toUpperCase())}</h2>
     <div class="shoptop"><canvas id="spreview" class="px" width="34" height="62"></canvas>
       <div><div class="seg icons" id="slotseg">${slotTabs(tabs)}</div><div class="sact">${action}</div></div></div>
-    <div class="sgrid"><button class="scell ${!room.wall ? 'on' : ''} ${pick === 'default' ? 'sel' : ''}" data-color="default" title="Black"><canvas class="px wsw" data-wall="" width="24" height="18"></canvas><span class="ssub">${!room.wall ? '✓' : ''}</span></button>${WALLS.filter(x => !x.scene).map(cell).join('')}</div><div class="sgrid">${WALLS.filter(x => x.scene).map(cell).join('')}</div>`;
-  view.querySelectorAll('canvas[data-wall]').forEach(cv => drawWall(cv.getContext('2d'), cv.dataset.wall || null, false, 24, 18));
+    <div class="sgrid walls"><button class="scell ${!room.wall ? 'on' : ''} ${pick === 'default' ? 'sel' : ''}" data-color="default" title="Black"><canvas class="px wsw" data-wall="" width="48" height="36"></canvas><span class="ssub">${!room.wall ? '✓' : ''}</span></button>${WALLS.filter(x => !x.scene).map(cell).join('')}</div><div class="sgrid walls">${WALLS.filter(x => x.scene).map(cell).join('')}</div>`;
+  view.querySelectorAll('canvas[data-wall]').forEach(cv => drawWall(cv.getContext('2d'), cv.dataset.wall || null, false, 48, 36, 1));
   const cv = $('#spreview'), ctx = cv.getContext('2d'), t0 = performance.now();
   const loop = now => { if (!cv.isConnected) return; const t = qs.has('t') ? +qs.get('t') + (now - t0) / 1000 : (now - t0) / 1000; drawWall(ctx, w ? w.id : null, false, 34, 62, t); blit(ctx, raccoonBody(t, 'idle'), 0, 14); anim = requestAnimationFrame(loop); };
   anim = requestAnimationFrame(loop);
