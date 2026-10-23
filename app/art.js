@@ -453,7 +453,7 @@ export function itemSprite(slot, style, color, dark = false, t = 0) {
   if (x1 < 0) return null;
   const g = grid(x1 - x0 + 1, y1 - y0 + 1);
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const i = y * a.w + x; if (a.a[i] && a.a[i] !== b.a[i]) set(g, x - x0, y - y0, a.a[i]); }
-  g.pal = a.pal; if (dark) { const pal = {}; for (const k in a.pal) pal[k] = '#0e0b14'; g.pal = pal; }
+  g.pal = a.pal; if (dark) { const pal = {}; for (const k in a.pal) pal[k] = '#5e5474'; /* v0.7.6 readable silhouette */ g.pal = pal; }
   g.alpha = 1; return g;
 }
 export function blit(ctx, g, ox, oy, opt = {}) {

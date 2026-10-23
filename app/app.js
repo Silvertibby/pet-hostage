@@ -4,7 +4,7 @@ import { VILLAINS, SLOTS, COLORS, TIERS, colorById, forSlot, owns, REWARDS, STYL
 import { drawWall, drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, itemSprite, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.7.5';
+const VERSION = 'v0.7.6';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
@@ -336,10 +336,10 @@ function renderShop() {
   const preview = { ...eq }; if (colorSlot) { if (pick === 'default') delete preview[shopSlot]; else preview[shopSlot] = pick; }
   const styleTile = st => { const r = REWARDS[VILLAIN].find(x => x.slot === shopSlot && x.style === st), got = hasStyle(cos, VILLAIN, shopSlot, st);
     return `<button class="scell sty ${cur === st ? 'on' : ''} ${got ? '' : 'locked'}" data-style="${st}" title="${esc(STYLE_INFO[st].label)}">
-      <canvas class="px sicon" data-islot="${shopSlot}" data-istyle="${st}" data-dark="${got ? '' : 1}"></canvas><span class="ssub">${cur === st ? '✓' : got ? '' : `🔒 ${esc(rungName(r.at - 1))}`}</span></button>`; };
+      ${st === 'none' ? '<span class="snone">∅</span>' : `<canvas class="px sicon" data-islot="${shopSlot}" data-istyle="${st}" data-dark="${got ? '' : 1}"></canvas>`}<span class="ssub">${cur === st ? '✓' : got ? '' : `<span class="lock" title="${esc(rungName(r.at - 1))}">🔒${r.at}</span>`}</span></button>`; };
   const cell = c => {
     const own = owns(cos, VILLAIN, shopSlot, c.id), on = eq[shopSlot] === c.id, locked = !own && shelf < (c.needShelf || 0);
-    const sub = on ? '✓' : own ? '●' : locked ? `🔒 ${c.needShelf}` : fmt(c.price);
+    const sub = on ? '✓' : own ? '●' : locked ? `<span class="lock">🔒${c.needShelf}</span>` : fmt(c.price);
     return `<button class="scell ${on ? 'on' : ''} ${own ? 'own' : ''} ${locked ? 'locked' : ''} ${pick === c.id ? 'sel' : ''}" data-color="${c.id}" title="${esc(c.label)}">
       <span class="${swatchCss(c)}" style="background:${c.hex[0]}"></span><span class="ssub">${sub}</span></button>`;
   };

@@ -211,3 +211,15 @@ canvas.sicon { height: min(calc(var(--ih, 10) * 3px), 48px); width: auto; max-wi
 .sgrid.walls .scell.locked canvas.wsw { filter: brightness(.9) saturate(.5); }
 .sgrid.walls .scell.locked canvas.wsw.scene { filter: brightness(1.25) saturate(.5); }
 .scell .lock { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; color: var(--dim); }
+/* v0.7.6 shop polish: one tile size everywhere (5 per row), consistent states, readable swatches/icons */
+.sgrid, .sgrid.walls { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin-top: 6px; }
+.scell { min-height: 58px; justify-content: space-between; padding: 6px 3px 4px; border: 2px solid #3e3354; }
+.scell.sty { min-height: 72px; }
+.scell .ssub { font-size: 11px; line-height: 14px; min-height: 14px; }
+.scell .swatch { width: 100%; max-width: 40px; height: 22px; }
+.scell.locked { opacity: 1; }
+.scell.locked .swatch { filter: saturate(.45) brightness(.8); }
+.scell.sty.locked { opacity: 1; }
+.scell.own:not(.on) { border-color: #5a4d74; }
+.scell .snone { font-size: 22px; line-height: 40px; color: var(--dim); }
+.scell .lock { font-size: 11px; color: var(--dim); letter-spacing: 0; }
