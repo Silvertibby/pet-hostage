@@ -1,0 +1,21 @@
+// v0.7.7 coloured bulbs: 25,000 each, 2 rescues, buy/use/take down, friend view (local only, no KV)
+import assert from 'node:assert';
+import { newState, buyItem, equipItem, publicView, view } from './src/game.js';
+import { BULBS, BULB_PRICE, roomOf, bulbIds } from './src/shop.js';
+const today = '2026-10-22', st = newState('BULB1', today);
+assert.equal(BULB_PRICE, 25000); assert.ok(bulbIds().length >= 6 && bulbIds().length <= 7);
+st.bank = 60000;
+assert.equal(buyItem(st, today, 'room', 'bulb', 'red').error, 'needs 2 on the shelf');
+st.bestRung = 2;
+assert.equal(buyItem(st, today, 'room', 'bulb', 'basic').error, 'no such item');
+assert.equal(buyItem(st, today, 'room', 'bulb', 'nope').error, 'no such item');
+assert.ok(buyItem(st, today, 'room', 'bulb', 'red').ok); assert.equal(st.bank, 35000); assert.equal(st.bankLog[0].item, 'room:bulb:red');
+assert.equal(roomOf(st.cosmetics).bulb, 'red');
+assert.equal(buyItem(st, today, 'room', 'bulb', 'red').error, 'already owned');
+assert.equal(equipItem(st, 'room', 'bulb', 'blue').error, 'not owned');
+assert.ok(equipItem(st, 'room', 'bulb', null).ok); assert.equal(roomOf(st.cosmetics).bulb, 'basic');
+assert.ok(equipItem(st, 'room', 'bulb', 'red').ok);
+st.bank = 24999; assert.equal(buyItem(st, today, 'room', 'bulb', 'blue').error, 'not enough Spare Steps');
+assert.equal(publicView(st).room.bulb, 'red'); assert.equal(view(st).cosmetics.room.bulb, 'red');
+assert.ok(Object.values(BULBS).every(b => /^#[0-9a-f]{6}$/.test(b.hex)));
+console.log('✓ coloured bulbs');

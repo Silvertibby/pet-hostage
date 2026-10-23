@@ -223,3 +223,6 @@ canvas.sicon { height: min(calc(var(--ih, 10) * 3px), 48px); width: auto; max-wi
 .scell.own:not(.on) { border-color: #5a4d74; }
 .scell .snone { font-size: 22px; line-height: 40px; color: var(--dim); }
 .scell .lock { font-size: 11px; color: var(--dim); letter-spacing: 0; }
+/* v0.7.7: 9 shop tabs (💡 added) — fixed 5-per-row grid so no tab stretches */
+#slotseg.icons { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+#slotseg.icons button { min-width: 0; font-size: 16px; padding: 6px 0; }

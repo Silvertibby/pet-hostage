@@ -91,5 +91,17 @@ WALLS.push(
 export const wallPrice = w => (w && w.price) || WALL_PRICE;
 export const wallNeed = w => (w && w.need) || WALL_NEED_RESCUED;
 export const wallById = id => WALLS.find(w => w.id === id) || null;
-export const BULBS = { basic: { label: 'Bulb' } };
-export const roomOf = cos => { const r = (cos && cos.room) || {}; return { walls: r.walls || [], wall: wallById(r.wall) ? r.wall : null, bulb: BULBS[r.bulb] ? r.bulb : 'basic' }; };
+// v0.7.7 coloured bulb skins: 25,000 each, same 2-rescue gate as bricks. Each glows its colour and tints the light cone.
+export const BULB_PRICE = 25000;
+export const BULBS = {
+  basic: { label: 'Bulb', hex: '#ffe27a', glow: '#ffe9a0' },
+  red: { label: 'Red', hex: '#ff4a4a', glow: '#ff5a4a' },
+  orange: { label: 'Orange', hex: '#ff9a2a', glow: '#ffa040' },
+  green: { label: 'Green', hex: '#4aff7a', glow: '#5aff8a' },
+  blue: { label: 'Blue', hex: '#4a8aff', glow: '#5a9aff' },
+  purple: { label: 'Purple', hex: '#b45aff', glow: '#c070ff' },
+  pink: { label: 'Pink', hex: '#ff6ad0', glow: '#ff80d8' },
+  ice: { label: 'Ice', hex: '#9af0ff', glow: '#b0f4ff' },
+};
+export const bulbIds = () => Object.keys(BULBS).filter(k => k !== 'basic');
+export const roomOf = cos => { const r = (cos && cos.room) || {}; return { walls: r.walls || [], wall: wallById(r.wall) ? r.wall : null, bulbs: r.bulbs || [], bulb: BULBS[r.bulb] ? r.bulb : 'basic' }; };

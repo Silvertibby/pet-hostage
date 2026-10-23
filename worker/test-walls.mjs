@@ -6,7 +6,7 @@ import { WALLS, WALL_PRICE, roomOf, BULBS } from './src/shop.js';
 assert.equal(fs.readFileSync('src/shop.js', 'utf8'), fs.readFileSync('../app/shop.js', 'utf8'));
 const today = '2026-10-21', st = newState('WALLS1', today);
 assert.equal(WALL_PRICE, 10000); assert.ok(WALLS.length >= 5); assert.ok(BULBS.basic);
-assert.deepEqual(roomOf(st.cosmetics), { walls: [], wall: null, bulb: 'basic' }); // default black room
+assert.deepEqual(roomOf(st.cosmetics), { walls: [], wall: null, bulbs: [], bulb: 'basic' }); // default black room
 st.bank = 50000;
 assert.equal(buyItem(st, today, 'room', 'wall', 'red').error, 'needs 2 on the shelf');
 st.bestRung = 2;

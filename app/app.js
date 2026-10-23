@@ -1,10 +1,10 @@
 import { maybeRevived, revivedVars } from './revived.js';
 import { CHEERS, CHEER_COST, cheerById, DISPLAY_NAME_MAX, replyLine, WIN_LINES } from './cheers.js';
-import { VILLAINS, SLOTS, COLORS, TIERS, colorById, forSlot, owns, REWARDS, STYLE_INFO, styleKey, hasStyle, rewardFor, WALLS, wallPrice, wallNeed, wallById, roomOf } from './shop.js';
-import { drawWall, drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, itemSprite, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
+import { VILLAINS, SLOTS, COLORS, TIERS, colorById, forSlot, owns, REWARDS, STYLE_INFO, styleKey, hasStyle, rewardFor, WALLS, wallPrice, wallNeed, wallById, roomOf, BULBS, BULB_PRICE, WALL_NEED_RESCUED, bulbIds } from './shop.js';
+import { drawWall, drawBulbIcon, drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, itemSprite, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.7.6';
+const VERSION = 'v0.7.7';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
@@ -286,6 +286,7 @@ const BANK_KIND = { earn: ['👟', 'day banked'], pause: ['⏸', 'paused'], rese
 function bankWho(e) { const f = e.to && loadFriends().find(x => x.id === e.to); return (f && f.nick) || e.name || (e.to ? e.to : 'a friend'); } // local nickname wins
 function bankWhat(e) {
   const [icon, base] = BANK_KIND[e.kind] || ['•', e.kind];
+  if (e.kind === 'shop' && e.item && e.item.startsWith('room:bulb:')) { const b = BULBS[e.item.slice(10)]; return [icon, b ? b.label.toLowerCase() + ' bulb' : base]; }
   if (e.kind === 'shop' && e.item && e.item.startsWith('room:wall:')) { const w = wallById(e.item.slice(10)); return [icon, w ? w.label.toLowerCase() + ' wall' : base]; }
   if (e.kind === 'shop' && e.item) { const [, slot, col] = e.item.split(':'), c = colorById(col), sl = SLOTS[slot]; return [icon, c && sl ? `${c.label} ${sl.label.toLowerCase()}` : base]; }
   if (e.kind === 'cheer') return [icon, `cheered ${esc(bankWho(e))}`];
@@ -328,9 +329,10 @@ const rungName = r => { const l = (state.ladder || []).find(x => x.rung === r); 
 // v0.5.4 tabs: color slots + style-only slots (rescue rewards). Icon tiles, prices only.
 function renderShop() {
   const v = VILLAINS[VILLAIN], cos = state.cosmetics || { owned: {}, equipped: {} }, eq = myLook(), shelf = Math.max(0, state.hostage.rung), bank = state.bank || 0;
-  const tabs = [...v.slots, ...Object.keys(v.styles).filter(sl => !v.slots.includes(sl)), 'wall'];
+  const tabs = [...v.slots, ...Object.keys(v.styles).filter(sl => !v.slots.includes(sl)), 'wall', 'bulb'];
   if (!tabs.includes(shopSlot)) shopSlot = tabs[0];
   if (shopSlot === 'wall') return renderWallShop(tabs, bank);
+  if (shopSlot === 'bulb') return renderBulbShop(tabs, bank);
   const colorSlot = v.slots.includes(shopSlot), styles = v.styles[shopSlot] || [], cur = (eq.styles || {})[shopSlot] || styles[0];
   const pick = colorSlot ? (shopPick && shopPick.slot === shopSlot ? shopPick.color : (eq[shopSlot] || 'default')) : null;
   const preview = { ...eq }; if (colorSlot) { if (pick === 'default') delete preview[shopSlot]; else preview[shopSlot] = pick; }
@@ -368,7 +370,7 @@ function renderShop() {
   $('#sact')?.addEventListener('click', e => { const d = e.currentTarget.dataset.do; if (d === 'buy') confirmBuy(c); else equip(d === 'default' ? null : c.id); });
 }
 // item icons on <canvas data-islot data-istyle data-dark>: drawn once, in the slot's current color (or as a silhouette)
-const slotTabs = tabs => tabs.map(sl => `<button class="${sl === shopSlot ? 'on' : ''}" data-slot="${sl}" title="${esc(sl === 'wall' ? 'Wall' : SLOTS[sl].label)}">${sl === 'wall' ? '🧱' : SLOTS[sl].icon}</button>`).join('');
+const slotTabs = tabs => tabs.map(sl => `<button class="${sl === shopSlot ? 'on' : ''}" data-slot="${sl}" title="${esc(sl === 'wall' ? 'Wall' : sl === 'bulb' ? 'Bulb' : SLOTS[sl].label)}">${sl === 'wall' ? '🧱' : sl === 'bulb' ? '💡' : SLOTS[sl].icon}</button>`).join('');
 // v0.7.3 brick walls for the hostage room (default: plain black). Same picker pattern as the color slots.
 function renderWallShop(tabs, bank) {
   const room = roomOf(state.cosmetics), have = rescued(), ok = x => have >= wallNeed(x);
@@ -394,6 +396,48 @@ function renderWallShop(tabs, bank) {
   view.querySelectorAll('[data-slot]').forEach(b => b.addEventListener('click', () => { shopSlot = b.dataset.slot; shopPick = null; render(); }));
   view.querySelectorAll('[data-color]').forEach(b => b.addEventListener('click', () => { shopPick = { slot: 'wall', color: b.dataset.color }; render(); }));
   $('#sact')?.addEventListener('click', e => { const d = e.currentTarget.dataset.do; if (d === 'buy') confirmWall(w); else useWall(d === 'default' ? null : w.id); });
+}
+// v0.7.7 coloured bulbs: same picker as walls. Preview = the hostage room under that bulb.
+function renderBulbShop(tabs, bank) {
+  const room = roomOf(state.cosmetics), ok = rescued() >= WALL_NEED_RESCUED;
+  const pick = shopPick && shopPick.slot === 'bulb' ? shopPick.color : room.bulb, b = pick !== 'basic' && BULBS[pick] ? pick : null;
+  const own = b && room.bulbs.includes(b), on = b ? room.bulb === b : room.bulb === 'basic';
+  const action = !b ? (on ? '' : `<button class="btn acc" id="sact" data-do="default">Use</button>`)
+    : own ? (on ? `<button class="btn ghost" id="sact" data-do="default">Take down</button>` : `<button class="btn acc" id="sact" data-do="wear">Use</button>`)
+    : !ok ? `<span class="dim">🔒 ${WALL_NEED_RESCUED} 🏆</span>`
+    : `<button class="btn acc" id="sact" data-do="buy" ${bank >= BULB_PRICE ? '' : 'disabled'}>👟 ${fmt(BULB_PRICE)}</button>`;
+  const cell = id => { const o = id === 'basic' || room.bulbs.includes(id), sel = room.bulb === id;
+    return `<button class="scell ${sel ? 'on' : ''} ${o ? 'own' : ''} ${!o && !ok ? 'locked' : ''} ${pick === id ? 'sel' : ''}" data-color="${id}" title="${esc(BULBS[id].label)}"><canvas class="px wsw" data-bulb="${id}" width="48" height="36"></canvas><span class="ssub">${sel ? '✓' : o ? '●' : ok ? fmt(BULB_PRICE) : `<span class="lock">🔒${WALL_NEED_RESCUED}</span>`}</span></button>`; };
+  view.innerHTML = `
+    <p class="row" style="justify-content:space-between"><button class="btn small ghost" id="sback">←</button><span>👟 <b>${fmt(bank)}</b></span></p>
+    <h2>${esc(VILLAINS[VILLAIN].shop.toUpperCase())}</h2>
+    <div class="shoptop"><canvas id="spreview" class="px" width="100" height="88" style="width:100px;height:88px"></canvas>
+      <div><div class="seg icons" id="slotseg">${slotTabs(tabs)}</div><div class="sact">${action}</div></div></div>
+    <div class="sgrid walls">${['basic', ...bulbIds()].map(cell).join('')}</div>`;
+  view.querySelectorAll('canvas[data-bulb]').forEach(cv => drawBulbIcon(cv.getContext('2d'), cv.dataset.bulb, 48, 36));
+  const cv = $('#spreview'), ctx = cv.getContext('2d'), t0 = performance.now();
+  const loop = now => { if (!cv.isConnected) return; const t = qs.has('t') ? +qs.get('t') + (now - t0) / 1000 : (now - t0) / 1000;
+    ctx.clearRect(0, 0, 100, 88); drawScene(ctx, { ...sceneSt(), room: { wall: room.wall, bulb: pick } }, t); anim = requestAnimationFrame(loop); };
+  anim = requestAnimationFrame(loop);
+  $('#sback').addEventListener('click', () => { shopPick = null; go('home'); });
+  view.querySelectorAll('[data-slot]').forEach(x => x.addEventListener('click', () => { shopSlot = x.dataset.slot; shopPick = null; render(); }));
+  view.querySelectorAll('[data-color]').forEach(x => x.addEventListener('click', () => { shopPick = { slot: 'bulb', color: x.dataset.color }; render(); }));
+  $('#sact')?.addEventListener('click', e => { const d = e.currentTarget.dataset.do; if (d === 'buy') confirmBulb(b); else useBulb(d === 'default' ? null : b); });
+}
+async function useBulb(id) {
+  if (DEMO) { state.cosmetics.room = { ...roomOf(state.cosmetics), bulb: id || 'basic' }; render(); return; }
+  try { const r = await api('/shop/equip', { villain: 'room', slot: 'bulb', color: id }); state = r.state; render(); } catch (e) { toast("Couldn't change: " + e.message); }
+}
+function confirmBulb(id) { // every spend is confirmed
+  const ov = $('#overlay'); ov.hidden = false;
+  ov.innerHTML = `<div class="ovbox"><h2>💡 ${esc(BULBS[id].label)}</h2><p>👟 <b>${fmt(BULB_PRICE)}</b>?</p><p class="dim small">👟 ${fmt(state.bank)} → ${fmt(state.bank - BULB_PRICE)}</p>
+    <div class="row" style="justify-content:space-between"><button class="btn ghost" id="bno">Cancel</button><button class="btn acc" id="byes">Buy · ${fmt(BULB_PRICE)}</button></div></div>`;
+  const close = () => { ov.hidden = true; ov.innerHTML = ''; };
+  $('#bno').addEventListener('click', close);
+  $('#byes').addEventListener('click', async e => { e.target.disabled = true;
+    if (DEMO) { const r = roomOf(state.cosmetics); state.cosmetics.room = { ...r, bulbs: [...r.bulbs, id], bulb: id }; state.bank -= BULB_PRICE; close(); render(); return; }
+    try { const r = await api('/shop/buy', { villain: 'room', slot: 'bulb', color: id }); state = r.state; close(); render(); toast('💡 ✓'); }
+    catch (err) { close(); if (err.body && err.body.state) { state = err.body.state; render(); } toast(err.message === 'not enough Spare Steps' ? 'Not enough Spare Steps.' : "Couldn't buy: " + err.message); } });
 }
 async function useWall(id) {
   if (DEMO) { state.cosmetics.room = { ...roomOf(state.cosmetics), wall: id }; render(); return; }
@@ -565,7 +609,7 @@ function demoCosmetics(rung = 6) {
   if (qs.get('look')) { for (const k of Object.keys(equipped)) delete equipped[k]; for (const kv of qs.get('look').split(',')) { const [sl, c] = kv.split(':'); if (sl && c) { equipped[sl] = c; owned[sl] = [...new Set([...(owned[sl] || []), c])]; } } }
   const unl = REWARDS.raccoon.filter(r => r.at <= rung).map(r => styleKey(r.slot, r.style));
   if (qs.get('style')) { equipped.styles = {}; for (const kv of qs.get('style').split(',')) { const [sl, st] = kv.split(':'); if (sl && st) { equipped.styles[sl] = st; if (!unl.includes(styleKey(sl, st))) unl.push(styleKey(sl, st)); } } }
-  return { owned: { raccoon: owned }, equipped: { raccoon: equipped }, unlocked: { raccoon: unl }, room: qs.get('wall') ? { walls: [qs.get('wall')], wall: qs.get('wall') } : {} };
+  return { owned: { raccoon: owned }, equipped: { raccoon: equipped }, unlocked: { raccoon: unl }, room: { ...(qs.get('wall') ? { walls: [qs.get('wall')], wall: qs.get('wall') } : {}), ...(qs.get('bulb') ? { bulbs: [qs.get('bulb')], bulb: qs.get('bulb') } : {}) } };
 }
 function demoBosses(rung) { const n = 3 + 2 * rung, k = rung < 2 ? 0 : Math.floor((n - 4) / 3), o = []; for (let i = 1; i <= k; i++) { const d = Math.min(n - 2, Math.max(2, Math.round(1 + i * (n - 1) / (k + 1)))); if (!o.includes(d)) o.push(d); } return o; }
 // ---- v0.5.8: cheers. 1,000 Spare Steps to send a preset cheer; a free reply once today's goal is met. ----

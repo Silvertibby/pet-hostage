@@ -502,7 +502,7 @@ function px(ctx, x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(Math.round(x),
 const LAMP0 = 50, CAGE_X = 20, PET_X = 30, RAC_X = 80, RAC_Y = 45;
 // v0.7.3 room: the wall (default plain black, or a brick skin) + one hanging bulb. Bulbs are looked up by id so
 // bulb skins can be added to BULB_ART later; only 'basic' exists.
-let ROOM = { wall: null, bulb: 'basic' };
+let ROOM = { wall: null, bulb: 'basic' }, LIT = null; // LIT: where the bulb hung this frame (for the pet tint)
 export function setRoomLook(r) { ROOM = { wall: (r && r.wall) || null, bulb: (r && r.bulb) || 'basic' }; }
 export const WALL_ART = {
   red: ['#b8452e', '#8e3220', '#e6d8c4'], orange: ['#d0702e', '#a4521c', '#efe0c8'], grey: ['#7c7a82', '#5e5c64', '#c4c2c8'],
@@ -587,6 +587,20 @@ const BULB_ART = {
     if (!dark) px(ctx, x - 1, 21, 1, 1, '#fffbe0');
   },
 };
+const BULB_HEX = { basic: '#ffe27a', red: '#ff4a4a', orange: '#ff9a2a', green: '#4aff7a', blue: '#4a8aff', purple: '#b45aff', pink: '#ff6ad0', ice: '#9af0ff' }; // mirrors shop.js BULBS
+const mix = (a, b, f) => '#' + [1, 3, 5].map(i => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - f) + parseInt(b.slice(i, i + 2), 16) * f).toString(16).padStart(2, '0')).join('');
+export const bulbHex = id => BULB_HEX[id] || BULB_HEX.basic;
+function colorBulb(ctx, t, dark, x, hex) { // v0.7.7: coloured glass with a soft halo of its own colour
+  if (!dark) { ctx.save(); ctx.globalAlpha = 0.22 + 0.05 * Math.sin(t * 3); px(ctx, x - 4, 18, 9, 9, hex); ctx.globalAlpha = 0.12; px(ctx, x - 6, 16, 13, 13, hex); ctx.restore(); }
+  px(ctx, x - 1, 18, 3, 2, '#777'); px(ctx, x - 2, 20, 5, 4, dark ? mix(hex, '#000000', 0.55) : hex); px(ctx, x - 1, 24, 3, 1, dark ? mix(hex, '#000000', 0.6) : mix(hex, '#000000', 0.15));
+  if (!dark) px(ctx, x - 1, 21, 1, 1, mix(hex, '#ffffff', 0.7));
+}
+export function drawBulbIcon(ctx, id, w, h) { // shop thumbnail: dark tile, bulb + cone in its colour
+  const hex = bulbHex(id); ctx.fillStyle = '#100d16'; ctx.fillRect(0, 0, w, h);
+  ctx.save(); ctx.globalAlpha = 0.28; ctx.fillStyle = hex; ctx.beginPath(); ctx.moveTo(w / 2, 9); ctx.lineTo(w / 2 - 16, h); ctx.lineTo(w / 2 + 16, h); ctx.closePath(); ctx.fill(); ctx.restore();
+  ctx.save(); ctx.translate(w / 2 - 12, -12); ctx.scale(1, 1); colorBulb(ctx, 0, false, 12, hex); ctx.restore();
+  px(ctx, w / 2, 0, 1, 6, '#3a3442');
+}
 function room(ctx, t, dark, LAMP = LAMP0) {
   drawWall(ctx, ROOM.wall, dark, SCENE_W, 92, t);
   if (!SCENE_ART[ROOM.wall]) {
@@ -595,12 +609,13 @@ function room(ctx, t, dark, LAMP = LAMP0) {
   px(ctx, 0, 92, SCENE_W, 1, ROOM.wall ? '#55403a' : '#26222c'); }
   const sw = Math.sin(t * 1.4) * 3;
   for (let y = SCENE_ART[ROOM.wall] ? 3 : 0; y < 18; y++) px(ctx, LAMP + sw * (y / 20), y, 1, 1, ROOM.wall ? '#111' : '#2a2632');
-  ctx.save(); ctx.globalAlpha = dark ? 0.05 : ROOM.wall ? 0.09 : 0.12; ctx.fillStyle = '#ffe9a0';
+  const bhex = BULB_HEX[ROOM.bulb] && ROOM.bulb !== 'basic' ? BULB_HEX[ROOM.bulb] : null; LIT = bhex && !dark ? { x: LAMP + sw, s: sw, hex: bhex } : null;
+  ctx.save(); ctx.globalAlpha = dark ? 0.05 : (ROOM.wall ? 0.09 : 0.12) * (bhex ? 1.5 : 1); ctx.fillStyle = bhex || '#ffe9a0';
   ctx.beginPath(); ctx.moveTo(LAMP + sw, 22); ctx.lineTo(LAMP - 46 + sw * 3, 112); ctx.lineTo(LAMP + 46 + sw * 3, 112); ctx.closePath(); ctx.fill(); ctx.restore();
   if (!dark) for (let i = 0; i < 9; i++) { // dust motes drifting in the lamp light
     const f = ((t * (0.03 + i * 0.004) + i * 0.137) % 1), y = 30 + f * 70, x = LAMP + sw * 2 + Math.sin(t * 0.7 + i * 2.1) * (6 + f * 30);
-    ctx.save(); ctx.globalAlpha = 0.35 * Math.sin(Math.PI * f); px(ctx, x, y, 1, 1, '#fff3c4'); ctx.restore(); }
-  (BULB_ART[ROOM.bulb] || BULB_ART.basic)(ctx, t, dark, Math.round(LAMP + sw));
+    ctx.save(); ctx.globalAlpha = 0.35 * Math.sin(Math.PI * f); px(ctx, x, y, 1, 1, bhex ? mix(bhex, '#ffffff', 0.6) : '#fff3c4'); ctx.restore(); }
+  if (bhex) colorBulb(ctx, t, dark, Math.round(LAMP + sw), bhex); else BULB_ART.basic(ctx, t, dark, Math.round(LAMP + sw));
 }
 function cage(ctx, x, y, w, h, open = 0) {
   px(ctx, x, y, w, 2, '#9aa0ad'); px(ctx, x, y + h - 2, w, 2, '#9aa0ad');
@@ -943,9 +958,13 @@ function drawPeril(ctx, st, t) {
   (PERIL[st.species] || PERIL.bunny)(ctx, st, t, false);
 }
 
+function tintCone(ctx, L) { // v0.7.7: the coloured bulb's light falls on everything in its cone (pet, villain, floor)
+  ctx.save(); ctx.translate(-VIEW_X, -VIEW_Y); ctx.beginPath(); ctx.moveTo(L.x, 22); ctx.lineTo(L.x - 46 + L.s * 2, 112); ctx.lineTo(L.x + 46 + L.s * 2, 112); ctx.closePath(); ctx.clip();
+  ctx.globalCompositeOperation = 'source-atop'; ctx.globalAlpha = 0.2; ctx.fillStyle = L.hex; ctx.fillRect(-200, -200, 800, 600); ctx.restore();
+}
 export function drawScene(ctx, st, t) { // st.look (optional) = whose villain outfit to draw, e.g. a friend's
   const prev = LOOK, prevRoom = ROOM; if (st && 'look' in st) LOOK = st.look || {}; if (st && 'room' in st) setRoomLook(st.room);
-  try { drawScene0(ctx, st, t); } finally { LOOK = prev; ROOM = prevRoom; }
+  try { LIT = null; drawScene0(ctx, st, t); if (LIT) tintCone(ctx, LIT); } finally { LOOK = prev; ROOM = prevRoom; LIT = null; }
 }
 function drawScene0(ctx, st, t) {
   ctx.save(); ctx.translate(-VIEW_X, -VIEW_Y);

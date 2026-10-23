@@ -1,4 +1,4 @@
-import { colorById, itemFor, owns, emptyCosmetics, VILLAINS, REWARDS, styleKey, hasStyle, wallById, wallPrice, wallNeed, roomOf } from './shop.js';
+import { colorById, itemFor, owns, emptyCosmetics, VILLAINS, REWARDS, styleKey, hasStyle, wallById, wallPrice, wallNeed, roomOf, BULBS, BULB_PRICE, WALL_NEED_RESCUED } from './shop.js';
 // Pet Hostage v0.2 rules: a rescue LADDER. Tunable constants up top.
 export const RULES = {
   GOAL: 10000,          // 10,000 a day. Not editable.
@@ -196,6 +196,14 @@ export function buyPause(st, today) {
 // v0.5.3 villain shop. Server-authoritative: validates item, shelf requirement and balance; ownership is permanent.
 export function buyItem(st, today, villain, slot, color) {
   normalize(st, today);
+  if (villain === 'room' && slot === 'bulb') { // v0.7.7 bulb skins
+    const id = color; if (!id || id === 'basic' || !BULBS[id]) return { ok: false, error: 'no such item' };
+    const r = roomOf(st.cosmetics); if (r.bulbs.includes(id)) return { ok: false, error: 'already owned' };
+    if (rescuedCount(st) < WALL_NEED_RESCUED) return { ok: false, error: `needs ${WALL_NEED_RESCUED} on the shelf` };
+    if (st.bank < BULB_PRICE) return { ok: false, error: 'not enough Spare Steps' };
+    bankMove(st, today, 'shop', -BULB_PRICE, { item: `room:bulb:${id}` });
+    st.cosmetics.room = { ...r, bulbs: [...r.bulbs, id], bulb: id }; return { ok: true };
+  }
   if (villain === 'room') { // v0.7.3 brick walls
     const w = slot === 'wall' && wallById(color); if (!w) return { ok: false, error: 'no such item' };
     const r = roomOf(st.cosmetics); if (r.walls.includes(w.id)) return { ok: false, error: 'already owned' };
@@ -217,6 +225,10 @@ export function buyItem(st, today, villain, slot, color) {
 }
 export function equipItem(st, villain, slot, color) {
   normalize(st);
+  if (villain === 'room' && slot === 'bulb') { const r = roomOf(st.cosmetics);
+    if (color == null || color === '' || color === 'default' || color === 'basic') { st.cosmetics.room = { ...r, bulb: 'basic' }; return { ok: true }; }
+    if (!r.bulbs.includes(color)) return { ok: false, error: 'not owned' };
+    st.cosmetics.room = { ...r, bulb: color }; return { ok: true }; }
   if (villain === 'room') { if (slot !== 'wall') return { ok: false, error: 'no such slot' };
     const r = roomOf(st.cosmetics);
     if (color == null || color === '' || color === 'default') { st.cosmetics.room = { ...r, wall: null }; return { ok: true }; }
