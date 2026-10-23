@@ -51,7 +51,7 @@ at('2026-10-11T21:00:00-07:00'); await call(`/sync?code=${F}&steps=15001`); asse
 at('2026-10-12T00:05:00-07:00'); await cron();
 fr = (await call(`/state?code=${F}`)).body; ben = (await call('/state?code=3YS267ZCSA')).body;
 assert.equal(fr.shelf.length, 1); assert.equal(fr.hostage.name, 'Nugget');
-assert.equal(ben.shelf.length, 0); assert.equal(ben.hostage.rung, 0); assert.equal(ben.stats.missedDays, 3); // Ben missed 9th, 10th, 11th
+assert.equal(ben.shelf.length, 0); assert.equal(ben.hostage.rung, -1); // v0.7.9: 3 bunny misses in a row -> potato assert.equal(ben.stats.missedDays, 3); // Ben missed 9th, 10th, 11th
 // seen-death is per player
 await call('/seen-death', { code: '3YS267ZCSA', id: ben.lastDeath.id });
 assert.equal((await call('/state?code=3YS267ZCSA')).body.deathSeen, ben.lastDeath.id); assert.equal((await call(`/state?code=${F}`)).body.deathSeen, 0);

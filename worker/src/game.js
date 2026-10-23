@@ -52,9 +52,9 @@ export const runBosses = h => Array.isArray(h.bosses) ? h.bosses : bossDaysFor(h
 export const isBossDay = (h, day) => runBosses(h).includes(day);
 export const goalFor = (streak, need, bosses = []) => isFinalDay(streak, need) || bosses.includes(streak + 1) ? RULES.FINAL_GOAL : RULES.GOAL;
 export const goalToday = st => goalFor(st.hostage.streak, needFor(st.hostage.rung), runBosses(st.hostage));
-// v0.6.9 Easter egg: five bunny deaths in a row and a pet potato (rung -1, 1 day at 10k) is taken instead.
+// v0.6.9 Easter egg: three missed bunny days (= deaths) in a row and a pet potato (rung -1, 1 day at 10k) is taken instead.
 // Its misses don't kill or escalate; one made day sends you back to the bunny. Can happen again after 5 more.
-export const POTATO_RUNG = -1, POTATO_AFTER = 5, POTATO = { species: 'potato', name: 'Couch Potato' };
+export const POTATO_RUNG = -1, POTATO_AFTER = 3, POTATO = { species: 'potato', name: 'Couch Potato' };
 export function animalFor(rung) {
   if (rung === POTATO_RUNG) return { ...POTATO };
   const a = ANIMALS[rung % ANIMALS.length], lap = Math.floor(rung / ANIMALS.length) + 1;
