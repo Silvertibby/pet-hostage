@@ -77,3 +77,47 @@ export const MISS_LINES = [
   { id: 'm7', text: "🧵 Didn't make it. Back to the stitching table." },
 ];
 export const replyLine = (kind, id) => (kind === 'win' ? WIN_LINES : MISS_LINES).find(l => l.id === id) || null;
+
+// v0.7.8 Premium Cheer: only on a friend's 15,000-step day (mini boss / final). Sender's steps are sunk; the friend
+// claims half after hitting 15,000 that day (tap to claim, never auto). Expires at midnight PT.
+export const PREMIUM_GOAL = 15000;
+export const PREMIUM_TIERS = { p: { icon: '⭐', label: 'Premium', cost: 5000, reward: 2500 }, mega: { icon: '🌟', label: 'Mega', cost: 10000, reward: 5000 } };
+export const PREMIUM_RECENT = 6; // don't repeat the last few lines a player got, per tier
+export const PREMIUM_LINES = {
+  p: [
+    { id: 'p1', text: '⭐ Boss day. Boss energy. Go.' },
+    { id: 'p2', text: '⭐ 15k? You eat 15k for breakfast.' },
+    { id: 'p3', text: '⭐ Lace up. Raccoon down.' },
+    { id: 'p4', text: '⭐ Big day, bigger legs.' },
+    { id: 'p5', text: "⭐ I paid for this. Don't waste it." },
+    { id: 'p6', text: '⭐ Walk like the pet owes you money.' },
+    { id: 'p7', text: '⭐ Every step is a punch in the raccoon.' },
+    { id: 'p8', text: '⭐ 15,000. Not one fewer. Go.' },
+    { id: 'p9', text: '⭐ Out the door. Now. Love you.' },
+    { id: 'p10', text: '⭐ The couch is lying to you.' },
+    { id: 'p11', text: '⭐ This is your montage. Move.' },
+    { id: 'p12', text: '⭐ Stomp it. Stomp all of it.' },
+  ],
+  mega: [
+    { id: 'm1', text: '🌟 MEGA CHEER. NO EXCUSES. 15,000 OR BUST.' },
+    { id: 'm2', text: '🌟 I bet 10,000 steps on you. Make me rich in pride.' },
+    { id: 'm3', text: '🌟 Boss fight. Final round. Legs of steel. GO.' },
+    { id: 'm4', text: '🌟 The raccoon is shaking. Make him shake harder.' },
+    { id: 'm5', text: '🌟 Walk so hard the sidewalk files a complaint.' },
+    { id: 'm6', text: '🌟 LEGEND MODE ON. 15K. TODAY. YOU.' },
+    { id: 'm7', text: '🌟 Ten thousand of my steps say you crush this.' },
+    { id: 'm8', text: '🌟 Thunder legs. Lightning feet. Storm the cage.' },
+    { id: 'm9', text: '🌟 Go full hero. Cape optional. Steps mandatory.' },
+    { id: 'm10', text: '🌟 MAXIMUM CHEER. Leave the boss in the dust.' },
+  ],
+};
+export const premiumLine = (tier, id) => (PREMIUM_LINES[tier] || []).find(l => l.id === id) || null;
+
+// v0.7.8 Achievements: earned automatically, paid only when the player taps Claim. Each pays once.
+export const ACHIEVEMENTS = [
+  ...Array.from({ length: 10 }, (_, i) => ({ id: 'r' + (i + 1), icon: '🏆', label: `Rescue #${i + 1}`, amount: (i + 1) * 1000 })),
+  { id: 's15', icon: '🔥', label: '15k × 3 days', amount: 5000 },
+  { id: 's20', icon: '🔥', label: '20k × 3 days', amount: 10000 },
+  { id: 's25', icon: '🔥', label: '25k × 3 days', amount: 20000 },
+];
+export const achById = id => ACHIEVEMENTS.find(a => a.id === id) || null;

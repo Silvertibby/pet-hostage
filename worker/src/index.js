@@ -1,8 +1,8 @@
-import { RULES, RESETTLE_KEYS, bankMove, localParts, newState, migrate, settle, view, petAt, needFor, goalToday, DEATH_TEXT, normalize, addDays, buyPause, publicView, buyItem, equipItem, equipStyle } from './game.js';
+import { RULES, RESETTLE_KEYS, bankMove, localParts, newState, migrate, settle, view, petAt, needFor, goalToday, DEATH_TEXT, normalize, addDays, buyPause, publicView, buyItem, equipItem, equipStyle, updateAch, claimAch } from './game.js';
 import { note, nudgeText, DISH, ITEM, PET_EMOJI } from './messages.js';
 import { sendPush } from './push.js';
 import { revivedVars } from './revived.js';
-import { CHEER_COST, CHEER_DAILY_MAX, cheerById, cleanName, WIN_LINES, MISS_LINES, replyLine } from './cheers.js';
+import { CHEER_COST, CHEER_DAILY_MAX, cheerById, cleanName, WIN_LINES, MISS_LINES, replyLine, PREMIUM_TIERS, PREMIUM_LINES, PREMIUM_GOAL, PREMIUM_RECENT, premiumLine } from './cheers.js';
 
 // Multi-player: one KV key per player, "player:<CODE>". The old single-player key "state" is migrated once.
 const PKEY = c => 'player:' + c;
@@ -96,6 +96,9 @@ async function upsertItems(env, fid, items) {
     const i = cur.findIndex(x => x.id === it.id);
     if (it.pick) { const kind = it.pick; delete it.pick; const want = it.want; delete it.want;
       if (i >= 0 && cur[i].msg) it.msg = cur[i].msg; // a retry keeps the line it already got
+      else if (kind.startsWith('premium-')) { const all = PREMIUM_LINES[kind.slice(8)] || PREMIUM_LINES.p, used = meta.used[kind] = meta.used[kind] || [];
+        const pool = all.filter(l => !used.includes(l.id)); it.msg = pick(pool.length ? pool : all, it.id + ':' + Date.now()).id;
+        meta.used[kind] = [...used, it.msg].slice(-PREMIUM_RECENT); }
       else if (want) { it.msg = want; const keep = kind === 'win' ? 10 : 3; meta.used[kind] = [...(meta.used[kind] || []), it.msg].slice(-keep); }
       else { const all = kind === 'win' ? WIN_LINES : MISS_LINES, keep = kind === 'win' ? 10 : 3, used = meta.used[kind] = meta.used[kind] || [];
         const pool = all.filter(l => !used.includes(l.id)); it.msg = pick(pool.length ? pool : all, it.id + ':' + Date.now()).id;
@@ -124,20 +127,27 @@ async function syncInbox(env, st, today, prev) {
   for (const k of Object.keys(st.replied)) if (k < addDays(today, -3)) delete st.replied[k];
   const items = prev ? prev.items : [...await readInbox(env, st.friendId), ...st.cheers.filter(c => typeof c.id === 'number').map(c => ({ id: 'm' + c.id + '-' + c.at, kind: 'cheer', from: c.from, name: c.name, msg: c.msg, at: c.at, date: c.date, counted: true }))];
   const seenIds = new Set(); const uniq = items.filter(i => !seenIds.has(i.id) && seenIds.add(i.id));
-  const metToday = !st.paused[today] && (st.days[today] || 0) >= goalToday(st), canReply = [];
+  const metToday = !st.paused[today] && (st.days[today] || 0) >= goalToday(st), canReply = [], premium = [];
+  const PK = new Set(['cheer', 'premium', 'pclaim']);
   for (const it of uniq) {
     if (it.kind === 'meta') continue; // v0.6.3: recently used reply lines
     let dirty = false;
     if (it.kind === 'cheer' && !it.counted) { st.cheersTotal++; it.counted = true; dirty = changed = true; }
-    if (it.kind !== 'cheer' && !it.booked) { bankMove(st, it.date, 'reply', 0, { to: it.from, name: it.name, outcome: it.kind, dir: 'in' }); it.booked = true; dirty = changed = true; }
+    if (it.kind === 'premium' && !it.counted) { st.cheersTotal++; it.counted = true; dirty = changed = true; }
+    if (it.kind === 'premium' && it.date === today && it.msg) premium.push({ id: it.id, tier: it.tier, from: it.from, name: it.name, msg: it.msg, reward: it.reward, at: it.at, claimed: !!(it.claimed || (st.pClaimed || []).includes(it.id)) });
+    if (it.kind === 'pclaim' && !it.booked) { // v0.7.8: the friend claimed my premium cheer -> mark it on my side
+      const ps = (st.pSent || []).find(x => x.id === it.re); if (ps && !ps.claimed) ps.claimed = it.at || Date.now();
+      it.booked = true; dirty = changed = true; }
+    if (!PK.has(it.kind) && !it.booked) { bankMove(st, it.date, 'reply', 0, { to: it.from, name: it.name, outcome: it.kind, dir: 'in' }); it.booked = true; dirty = changed = true; }
     if (it.kind === 'cheer' && !it.done && it.date < today && st.paused[it.date]) { it.done = 'paused'; dirty = true; } // paused days stay silent
     // v0.6.4: no automatic replies. Today's cheers on a met goal offer a free Reply the player sends themselves.
     if (it.kind === 'cheer' && !it.done && it.date === today && metToday && !(st.replied[today] || []).includes(it.from) && !canReply.some(c => c.from === it.from))
       canReply.push({ id: it.id, from: it.from, name: it.name });
     if (dirty) after.push(putItem(env, st.friendId, it));
   }
-  const show = uniq.filter(i => i.date === today && !i.seen).map(({ id, kind, from, name, msg, at, date }) => ({ id, kind, from, name, msg, at, date }));
+  const show = uniq.filter(i => i.date === today && !i.seen && i.kind !== 'premium' && i.kind !== 'pclaim').map(({ id, kind, from, name, msg, at, date }) => ({ id, kind, from, name, msg, at, date }));
   if (JSON.stringify(show) !== JSON.stringify(st.cheers)) { st.cheers = show; }
+  Object.defineProperty(st, '_premium', { value: premium, enumerable: false, configurable: true, writable: true }); // never saved
   Object.defineProperty(st, '_canReply', { value: canReply, enumerable: false, configurable: true, writable: true }); // never saved
   return { changed, after, items: uniq };
 }
@@ -180,6 +190,7 @@ export const _resetLinksFlag = () => { linksChecked = false; };
 async function commit(env, st, today, pre, base) {
   let r = pre;
   if (!r) { const r2 = await syncInbox(env, st, today, base); r = base ? { after: [...base.after, ...r2.after] } : r2; }
+  updateAch(st, today); // v0.7.8 (saved with the record; nothing extra is written)
   await save(env, st);
   const groups = new Map();
   for (const f of r.after) if (typeof f !== 'function') { if (!groups.has(f.fid)) groups.set(f.fid, []); groups.get(f.fid).push(f.it); }
@@ -276,7 +287,7 @@ async function readBody(req) {
   return body;
 }
 
-const ROUTES = new Set(['/state', '/sync', '/settings', '/subscribe', '/sync-log/clear-test', '/unsubscribe', '/test-nudge', '/seen-death', '/pause', '/shop/buy', '/shop/equip', '/shop/style', '/friends/save', '/friends/remove', '/friends/seen', '/cheer', '/cheer/seen', '/reply/options', '/reply']);
+const ROUTES = new Set(['/state', '/sync', '/settings', '/subscribe', '/sync-log/clear-test', '/unsubscribe', '/test-nudge', '/seen-death', '/pause', '/shop/buy', '/shop/equip', '/shop/style', '/friends/save', '/friends/remove', '/friends/seen', '/cheer', '/cheer/seen', '/reply/options', '/reply', '/premiumCheer', '/claimCheer', '/achievements/claim']);
 const SYNC_LOG_MAX = 50, SYNC_LOG_DAYS = 7; // v0.6.5: last 50, plus the last sync of each of the past 7 days
 const TOPUP_HOUR = 10; // v0.6.5: until 10 AM PT a sync may raise yesterday
 // v0.6.5 morning top-up: a higher count for yesterday, before TOPUP_HOUR. Only ever raises. Returns a log note or null.
@@ -305,7 +316,7 @@ export function topUpYesterday(st, today, hour, val) {
   if (ev.length) st.pendingReport = [...(st.pendingReport || []), ...ev];
   return `yesterday → ${val} ✓`;
 }
-const viewX = st => ({ ...view(st), canReply: st._canReply || [] }); // v0.6.4: today's cheers waiting for a free Reply
+const viewX = st => ({ ...view(st), canReply: st._canReply || [], premium: st._premium || [] }); // v0.6.4: today's cheers waiting for a free Reply
 const REPLY_OPTS = 6;
 function logSync(st, entry) {
   const all = [{ at: Date.now(), ...entry }, ...(st.syncLog || [])], keep = all.slice(0, SYNC_LOG_MAX), cut = addDays(localParts().date, -SYNC_LOG_DAYS);
@@ -546,6 +557,43 @@ async function handle(req, env) {
       await commit(env, st, today, { changed: true, after: [...inbox.after, putItem(env, to, cheer), () => push(env, rst, '📣 ' + name, c.text, 'ph-cheer-' + cheer.id)] }); // paid first, then delivered
       console.log('cheer', st.friendId, '->', to, c.id);
       return json({ ok: true, state: viewX(st) });
+    }
+    // v0.7.8 Premium Cheer: only on the friend's 15,000-step day. Steps are sunk; the friend claims the reward once
+    // they hit 15,000 that day (tap to claim). No per-friend or weekly cap.
+    if (path === '/premiumCheer') {
+      const to = normFid(body.to), tier = PREMIUM_TIERS[body.tier] ? body.tier : null, T = tier && PREMIUM_TIERS[tier];
+      if (!T) return json({ error: 'no such tier', state: viewX(st) }, 409);
+      if (!to || to === st.friendId || !st.friends.includes(to)) return json({ error: 'not a friend', state: viewX(st) }, 409);
+      if (st.bank < T.cost) return json({ error: 'not enough Spare Steps', state: viewX(st) }, 409);
+      const rc = await env.PH.get(FKEY(to)), rst = rc && await load(env, rc); // read-only: never saved
+      if (!rst || rst.friendId !== to) return json({ error: 'not a friend', state: viewX(st) }, 409);
+      settle(rst, today);
+      if (goalToday(rst) < PREMIUM_GOAL || rst.paused[today]) return json({ error: 'not a boss day', state: viewX(st) }, 409);
+      const name = myName(st), toName = rst.displayName || petAt(rst, rst.hostage.rung).name;
+      const it = { id: 'p' + rid(), kind: 'premium', tier, from: st.friendId, name, pick: 'premium-' + tier, at: Date.now(), date: today, reward: T.reward };
+      bankMove(st, today, 'premium', -T.cost, { to, name: toName, tier });
+      st.pSent = [...(st.pSent || []).filter(x => x.date >= addDays(today, -3)), { id: it.id, to, tier, date: today, claimed: false }];
+      await commit(env, st, today, { changed: true, after: [...inbox.after, putItem(env, to, it), () => push(env, rst, T.icon + ' ' + name, `${T.label} Cheer: hit ${PREMIUM_GOAL.toLocaleString('en-US')} today to claim ${T.reward.toLocaleString('en-US')} Spare Steps`, 'ph-pcheer-' + it.id)] });
+      console.log('premium', st.friendId, '->', to, tier);
+      return json({ ok: true, state: viewX(st) });
+    }
+    if (path === '/claimCheer') {
+      const id = String(body.id || ''), it = inbox.items.find(x => x.kind === 'premium' && x.id === id);
+      if (!it || it.date !== today) return json({ error: 'nothing to claim', state: viewX(st) }, 409);
+      st.pClaimed = (st.pClaimed || []).filter(x => typeof x === 'string');
+      if (it.claimed || st.pClaimed.includes(id)) return json({ error: 'already claimed', state: viewX(st) }, 409);
+      if ((st.days[today] || 0) < PREMIUM_GOAL) return json({ error: 'goal not met', state: viewX(st) }, 409);
+      st.pClaimed = [...st.pClaimed, id].slice(-40);
+      bankMove(st, today, 'pclaim', it.reward, { to: it.from, name: it.name, tier: it.tier });
+      const mine = { ...it, claimed: Date.now() }, back = { id: 'c' + id, kind: 'pclaim', re: id, from: st.friendId, name: myName(st), at: Date.now(), date: today };
+      for (const p of st._premium || []) if (p.id === id) p.claimed = true;
+      await commit(env, st, today, { changed: true, after: [...inbox.after, putItem(env, st.friendId, mine), putItem(env, it.from, back)] });
+      return json({ ok: true, state: viewX(st) });
+    }
+    if (path === '/achievements/claim') {
+      const r = claimAch(st, today, String(body.id || ''));
+      if (!r.ok) return json({ error: r.error, state: viewX(st) }, 409);
+      await commit(env, st, today, { changed: true, after: inbox.after }); return json({ ok: true, state: viewX(st) });
     }
     if (path === '/cheer/seen') { // dismissed on the home screen
       const id = String(body.id || ''), it = st.cheers.find(c => c.id === id);

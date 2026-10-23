@@ -226,3 +226,18 @@ canvas.sicon { height: min(calc(var(--ih, 10) * 3px), 48px); width: auto; max-wi
 /* v0.7.7: 9 shop tabs (💡 added) — fixed 5-per-row grid so no tab stretches */
 #slotseg.icons { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
 #slotseg.icons button { min-width: 0; font-size: 16px; padding: 6px 0; }
+/* v0.7.8 premium cheer + achievements */
+.psent{margin:-4px 0 8px;text-align:right}
+.ptiers{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+.ptier{display:flex;flex-direction:column;gap:4px;padding:10px 6px;color:inherit;font:inherit;cursor:pointer}
+.ptier:disabled{opacity:.4}
+.pcard{border:2px solid #e8b84a;border-radius:10px;padding:8px 10px;margin:0 0 8px;background:#2a2238}
+.pcard.mega{border-color:#ff8ad8;box-shadow:0 0 10px #ff8ad855}
+.phead{display:flex;justify-content:space-between;align-items:center}
+.pbar{display:flex;align-items:center;gap:8px;margin:6px 0}
+.ptrack{flex:1;height:10px;border:2px solid #3e3354;border-radius:6px;overflow:hidden}
+.ptrack i{display:block;height:100%;background:#e8b84a}
+.achs{display:flex;flex-direction:column;gap:4px}
+.ach{display:grid;grid-template-columns:24px 1fr auto 64px;align-items:center;gap:6px;border:2px solid #3e3354;border-radius:8px;padding:4px 8px}
+.ach.off{opacity:.5}
+.ach>:last-child{justify-self:end}

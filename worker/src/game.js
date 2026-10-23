@@ -1,3 +1,4 @@
+import { ACHIEVEMENTS, achById } from './cheers.js';
 import { colorById, itemFor, owns, emptyCosmetics, VILLAINS, REWARDS, styleKey, hasStyle, wallById, wallPrice, wallNeed, roomOf, BULBS, BULB_PRICE, WALL_NEED_RESCUED } from './shop.js';
 // Pet Hostage v0.2 rules: a rescue LADDER. Tunable constants up top.
 export const RULES = {
@@ -320,7 +321,7 @@ const petView = (st, r) => { const p = petAt(st, r); return { rung: r, name: p.n
 const dayChart = (st, today) => { const days = []; for (let i = 13; i >= 0; i--) { const d = addDays(today, -i); days.push({ date: d, steps: st.days[d] ?? null, paused: !!st.paused[d], goal: d === today ? goalToday(st) : (st.dayGoals[d] ?? null) }); } return days; };
 export function view(st, now = Date.now()) {
   const np = localParts(now);
-  normalize(st, np.date);
+  normalize(st, np.date); updateAch(st, np.date);
   const days = dayChart(st, np.date);
   const h = st.hostage, todaySteps = st.days[np.date] || 0, goal = goalToday(st);
   const hostage = { ...petView(st, h.rung), streak: h.streak, since: h.since, todayMet: todaySteps >= goal, finalDay: isFinalDay(h.streak, needFor(h.rung)), goal };
@@ -343,7 +344,7 @@ export function view(st, now = Date.now()) {
     push: !!st.sub, events: (st.events || []).slice(-5),
     cheers: st.cheers.filter(c => c.date === np.date).map(({ id, kind, from, name, msg, at, date }) => ({ id, kind: kind || 'cheer', from, name, msg, at, date })), cheersTotal: st.cheersTotal, displayName: st.displayName || null, friends: st.friends, newFriends: st.newFriends || [],
     bank: st.bank, bankLog: st.bankLog.slice(0, 10), cosmetics: st.cosmetics, pauseCost: RULES.PAUSE_COST, pausedToday: !!st.paused[np.date], friendId: st.friendId || null,
-    code: st.code, syncLog: st.syncLog || [],
+    code: st.code, syncLog: st.syncLog || [], ach: st.ach || { earned: {}, claimed: {} }, pSent: (st.pSent || []).filter(x => x.date === np.date),
     garmin: st.garmin ? { lastSync: st.garmin.lastSync || null, lastSteps: st.garmin.lastSteps ?? null, lastError: st.garmin.lastError || null, lastErrorAt: st.garmin.lastErrorAt || null } : null,
     android: st.android ? { lastSync: st.android.lastSync || null, lastSteps: st.android.lastSteps ?? null, app: st.android.app || null } : null,
     // v0.1 app compat (a stale cached app shouldn't crash before it updates)
@@ -360,4 +361,27 @@ export function publicView(st, now = Date.now()) {
     goal, todaySteps, todayMet: todaySteps >= goal, finalDay: isFinalDay(h.streak, need), paused: !!st.paused[np.date], mood: mood(st, np),
     deaths: p.deaths, injuries: p.injuries, shelf: Math.max(0, h.rung), lastSync: st.lastSync, look: (st.cosmetics.equipped || {}).raccoon || {}, room: { wall: roomOf(st.cosmetics).wall, bulb: roomOf(st.cosmetics).bulb }, bosses: runBosses(h), bossToday: isBossDay(h, h.streak + 1) && !isFinalDay(h.streak, need),
     days: dayChart(st, np.date), started: st.started, baseGoal: RULES.GOAL }; // v0.6.7 friend history
+}
+
+// v0.7.8 achievements. Earned flags are stored (so they survive history pruning) and only written when one is new.
+// Past rescues count retroactively (rescuedCount). Streaks may include today.
+export function updateAch(st, today) {
+  const a = st.ach && typeof st.ach === 'object' ? st.ach : (st.ach = { earned: {}, claimed: {} });
+  a.earned = a.earned || {}; a.claimed = a.claimed || {};
+  const earn = id => { if (!a.earned[id]) a.earned[id] = today; };
+  for (let i = 1; i <= Math.min(10, rescuedCount(st)); i++) earn('r' + i);
+  const keys = Object.keys(st.days || {}).filter(d => d <= today).sort();
+  for (const d of keys) {
+    const v = st.days[d] || 0;
+    for (const [id, min] of [['s15', 15000], ['s20', 20000], ['s25', 25000]])
+      if (v >= min && (st.days[addDays(d, -1)] || 0) >= min && (st.days[addDays(d, -2)] || 0) >= min) earn(id);
+  }
+  return a;
+}
+export function claimAch(st, today, id) {
+  const x = achById(id); if (!x) return { ok: false, error: 'no such achievement' };
+  const a = updateAch(st, today);
+  if (!a.earned[id]) return { ok: false, error: 'not earned' };
+  if (a.claimed[id]) return { ok: false, error: 'already claimed' };
+  a.claimed[id] = today; bankMove(st, today, 'ach', x.amount, { ach: id }); return { ok: true };
 }

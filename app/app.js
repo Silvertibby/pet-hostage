@@ -1,10 +1,10 @@
 import { maybeRevived, revivedVars } from './revived.js';
-import { CHEERS, CHEER_COST, cheerById, DISPLAY_NAME_MAX, replyLine, WIN_LINES } from './cheers.js';
+import { CHEERS, CHEER_COST, cheerById, DISPLAY_NAME_MAX, replyLine, WIN_LINES, PREMIUM_TIERS, PREMIUM_GOAL, premiumLine, ACHIEVEMENTS } from './cheers.js';
 import { VILLAINS, SLOTS, COLORS, TIERS, colorById, forSlot, owns, REWARDS, STYLE_INFO, styleKey, hasStyle, rewardFor, WALLS, wallPrice, wallNeed, wallById, roomOf, BULBS, BULB_PRICE, WALL_NEED_RESCUED, bulbIds } from './shop.js';
 import { drawWall, drawBulbIcon, drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, itemSprite, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.7.7';
+const VERSION = 'v0.7.8';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
@@ -245,7 +245,7 @@ function renderHome() {
   const paused = !!(h.paused || s.pausedToday);
   const tag = paused ? '⏸ paused' : h.todayMet ? (h.day >= h.need ? '🎉 rescue at midnight' : '✓ banked') : isFinal(h) ? '🔥 final day · 15k' : isBoss(h) ? '⚔️ mini-boss · 15k' : '';
   view.innerHTML = `
-    <div id="cheerbar">${cheerBarHtml(s)}</div>${replyBtnHtml(s)}
+    <div id="cheerbar">${cheerBarHtml(s)}</div>${replyBtnHtml(s)}${premiumCardsHtml(s)}
     <div class="scenewrap big"><canvas id="scene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas>
       <div class="hudname">${esc(h.name)}</div></div>
     <div class="quest"><div class="qhead"><b>Day ${h.day}/${h.need}</b><div class="dpips">${pips}</div>${tag ? `<span class="tag">${tag}</span>` : ''}</div></div>
@@ -282,7 +282,7 @@ function bankHtml(s, paused) {
       <span>${BANK_ICON} <b>${fmt(bal)}</b></span>
       <span class="row nowrap">${paused ? `<span class="tag">⏸ paused</span>` : `<button class="btn small ${can ? 'acc' : 'ghost'}" id="pausebtn" ${can ? '' : 'disabled'}>⏸ ${fmt(cost)}</button>`}<button class="btn small" id="goshop" title="Raccoon Shop">🛍</button></span></div></div>`;
 }
-const BANK_KIND = { earn: ['👟', 'day banked'], pause: ['⏸', 'paused'], reset: ['💀', 'emptied'], shop: ['🛍', 'shop'], cheer: ['📣', 'cheer'], reply: ['↩', 'reply'], refund: ['💸', 'refund'] };
+const BANK_KIND = { earn: ['👟', 'day banked'], pause: ['⏸', 'paused'], reset: ['💀', 'emptied'], shop: ['🛍', 'shop'], cheer: ['📣', 'cheer'], reply: ['↩', 'reply'], refund: ['💸', 'refund'], premium: ['⭐', 'premium cheer'], pclaim: ['⭐', 'premium claimed'], ach: ['🏅', 'achievement'] };
 function bankWho(e) { const f = e.to && loadFriends().find(x => x.id === e.to); return (f && f.nick) || e.name || (e.to ? e.to : 'a friend'); } // local nickname wins
 function bankWhat(e) {
   const [icon, base] = BANK_KIND[e.kind] || ['•', e.kind];
@@ -564,7 +564,7 @@ function renderFriendView(id) {
     const prog = Math.min(1, f.todaySteps / f.goal), filled = Math.floor(prog * BAR_SEGMENTS);
     const pips = pipsHtml(f);
     view.innerHTML = `
-      <p class="row" style="justify-content:space-between"><button class="btn small ghost" id="fback">← Friends</button>${canCheer() ? `<button class="btn small acc" id="fcheer">📣 ${fmt(CHEER_COST)}</button>` : ''}</p>
+      <p class="row" style="justify-content:space-between"><button class="btn small ghost" id="fback">← Friends</button>${canCheer() ? `<span class="row nowrap">${(f.finalDay || f.bossToday) && !f.paused ? `<button class="btn small acc" id="fprem">⭐</button>` : ''}<button class="btn small acc" id="fcheer">📣 ${fmt(CHEER_COST)}</button></span>` : ''}</p>${premSentHtml(id)}
       <div class="scenewrap big"><canvas id="fscene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas><div class="hudname">${esc(f.name)}</div></div>
       <div class="quest"><div class="qhead"><b>Day ${f.day}/${f.need}</b><div class="dpips">${pips}</div><span class="tag">${friendStatus(f)}</span></div></div>
       <div class="steps"><b>${fmt(f.todaySteps)}</b><span>/ ${fmt(f.goal)}</span></div>
@@ -579,6 +579,7 @@ function renderFriendView(id) {
     anim = requestAnimationFrame(loop);
     $('#fback').addEventListener('click', () => go('friends'));
     $('#fcheer')?.addEventListener('click', () => openCheerPicker(id, x.nick || f.name));
+    $('#fprem')?.addEventListener('click', () => openPremium(id, x.nick || f.name));
     $('#fnicksave').addEventListener('click', () => { const l = loadFriends(), e = l.find(z => z.id === id); if (e) { e.nick = $('#fnick').value.trim().slice(0, 24); saveFriends(l); toast('Saved.'); draw(f); } });
     $('#fremove').addEventListener('click', () => { if (!confirm('Remove this friend from your list?')) return; localStorage.setItem('ph.friends', JSON.stringify(loadFriends().filter(z => z.id !== id))); state.friends = (state.friends || []).filter(x => x !== id);
       if (!DEMO) api('/friends/remove', { id }).then(r => { state = r.state; }).catch(() => {}); go('friends'); });
@@ -669,6 +670,61 @@ function openCheerPicker(to, name) {
   ov.querySelectorAll('[data-msg]').forEach(b => b.addEventListener('click', () => confirmCheer(to, name, cheerById(b.dataset.msg))));
 }
 // v0.6.0: every spend is confirmed: what, cost, balance after
+// v0.7.8 Premium Cheer (friend's 15k day only). Sender's steps are sunk; friend claims after hitting 15k today.
+function premSentHtml(id) {
+  const l = (state.pSent || []).filter(x => x.to === id); if (!l.length) return '';
+  return `<div class="psent">${l.map(x => `<span class="tag">Sent ${PREMIUM_TIERS[x.tier].icon} ${PREMIUM_TIERS[x.tier].label} · ${x.claimed ? '✓ claimed' : '⏳'}</span>`).join(' ')}</div>`;
+}
+function openPremium(to, name) {
+  const ov = $('#overlay'); ov.hidden = false;
+  ov.innerHTML = `<div class="ovbox cheer"><h2>⭐ ${esc(name)}</h2><div class="ptiers">${Object.entries(PREMIUM_TIERS).map(([k, T]) =>
+    `<button class="scell ptier" data-t="${k}" ${state.bank < T.cost ? 'disabled' : ''}><b>${T.icon} ${T.label}</b><span>👟 ${fmt(T.cost)}</span><span class="dim small">→ 🎁 ${fmt(T.reward)}</span></button>`).join('')}</div>
+    <p class="dim small">👟 ${fmt(state.bank)}</p><div class="row"><button class="btn ghost" id="cno">Cancel</button></div></div>`;
+  $('#cno').addEventListener('click', () => { ov.hidden = true; ov.innerHTML = ''; });
+  ov.querySelectorAll('.ptier').forEach(b => b.addEventListener('click', () => confirmPremium(to, name, b.dataset.t)));
+}
+function confirmPremium(to, name, tier) {
+  const T = PREMIUM_TIERS[tier], ov = $('#overlay'); ov.hidden = false;
+  ov.innerHTML = `<div class="ovbox cheer"><h2>${T.icon} ${esc(name)}</h2>
+    <p>${T.label} Cheer · <b>${fmt(T.cost)}</b></p>
+    <p class="dim small">🎁 ${fmt(T.reward)} if they hit ${fmt(PREMIUM_GOAL)} today · no refund</p>
+    <p class="dim small">👟 ${fmt(state.bank)} → ${fmt(state.bank - T.cost)}</p>
+    <div class="row" style="justify-content:space-between"><button class="btn ghost" id="cno">Cancel</button><button class="btn acc" id="cyes" ${state.bank < T.cost ? 'disabled' : ''}>Send · ${fmt(T.cost)}</button></div></div>`;
+  const close = () => { ov.hidden = true; ov.innerHTML = ''; };
+  $('#cno').addEventListener('click', close);
+  $('#cyes').addEventListener('click', async e => {
+    e.target.disabled = true;
+    if (DEMO) { state.bank -= T.cost; state.pSent = [...(state.pSent || []), { id: 'd' + Date.now(), to, tier, claimed: false }]; close(); toast(T.icon + ' Sent'); render(); return; }
+    try { const r = await api('/premiumCheer', { to, tier }); state = r.state; close(); toast(T.icon + ' Sent'); render(); }
+    catch (err) { close(); if (err.body && err.body.state) { state = err.body.state; render(); }
+      toast({ 'not a boss day': 'Only on a 15k day', 'not enough Spare Steps': `👟 ${fmt(T.cost)} needed`, 'not a friend': 'Not on your friends list' }[err.message] || "Couldn't send"); }
+  });
+}
+function premiumCardsHtml(s) {
+  return (s.premium || []).map(p => { const T = PREMIUM_TIERS[p.tier] || PREMIUM_TIERS.p, line = premiumLine(p.tier, p.msg), prog = Math.min(1, s.todaySteps / PREMIUM_GOAL), met = prog >= 1;
+    return `<div class="pcard ${p.tier}"><div class="phead"><b>${T.icon} ${T.label}</b><span class="dim small">${esc(p.name)}</span></div>
+      ${line ? `<p class="cheerprev">${esc(line.text)}</p>` : ''}
+      <div class="pbar"><div class="ptrack"><i style="width:${Math.round(prog * 100)}%"></i></div><span>🎁 ${fmt(p.reward)}</span></div>
+      <div class="row nowrap" style="justify-content:space-between"><span class="dim small">${fmt(Math.min(s.todaySteps, PREMIUM_GOAL))} / ${fmt(PREMIUM_GOAL)}</span>${p.claimed ? '<span class="tag">✓</span>' : met ? `<button class="btn small acc pclaim" data-id="${esc(p.id)}">Claim</button>` : ''}</div></div>`; }).join('');
+}
+async function claimPremium(id) {
+  const p = (state.premium || []).find(x => x.id === id); if (!p) return;
+  if (DEMO) { p.claimed = true; state.bank += p.reward; toast('🎁 +' + fmt(p.reward)); render(); return; }
+  try { const r = await api('/claimCheer', { id }); state = r.state; toast('🎁 +' + fmt(p.reward)); render(); }
+  catch (err) { if (err.body && err.body.state) { state = err.body.state; render(); } toast({ 'goal not met': `${fmt(PREMIUM_GOAL)} first`, 'already claimed': '✓ Already claimed' }[err.message] || "Couldn't claim"); }
+}
+function achHtml(s) {
+  const a = s.ach || { earned: {}, claimed: {} };
+  return `<h2>🏅 ACHIEVEMENTS</h2><div class="achs">${ACHIEVEMENTS.map(x => { const e = a.earned[x.id], c = a.claimed[x.id];
+    return `<div class="ach ${e ? '' : 'off'}"><span>${x.icon}</span><b>${x.label}</b><span class="dim small">👟 ${fmt(x.amount)}</span>${c ? '<span class="tag">✓</span>' : e ? `<button class="btn small acc aclaim" data-id="${x.id}">Claim</button>` : '<span class="dim">🔒</span>'}</div>`; }).join('')}</div>`;
+}
+async function claimAch(id) {
+  const x = ACHIEVEMENTS.find(a => a.id === id);
+  if (DEMO) { state.ach.claimed[id] = 'demo'; state.bank += x.amount; toast('🏅 +' + fmt(x.amount)); render(); return; }
+  try { const r = await api('/achievements/claim', { id }); state = r.state; toast('🏅 +' + fmt(x.amount)); render(); }
+  catch (err) { if (err.body && err.body.state) { state = err.body.state; render(); } toast("Couldn't claim"); }
+}
+document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('.pclaim, .aclaim'); if (!t || t.disabled) return; t.disabled = true; (t.classList.contains('pclaim') ? claimPremium : claimAch)(t.dataset.id); });
 function confirmCheer(to, name, c) {
   const ov = $('#overlay'); ov.hidden = false;
   ov.innerHTML = `<div class="ovbox cheer"><h2>📣 ${esc(name)}</h2>
@@ -748,6 +804,7 @@ function renderShelf() {
   `;
   drawItemIcons(view);
   animateShelf();
+  view.insertAdjacentHTML('beforeend', achHtml(s));
 }
 
 // ---- death replay: plays once, the next time the app opens after a death ----
@@ -1239,7 +1296,8 @@ async function boot() {
   if (DEMO && qs.has('spin')) setTimeout(() => spinner(true, 'Checking with The Raccoon…'), 50);
   if (DEMO) {
     if (DEMO === 'welcome' || DEMO === 'lost') { renderWelcome(DEMO === 'lost' ? 'K7PQ2MXW9A' : null); return; }
-    code = 'DEMO123456'; state = demoState(DEMO); if (qs.has('potato')) state.hostage = { ...state.hostage, rung: -1, species: 'potato', name: 'Couch Potato', need: 1, day: 1, streak: 0, deaths: 0, injuries: [], bosses: [], bossToday: false, finalDay: false }; if (qs.has('garmin')) state.garmin = { lastSync: Date.now() - 9 * 60000, lastSteps: state.todaySteps, lastError: null, lastErrorAt: null }; tab = qs.get('tab') || (DEMO === 'lineup' ? 'shelf' : 'home'); render();
+    code = 'DEMO123456'; state = demoState(DEMO); state.ach = { earned: { r1: 1, r2: 1, r3: 1, s15: 1 }, claimed: { r1: 1 } }; state.pSent = state.pSent || [];
+    if (qs.has('prem')) { state.todaySteps = +qs.get('prem') || state.todaySteps; state.premium = [{ id: 'd1', tier: 'mega', from: 'BEN123', name: 'Nugget', msg: 'm6', reward: 5000, claimed: false }, { id: 'd2', tier: 'p', from: 'STEPH1', name: 'Steph', msg: 'p3', reward: 2500, claimed: false }]; } if (qs.has('potato')) state.hostage = { ...state.hostage, rung: -1, species: 'potato', name: 'Couch Potato', need: 1, day: 1, streak: 0, deaths: 0, injuries: [], bosses: [], bossToday: false, finalDay: false }; if (qs.has('garmin')) state.garmin = { lastSync: Date.now() - 9 * 60000, lastSteps: state.todaySteps, lastError: null, lastErrorAt: null }; tab = qs.get('tab') || (DEMO === 'lineup' ? 'shelf' : 'home'); render();
     if (DEMO === 'death') playDeath(state.lastDeath, qs.has('f') ? +qs.get('f') : undefined);
     if (qs.get('friends')) saveFriends(qs.get('friends').split(',').map(id => ({ id, nick: id === 'BEN123' ? 'Ben' : '' }))); if (qs.get('friends') && tab === 'friends') render();
     if (qs.get('fview')) { friendOpen = qs.get('fview'); tab = 'friend'; render(); }
