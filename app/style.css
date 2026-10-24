@@ -41,7 +41,8 @@ canvas.px { image-rendering: pixelated; image-rendering: crisp-edges; display:bl
 .btn.acc { background: var(--acc); }
 .btn.small { font-size: 9px; padding: 6px 8px; }
 .btn.ghost { background: transparent; color: var(--ink); border-color: #5a4a70; box-shadow:none; }
-.chart { display:flex; gap: 3px; align-items:flex-end; height: 56px; margin-top: 6px; }
+.chart { display:flex; gap: 3px; align-items:flex-end; height: 68px; margin-top: 6px; padding-top: 12px; }
+.chart .blab { position:absolute; bottom:100%; left:50%; transform:translateX(-50%); margin-bottom:2px; font-size:9px; line-height:1; color: var(--ink); opacity:.85; white-space:nowrap; pointer-events:none; } /* v0.8.3 */
 .chart div { flex:1; background:#3a3050; min-height: 3px; position:relative; }
 .chart div.met { background: var(--good); }
 .chart div.miss { background: var(--bad); }

@@ -5,7 +5,7 @@ import { VILLAINS, SLOTS, COLORS, TIERS, colorById, forSlot, owns, REWARDS, STYL
 import { drawWall, drawBulbIcon, drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, itemSprite, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.8.2';
+const VERSION = 'v0.8.3';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000; // the server decides; this is only for demos
 const kGoal = g => `${Math.round((g || 15000) / 1000)}k`; // 15000 -> '15k'
@@ -236,7 +236,7 @@ function chartHtml(s) { // v0.6.7: shared by Home and the friend view
   const maxSteps = Math.max(s.goal * 1.3, ...s.days.map(d => d.steps || 0));
   return s.days.map(d => {
     const cls = d.paused ? 'paused' : d.steps == null ? (d.date < s.started || d.date === s.today ? '' : 'none') : (d.steps >= (d.goal || s.baseGoal || GOAL) ? 'met' : d.date === s.today ? '' : 'miss');
-    return `<div class="${cls} ${d.date === s.today ? 'today' : ''} ${(d.goal || 0) > (s.baseGoal || GOAL) ? 'boss' : ''}" style="height:${Math.round(100 * (d.steps || 0) / maxSteps)}%" title="${d.date}: ${d.steps ?? 'no data'}${(d.goal || 0) > (s.baseGoal || GOAL) ? ' (15k day)' : ''}"></div>`;
+    return `<div class="${cls} ${d.date === s.today ? 'today' : ''} ${(d.goal || 0) > (s.baseGoal || GOAL) ? 'boss' : ''}" style="height:${Math.round(100 * (d.steps || 0) / maxSteps)}%" title="${d.date}: ${d.steps ?? 'no data'}${(d.goal || 0) > (s.baseGoal || GOAL) ? ' (15k day)' : ''}">${d.steps == null || d.paused ? '' : `<span class="blab">${Math.round(d.steps / 1000)}</span>`}</div>`; // v0.8.3: steps in thousands above each bar
   }).join('');
 }
 function renderHome() {
