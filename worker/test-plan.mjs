@@ -2,7 +2,7 @@
 import assert from 'node:assert';
 import fs from 'node:fs';
 import { planFor, legacyBossDays, dayGoal, PLAN_V } from './src/plan.js';
-import { settle, newState, goalToday, view, needFor } from './src/game.js';
+import { settle, newState, goalToday, view, needFor, addDays } from './src/game.js';
 assert.equal(fs.readFileSync('src/plan.js', 'utf8'), fs.readFileSync('../app/plan.js', 'utf8'), 'app/plan.js must match');
 const goals = r => { const n = needFor(r), p = planFor(r); return Array.from({ length: n }, (_, i) => dayGoal(i + 1, n, p.bosses, p.big)); };
 // Chompsky, Nugget unchanged
@@ -13,8 +13,16 @@ assert.deepEqual(goals(3), [10000, 10000, 15000, 10000, 10000, 15000, 10000, 100
 const triple = g => g.some((x, i) => i >= 2 && x === 10000 && g[i - 1] === 10000 && g[i - 2] === 10000);
 for (const r of [2, 3]) assert.ok(!triple(goals(r)), 'no 3x10k r' + r);
 for (let r = 10; r <= 25; r++) assert.ok(!triple(goals(r)), 'no 3x10k r' + r);
+// v0.8.2: EVERY run from Acorn on (incl. the II/III loops) - never 3+ 10k in a row, never 3 hard in a row,
+// at least half 10k, every 20k day next to a 10k day, 20k final from Prickles on
+for (let r = 2; r <= 64; r++) { const g = goals(r), n = g.length;
+  assert.ok(!triple(g), 'no 3x10k r' + r);
+  assert.ok(g.filter(x => x === 10000).length >= n / 2, 'half 10k r' + r);
+  assert.equal(g.at(-1), r >= 3 ? 20000 : 15000, 'final r' + r);
+  for (let i = 1; i < n; i++) { if (i < n - 1) assert.ok(!(g[i - 1] > 10000 && g[i] > 10000 && g[i + 1] > 10000), `3 hard r${r}`);
+    if (g[i] === 20000) assert.ok(g[i - 1] === 10000 && (i === n - 1 || g[i + 1] === 10000), `20k flanked r${r} d${i + 1}`); } }
 // Prickles..Yuzu: same mini-bosses, 20k final
-for (let r = 3; r <= 8; r++) { const g = goals(r); if (r > 3) assert.deepEqual(planFor(r).bosses, legacyBossDays(r)); assert.equal(g.at(-1), 20000); assert.equal(g.filter(x => x === 20000).length, 1); }
+for (let r = 3; r <= 8; r++) { const g = goals(r); if (r > 3) assert.ok(legacyBossDays(r).every(d => planFor(r).bosses.includes(d)), 'keeps v0.5.2 bosses r' + r); assert.equal(g.at(-1), 20000); assert.equal(g.filter(x => x === 20000).length, 1); }
 // late plan (Marmalade+): more hard days than before, escalating, with breathers
 let prev = { m: 0, b: 0 };
 for (let r = 9; r <= 25; r++) {
@@ -48,9 +56,19 @@ for (let r = 9; r <= 25; r++) {
   settle(st, '2026-10-01'); assert.equal(goalToday(st), 15000, 'old mini-boss today kept'); assert.deepEqual(st.hostage.bosses, [4, 5]); }
 { const st = newState('PLAN000008', '2026-10-01'); st.hostage = { rung: 2, streak: 4, since: '2026-09-27', settledThrough: '2026-09-30', bosses: [4], big: [], plan: 2 };
   settle(st, '2026-10-01'); assert.equal(goalToday(st), 10000, 'day 5 today stays 10k'); assert.deepEqual(st.hostage.bosses, [4]); }
-// plan-2 runs on unchanged animals are left alone (no write)
-{ const st = newState('PLAN000009', '2026-10-01'); st.hostage = { rung: 5, streak: 1, since: '2026-09-30', settledThrough: '2026-09-30', bosses: [4], big: [13], plan: 2 };
-  settle(st, '2026-10-01'); assert.equal(st.hostage.plan, 2); assert.deepEqual(st.hostage.bosses, [4]); }
+// runs on animals whose plan did not change are left alone (no write)
+for (const [rung, plan] of [[1, 2], [2, 3], [3, 3], [11, 3]]) { const st = newState('PLAN00001' + rung, '2026-10-01');
+  st.hostage = { rung, streak: 1, since: '2026-09-30', settledThrough: '2026-09-30', bosses: [9], big: [], plan }; settle(st, '2026-10-01');
+  assert.equal(st.hostage.plan, plan, 'untouched r' + rung); assert.deepEqual(st.hostage.bosses, [9]); }
+// v0.8.2: a plan-2/3 Mittens..Marmalade run mid-way keeps past days + today, future days follow the new plan
+for (const [rung, streak] of [[4, 3], [5, 2], [7, 9], [9, 6]]) { const st = newState('PLAN00002' + rung, '2026-10-01'), n = 3 + 2 * rung;
+  const old = { bosses: legacyBossDays(rung), big: [n] };
+  st.hostage = { rung, streak, since: addDays('2026-10-01', -streak), settledThrough: '2026-09-30', bosses: [...old.bosses], big: [...old.big], plan: 3 };
+  const before = Array.from({ length: n }, (_, i) => dayGoal(i + 1, n, old.bosses, old.big));
+  settle(st, '2026-10-01'); assert.equal(st.hostage.plan, PLAN_V);
+  const after = Array.from({ length: n }, (_, i) => dayGoal(i + 1, n, st.hostage.bosses, st.hostage.big)), L = streak + 1;
+  assert.deepEqual(after.slice(0, L), before.slice(0, L), 'past + today kept r' + rung); assert.deepEqual(after.slice(L), goals(rung).slice(L), 'future = new plan r' + rung);
+  assert.equal(goalToday(st), before[streak]); }
 // migration: Marmalade on day 8 (old 15k mini-boss today) keeps it; later days follow the late plan
 { const st = newState('PLAN000004', '2026-10-01'); st.hostage = { rung: 9, streak: 7, since: '2026-09-24', settledThrough: '2026-09-30', bosses: [4, 8, 11, 14, 18] };
   settle(st, '2026-10-01'); assert.equal(goalToday(st), 15000); const p = planFor(9);
@@ -58,4 +76,4 @@ for (let r = 9; r <= 25; r++) {
 // unsynced gap: yesterday unsettled, today could be day streak+2 -> both slots keep the old goal
 { const st = newState('PLAN000005', '2026-10-01'); st.hostage = { rung: 3, streak: 7, since: '2026-09-23', settledThrough: '2026-09-29', bosses: [5] };
   st.days['2026-09-30'] = 12000; settle(st, '2026-10-01'); assert.equal(st.hostage.streak, 8); assert.equal(goalToday(st), 15000, 'day 9 could have been today'); }
-console.log('✓ v0.8.0 day plans (Chompsky/Nugget unchanged, Acorn/Prickles hand-set, no 3x10k farm runs, 20k finals r3+, escalating late plan, mid-day-safe migration)');
+console.log('✓ v0.8.2 day plans (Chompsky/Nugget unchanged, Acorn/Prickles hand-set, no 3x10k from Acorn on incl. II loops r2-64, 20k finals r3+, escalating late plan, mid-day-safe migration)');

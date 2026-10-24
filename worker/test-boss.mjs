@@ -5,11 +5,11 @@ import { bossDaysFor, needFor, settle, view, goalToday, newState, addDays } from
 assert.deepEqual(bossDaysFor(0), []); assert.deepEqual(bossDaysFor(1), []);
 for (let r = 4; r < 9; r++) { // v0.8.0: rungs 9+ use the late plan; v0.8.1: Acorn/Prickles hand-set (test-plan.mjs)
   const n = needFor(r), b = bossDaysFor(r);
-  assert.equal(b.length, Math.floor((n - 4) / 3), 'count r' + r);
+  assert.ok(b.length >= Math.floor((n - 4) / 3), 'count r' + r); // v0.8.2: plus breakers so no 3x10k in a row
   for (const d of b) { assert.ok(d >= 2 && d <= n - 2, `r${r} d${d}`); }
   assert.deepEqual([...b].sort((x, y) => x - y), b);
 }
-assert.deepEqual(bossDaysFor(2), [3, 5]); assert.deepEqual(bossDaysFor(5), [4, 7, 10]);
+assert.deepEqual(bossDaysFor(2), [3, 5]); assert.deepEqual(bossDaysFor(5), [3, 4, 7, 10]);
 // a fresh Acorn run: day 4 asks 15k, earns above 15k
 const st = newState('TESTBOSS01', '2026-10-01');
 st.hostage = { rung: 2, streak: 0, since: '2026-10-01', settledThrough: '2026-09-30', bosses: [4], big: [], plan: PLAN_V }; // the v0.5.2 Acorn layout st.pets[2] = { species: 'squirrel', name: 'Acorn', deaths: 0, injuries: [], rescuedOn: null, rescues: 0 };
@@ -24,7 +24,7 @@ s2.days['2026-10-04'] = 14999; settle(s2, '2026-10-05'); assert.equal(s2.stats.m
 assert.deepEqual(s2.hostage.bosses, [], 'rekidnapped hamster: no mini-bosses');
 // migration: a run in progress keeps today and closed days; only later days become bosses
 const m = newState('TESTBOSS03', '2026-10-01'); m.hostage = { rung: 4, streak: 3, since: '2026-10-01', settledThrough: '2026-10-03' }; // today = day 4 (a boss slot) -> not a boss
-settle(m, '2026-10-04'); assert.deepEqual(m.hostage.bosses, [8]); assert.equal(goalToday(m), 10000);
+settle(m, '2026-10-04'); assert.deepEqual(m.hostage.bosses, [7, 8]); assert.equal(goalToday(m), 10000);
 const m2 = newState('TESTBOSS04', '2026-10-01'); m2.hostage = { rung: 2, streak: 2, since: '2026-10-01', settledThrough: '2026-10-02' }; // today = day 3 -> day 4 still ahead
 settle(m2, '2026-10-03'); assert.deepEqual(m2.hostage.bosses, [5]); // v0.8.1 Acorn plan: day 3 is today (kept 10k), day 5 ahead
 // unsettled gap: settledThrough two days back, today could be day streak+2 -> that slot is excluded

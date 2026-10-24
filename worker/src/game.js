@@ -1,7 +1,7 @@
 import { ACHIEVEMENTS, achById } from './cheers.js';
-import { planFor, dayGoal, PLAN_V, FIXED } from './plan.js';
+import { planFor, dayGoal, PLAN_V, replanNeeded } from './plan.js';
 // v0.8.1: which runs still need the plan migration (plan-2 runs only if their animal's plan changed since)
-export const needsPlan = h => !!h && h.plan !== PLAN_V && !(h.plan === 2 && !FIXED[h.rung]);
+export const needsPlan = h => !!h && h.plan !== PLAN_V && replanNeeded(h.plan, h.rung); // v0.8.2: only runs whose animal's plan changed
 import { colorById, itemFor, owns, emptyCosmetics, VILLAINS, REWARDS, styleKey, hasStyle, wallById, wallPrice, wallNeed, roomOf, BULBS, BULB_PRICE, WALL_NEED_RESCUED } from './shop.js';
 // Pet Hostage v0.2 rules: a rescue LADDER. Tunable constants up top.
 export const RULES = {

@@ -5,7 +5,7 @@ import { VILLAINS, SLOTS, COLORS, TIERS, colorById, forSlot, owns, REWARDS, STYL
 import { drawWall, drawBulbIcon, drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, itemSprite, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.8.1';
+const VERSION = 'v0.8.2';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
 const GOAL = 10000; // the server decides; this is only for demos
 const kGoal = g => `${Math.round((g || 15000) / 1000)}k`; // 15000 -> '15k'

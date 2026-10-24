@@ -2,15 +2,19 @@
 //  - Chompsky, Nugget (rungs 0-1): unchanged. Final day 15k.
 //  - Acorn (rung 2, v0.8.1): 10 10 15m 10 15m 10 15B (never 3+ 10k days in a row; final stays 15k).
 //  - Prickles (rung 3, v0.8.1): 10 10 15m 10 10 15m 10 10 20B (never 3+ 10k days in a row).
-//  - Mittens .. Yuzu (rungs 4-8): v0.5.2 15k mini-bosses unchanged, final day 20k.
+//  - Mittens .. Yuzu (rungs 4-8): v0.5.2 15k mini-bosses, final day 20k; v0.8.2: plus extra 15k days so there are never 3+ 10k days in a row.
 //  - Marmalade on (rung 9+, runs of 21+ days): an escalating plan. Warm-up (first ~30%) has a 15k every 3rd
 //    day; after that a repeating 7-day block of 15k/20k/15k+15k with 10k breathers. A 20k day always sits between
 //    10k days, never 3 hard days in a row, the day before the final is always a 10k breather, final day 20k.
-//  - From rung 10 (the farm animals, v0.8.1) the late plan also never has 3+ 10k days in a row.
+//  - v0.8.2: from Acorn (rung 2) on, EVERY run (incl. the II/III loops) never has 3+ 10k days in a row
+//    (rungs 0-1 exempt). A breaker 15k never sits next to a 20k and never makes 3 hard days in a row.
 export const GOAL = 10000, MID_GOAL = 15000, BIG_GOAL = 20000;
-export const PLAN_V = 3; // bump when a plan changes; runs in progress migrate future days only
+export const PLAN_V = 4; // bump when a plan changes; runs in progress migrate future days only
+// which rungs each plan version changed (so a run on an untouched animal is never rewritten / re-saved)
+const CHANGED = { 3: r => r === 2 || r === 3 || r >= 10, 4: r => r >= 4 && r <= 9 };
+export const replanNeeded = (from, rung) => !(from >= 2) || Object.keys(CHANGED).some(v => +v > from && +v <= PLAN_V && CHANGED[v](rung));
 export const FIXED = { 2: { bosses: [3, 5], big: [] }, 3: { bosses: [3, 6], big: [9] } }; // v0.8.1 hand-set plans
-export const NO_TRIPLE_FROM_RUNG = 10;
+export const NO_TRIPLE_FROM_RUNG = 2;
 export const MINIBOSS_FROM_RUNG = 2, BIG_FINAL_FROM_RUNG = 3, LATE_PLAN_FROM_RUNG = 9;
 const runDays = rung => 3 + 2 * rung;
 export function legacyBossDays(rung) { // v0.5.2: floor((days-4)/3) 15k days spread evenly, never day 1 or the day before the final
@@ -25,12 +29,15 @@ export function planFor(rung) {
   const n = runDays(rung);
   if (FIXED[rung]) return { bosses: [...FIXED[rung].bosses], big: [...FIXED[rung].big] };
   if (rung < BIG_FINAL_FROM_RUNG) return { bosses: legacyBossDays(rung), big: [] };
-  if (rung < LATE_PLAN_FROM_RUNG) return { bosses: legacyBossDays(rung), big: [n] };
-  const g = Array(n + 2).fill(10), a = Math.round(n * 0.3); g[n] = 20;
-  for (let d = n - 2, i = 0; d > a; d--, i++) g[d] = UNIT[i % UNIT.length];
-  for (let d = rung >= NO_TRIPLE_FROM_RUNG ? 3 : 4; d <= a; d += 3) if (g[d + 1] === 10 || d + 1 > a) g[d] = 15;
-  for (let d = 2; d < n; d++) if (g[d] === 20) { if (g[d - 1] === 15) g[d - 1] = 10; if (g[d + 1] === 15) g[d + 1] = 10; }
-  for (let d = 2; d < n; d++) if (g[d] > 10 && g[d - 1] > 10 && g[d + 1] > 10) g[d] = 10;
+  const g = Array(n + 2).fill(10); g[n] = 20;
+  if (rung < LATE_PLAN_FROM_RUNG) for (const d of legacyBossDays(rung)) g[d] = 15;
+  else {
+    const a = Math.round(n * 0.3);
+    for (let d = n - 2, i = 0; d > a; d--, i++) g[d] = UNIT[i % UNIT.length];
+    for (let d = 3; d <= a; d += 3) if (g[d + 1] === 10 || d + 1 > a) g[d] = 15;
+    for (let d = 2; d < n; d++) if (g[d] === 20) { if (g[d - 1] === 15) g[d - 1] = 10; if (g[d + 1] === 15) g[d + 1] = 10; }
+    for (let d = 2; d < n; d++) if (g[d] > 10 && g[d - 1] > 10 && g[d + 1] > 10) g[d] = 10;
+  }
   if (rung >= NO_TRIPLE_FROM_RUNG) for (let d = 1, run = 0; d < n; d++) { // break up any 3 x 10k in a row
     run = g[d] === 10 ? run + 1 : 0; if (run < 3) continue;
     if (d !== n - 1 && g[d + 1] !== 20 && !(g[d + 1] > 10 && g[d + 2] > 10)) { g[d] = 15; run = 0; } else { g[d - 1] = 15; run = 1; }
