@@ -148,6 +148,35 @@ export const SPECIES = {
       if (Math.sin(t * 2.6) > 0.8) { set(g, 21, 1, 't'); set(g, 22, 0, 'j'); set(g, 20, 0, 'j'); } // a twinkle on the horn
       ell(g, CX, 23.6, 4.6, 2.6, 'c'); // soft muzzle
     } },
+  // v0.8.1 farm animals (rungs 10-12, replacing the old II repeats): a cow calf, a lamb and a goat kid.
+  calf: { label: 'calf', pal: { k: '#6a5a68', w: '#fffaf6', g: '#ece2e6', d: '#4a4048', D: '#2e2830', n: '#ffc4d2', N: '#e0849c', p: '#ffc4d2', P: '#4a3040', q: '#ffa8bc', m: '#6a3048', e: '#1e1620', i: '#4a3a5a', I: '#8a7aa0', j: '#e8dcf4', h: '#fff0c8', H: '#d0b480', y: '#ffd23e', Y: '#c8961e', r: '#e8405e' },
+    back(l, t) { const sw = Math.sin(t * 2.4) * 1; stroke(l, [[25, 33], [29.5, 31.5], [31.5 + sw, 27]], 0.8, 0.8, 'w'); ell(l, 31.5 + sw, 26, 1.5, 1.8, 'd'); },
+    ears(l, t, dr) { const f = dr * 1.2 + Math.sin(t * 2) * 0.3;
+      for (const [c, s] of [[4.4, -1], [MC(4.4), 1]]) { ell(l, c, 14.5 + f, 3.6, 1.9, 'w'); ell(l, c + s * 0.4, 14.7 + f, 2.2, 0.9, 'p'); }
+      for (const c of [11.5, MC(11.5)]) ell(l, c, 7.4, 1.4, 1.8, 'h'); }, // little horn nubs
+    head(g) {
+      ell(g, 10.5, 11.5, 3.6, 2.6, 'd'); ell(g, 25.6, 10.4, 2.6, 2, 'd'); set(g, 29, 14, 'd'); set(g, 30, 15, 'd'); set(g, 29, 15, 'd'); // patches
+      for (const [x, y] of [[17, 7], [18, 7], [18, 6], [19, 7]]) set(g, x, y, 'd'); // tuft
+      ell(g, CX, 24, 5.2, 2.8, 'n'); set(g, 16, 23, 'N'); set(g, 19, 23, 'N'); // big pink muzzle with nostrils
+    }, mouth: 'calf', arms: 'w', feet: 'd' },
+  lamb: { label: 'lamb', pal: { k: '#9a8290', w: '#fff0e2', g: '#f2dccc', v: '#ffffff', V: '#e4dcea', p: '#ffbccc', P: '#e0708e', q: '#ffa8bc', m: '#7a3a50', e: '#2a1a24', i: '#5a3a5a', I: '#a07aa0', j: '#f0dcf0' },
+    back(l, t) { const p = Math.sin(t * 1.5) * 0.3; for (let i = 0; i < 11; i++) { const a = Math.PI * (0.92 + i * 1.16 / 10) ; ell(l, CX + Math.cos(a) * 7.4, 31 + Math.sin(a) * 5 + (a > Math.PI * 1.9 || a < Math.PI ? 0 : 0), 2.5 + p, 2.5 + p, 'v'); }
+      for (const a of [0.2, 0.9, 2.2, 2.9]) ell(l, CX + Math.cos(a) * 7.6, 31.5 + Math.sin(a) * 4, 2.3, 2.3, 'v'); ell(l, 27.5, 28.5, 1.8, 1.8, 'v'); }, // a puffy wool coat
+    ears(l, t, dr) { const f = dr * 1.4 + Math.sin(t * 2.3) * 0.3; for (const [c, s] of [[4.2, -1], [MC(4.2), 1]]) { ell(l, c, 16.2 + f, 3.4, 1.7, 'w'); ell(l, c + s * 0.3, 16.4 + f, 2, 0.8, 'p'); } },
+    head(g, t) { const b = Math.sin(t * 1.5) > 0.6 ? 0.3 : 0;
+      layer(g, l => { for (const [x, y, r] of [[12, 9.2, 3], [16, 7.4, 3.2], [20.4, 7.4, 3.2], [24.2, 9.2, 3], [18.2, 10.2, 3], [9.6, 11.6, 2], [26.6, 11.6, 2]]) ell(l, x, y - b, r, r * 0.9, 'v'); }, 'V'); // wool top-knot
+      set(g, 14, 7, 'V'); set(g, 21, 6, 'V'); set(g, 18, 10, 'V'); }, arms: 'v', feet: 'V' },
+  goat: { label: 'goat kid', pal: { k: '#7a5a3e', w: '#f6e6d0', g: '#e6ceb0', c: '#fffaf2', d: '#a8744a', D: '#7a5032', p: '#ffbcc4', P: '#5a3a2a', q: '#ffa6b0', m: '#6a3a28', e: '#241a10', i: '#7a5a1a', I: '#c8a040', j: '#f4e4b0', h: '#b8a8a0', H: '#8a7a74' },
+    back(l, t) { const w = Math.sin(t * 7) > 0.4 ? 1 : 0; ell(l, 27 + w * 0.5, 28.5 - w, 1.4, 2.2, 'd'); }, // a flicky tail
+    ears(l, t, dr) { const f = dr * 1.6;
+      stroke(l, [[13.5, 9], [12.5, 5], [10, 2.5], [8, 3]], 1.4, 0.7, 'h'); stroke(l, [[MC(13.5), 9], [MC(12.5), 5], [MC(10), 2.5], [MC(8), 3]], 1.4, 0.7, 'h'); // little swept horns
+      tri(l, 7, 12.5, 7.5, 17, -0.5, 17.5 + f, 'w'); tri(l, 29, 12.5, 28.5, 17, 36.5, 17.5 + f, 'w'); tri(l, 6.4, 14, 6.6, 16.5, 1.6, 16.8 + f, 'p'); tri(l, 29.6, 14, 29.4, 16.5, 34.4, 16.8 + f, 'p'); },
+    head(g) {
+      for (const [x, y] of [[16, 8], [17, 7], [18, 7], [19, 8], [17, 8], [18, 8], [15, 9], [20, 9], [17, 9], [18, 9]]) set(g, x, y, 'd'); // forelock
+      for (let y = 10; y < 14; y++) { set(g, 17, y, 'c'); set(g, 18, y, 'c'); } // blaze
+      ell(g, CX, 23.8, 4.4, 2.5, 'c');
+      layer(g, l => tri(l, 16.4, 27.6, 19.6, 27.6, 18, 32.4, 'c'), 'D'); // goatee
+    }, feet: 'D' },
   // v0.6.9 Easter egg, v0.7.0 Couch Potato: a fat slumped spud, half-lidded sleepy eyes, a droopy sprout and a z now and then.
   potato: { label: 'couch potato', fat: true, sleepy: true, pal: { k: '#7a5a34', w: '#e2b878', g: '#c99a5a', c: '#ecc88e', p: '#c8945a', P: '#6a4a2a', q: '#f0a08a', m: '#5a3a1e', e: '#2e1d20', i: '#5a3a22', I: '#8a6a42', j: '#ffffff', L: '#6ac04a', D: '#3e8a2e', s: '#b08048', z: '#d8e4ff', Z: '#7a8ac8' },
     ears() {},
@@ -162,7 +191,7 @@ export const SPECIES = {
         if (y >= 0) pat(g, x, y, Zg.map(r => r.replace(/#/g, 'z'))); } // Zzz drifting up
     }, belly: 'c' },
 };
-export const SPECIES_ORDER = ['bunny', 'hamster', 'squirrel', 'hedgehog', 'kitten', 'duckling', 'piglet', 'panda', 'capybara', 'unicorn'];
+export const SPECIES_ORDER = ['bunny', 'hamster', 'squirrel', 'hedgehog', 'kitten', 'duckling', 'piglet', 'panda', 'capybara', 'unicorn', 'calf', 'lamb', 'goat'];
 
 function mixHex(h, to, w) { const n = parseInt(h.slice(1, 7), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
   return '#' + [r, g, b].map((v, i) => Math.round(v * (1 - w) + to[i] * w).toString(16).padStart(2, '0')).join(''); }
@@ -269,7 +298,8 @@ export function critter(species, mood, t, injuries = [], opts = {}) {
     set(g, 17, 22, 't');
   } else {
     let my = 22;
-    if (sp.mouth === 'snout') { layer(g, l => ell(l, CX, 22, 3, 1.9, 'n'), 'N'); set(g, 16, 22, 'N'); set(g, 19, 22, 'N'); my = 24.4; }
+    if (sp.mouth === 'calf') my = 23.6; // nostrils drawn on the muzzle by head()
+    else if (sp.mouth === 'snout') { layer(g, l => ell(l, CX, 22, 3, 1.9, 'n'), 'N'); set(g, 16, 22, 'N'); set(g, 19, 22, 'N'); my = 24.4; }
     else if (sp.mouth === 'capy') { for (let x = 15; x <= 20; x++) set(g, x, 22, x === 15 || x === 20 ? 'k' : 'P'); for (let x = 16; x <= 19; x++) set(g, x, 21, 'k'); set(g, 16, 22, 't'); set(g, 17, 23, 'P'); set(g, 18, 23, 'P'); my = 23.5; } // wide flat capybara nose
     else { set(g, 17, 21, 'P'); set(g, 18, 21, 'P'); }
     const y = Math.round(my) - 22;
@@ -949,6 +979,59 @@ const PERIL = {
       for (let i = 0; i < 5; i++) if (Math.sin(t * 9 + i * 2.1) > 0.6) px(ctx, 28 + i * 9, 68 - (i % 2) * 3, 1, 1, i % 2 ? '#ffe27a' : '#ff6fa8'); // juice + glitter spray
       const [ax, ay] = racWithPaw(ctx, st, t, 'crank'); pline(ctx, 74, 12, ax, ay, '#a7824c'); winch(ctx, ax, ay, t); }
     else pline(ctx, 74, 12, 76, 60, '#a7824c');
+  },
+  calf(ctx, st, t, calm) { // v0.8.1: paddling in a giant blender of milk while a paw hovers over PULSE; a straw is already in
+    px(ctx, 20, 84, 44, 9, '#5d6170'); px(ctx, 20, 84, 44, 1, '#8a8f9c'); px(ctx, 22, 92, 40, 1, '#3a3c48'); // motor base
+    const on = !calm && Math.sin(t * 2.2) > 0.2;
+    px(ctx, 52, 87, 5, 3, on ? '#ff4a5a' : '#a83040'); px(ctx, 28, 87, 3, 3, '#3a3c48'); px(ctx, 33, 87, 3, 3, '#3a3c48'); // PULSE button + dials
+    if (!calm) petAt(ctx, st, t, 24 + (on ? Math.round(Math.sin(t * 20)) : 0), 40 + Math.round(Math.sin(t * 3) * 1.5));
+    const lvl = calm ? 74 : 66 + Math.round(Math.sin(t * 1.1) * 2); // milk line
+    ctx.save(); ctx.globalAlpha = 0.82; px(ctx, 25, lvl, 34, 82 - lvl, '#fbf6ee'); ctx.restore();
+    if (!calm) { for (let i = 0; i < 5; i++) { const x = 26 + ((t * (on ? 30 : 6) + i * 7) % 32); px(ctx, x, lvl + 3 + (i % 3) * 3, 3, 1, '#e8dcd0'); } // swirl
+      for (let i = 0; i < 4; i++) if (Math.sin(t * 9 + i * 1.7) > 0.5) px(ctx, 28 + i * 8, lvl - 2 - (i % 2) * 3, 1, 1, '#ffffff'); // splashes
+      px(ctx, 34, lvl + 4 + Math.round(Math.sin(t * 2) * 1), 4, 3, '#cfeeff'); px(ctx, 47, lvl + 7 + Math.round(Math.cos(t * 2) * 1), 4, 3, '#cfeeff'); } // ice cubes
+    const bl = on ? Math.floor(t * 20) % 2 : 0; px(ctx, 36 - bl * 2, 81, 12 + bl * 4, 1, '#c5cad6'); px(ctx, 41, 79, 2, 3, '#8a8f9c'); // blade
+    // the glass jar (drawn over the contents) + handle + measuring marks
+    ctx.save(); ctx.globalAlpha = 0.22; px(ctx, 24, 36, 36, 46, '#cfeeff'); ctx.restore();
+    px(ctx, 23, 36, 1, 47, '#c5e4f4'); px(ctx, 60, 36, 1, 47, '#c5e4f4'); px(ctx, 23, 82, 38, 2, '#8a8f9c'); px(ctx, 22, 35, 40, 1, '#e8f6ff');
+    px(ctx, 61, 44, 6, 2, '#c5e4f4'); px(ctx, 66, 44, 2, 22, '#c5e4f4'); px(ctx, 61, 64, 6, 2, '#c5e4f4');
+    for (let y = 46; y < 80; y += 8) px(ctx, 25, y, 3, 1, '#9ac8e0');
+    px(ctx, 25, 39, 1, 30, '#ffffff'); // glint
+    if (!calm) { for (let j = 0; j < 24; j++) px(ctx, 55 + Math.round(j * 0.3), 64 - j * 1.4, 2, 2, Math.floor(j / 3) % 2 ? '#ffffff' : '#ff6a7a'); // a bendy straw, already in
+      const [ax, ay] = racWithPaw(ctx, st, t, 'crank'); const by = on ? 86 : 82; pline(ctx, ax, ay, 55, by, '#1f1a28'); px(ctx, 53, by - 1, 4, 2, '#1f1a28'); }
+  },
+  lamb(ctx, st, t, calm) { // v0.8.1: trussed to a rotisserie spit over the coals; mint sauce on standby
+    px(ctx, 14, 48, 3, 44, '#5d6170'); px(ctx, 76, 48, 3, 44, '#5d6170'); px(ctx, 12, 90, 7, 2, '#3a3c48'); px(ctx, 74, 90, 7, 2, '#3a3c48'); // posts
+    px(ctx, 20, 89, 54, 3, '#2a2028'); for (let i = 0; i < 9; i++) px(ctx, 22 + i * 6, 88, 4, 2, calm ? '#3a3038' : (Math.sin(t * 5 + i) > 0 ? '#ff6a2a' : '#c83a1a')); // coal bed
+    if (!calm) flames(ctx, 24, 88, 46, t);
+    const turn = calm ? 0 : Math.sin(t * 1.6);
+    if (!calm) petAt(ctx, st, t, 29 + Math.round(turn * 1.5), 40 + Math.round(Math.abs(turn) * 1.2), { flip: turn < -0.3 });
+    px(ctx, 13, 70, 70, 2, '#c5cad6'); px(ctx, 13, 70, 70, 1, '#e8ecf4'); // the spit, tucked under the paws
+    if (!calm) { for (const x of [38, 54]) { px(ctx, x, 67, 1, 8, '#c8a070'); px(ctx, x + 1, 68, 1, 6, '#a07a48'); } // twine
+      for (let i = 0; i < 3; i++) if (Math.sin(t * 8 + i * 2) > 0.7) px(ctx, 32 + i * 9, 82, 1, 2, '#ffd870'); // drips sizzling
+      steam(ctx, 30, 58, 34, t, 4); }
+    // mint sauce, ready: a little green jar with a sprig
+    { const jx = 19, jy = 40; px(ctx, jx - 1, jy + 8, 9, 1, '#5d6170'); px(ctx, jx, jy, 7, 8, '#e8e4ec'); px(ctx, jx + 1, jy + 1, 5, 6, '#4ab86a'); px(ctx, jx, jy - 1, 7, 1, '#8a8f9c'); px(ctx, jx + 4, jy - 5, 1, 4, '#3a8a3a'); px(ctx, jx + 2, jy - 5, 2, 2, '#5ac85a'); px(ctx, jx + 5, jy - 6, 2, 2, '#5ac85a'); }
+    px(ctx, 79, 69, 4, 4, '#8a8f9c'); // gear on the spit end
+    if (!calm) { const [ax, ay] = racWithPaw(ctx, st, t, 'crank'); pline(ctx, 82, 71, ax, ay, '#8a8f9c'); px(ctx, ax - 1, ay - 1, 3, 3, '#1f1a28'); }
+    else px(ctx, 82, 71, 2, 6, '#8a8f9c');
+  },
+  goat(ctx, st, t, calm) { // v0.8.1: standing on a pizza on a peel, being eased into a roaring brick oven
+    for (let j = 0; j < 30; j++) { const o = Math.round(14 - Math.sqrt(Math.max(0, 196 - (30 - j) * (30 - j) * 0.22))); px(ctx, 6 + o * 0, 52 + j, 30 - 0, 1, j % 5 ? '#b0503a' : '#8a3a2a'); } // brick dome
+    for (let y = 56; y < 82; y += 5) for (let x = 8 + ((y / 5) % 2) * 3; x < 34; x += 7) px(ctx, x, y, 1, 4, '#8a3a2a');
+    px(ctx, 6, 46, 30, 6, '#b0503a'); px(ctx, 6, 46, 30, 1, '#d07058'); px(ctx, 24, 36, 6, 10, '#6a6e7a'); px(ctx, 23, 36, 8, 2, '#8a8f9c'); // top + chimney
+    if (!calm) for (let i = 0; i < 3; i++) { const p = (t * 0.6 + i / 3) % 1; ctx.save(); ctx.globalAlpha = 0.5 * (1 - p); px(ctx, 25 + Math.sin(p * 6 + i) * 3, 32 - p * 18, 4, 3, '#8a8590'); ctx.restore(); }
+    px(ctx, 12, 64, 22, 18, '#1a1218'); const glow = calm ? '#2a2026' : (Math.sin(t * 7) > 0 ? '#ff8a3a' : '#ff5a2a'); px(ctx, 13, 70, 20, 12, glow); // mouth
+    if (!calm) { flames(ctx, 14, 82, 18, t); ctx.save(); ctx.globalAlpha = 0.16; px(ctx, 34, 56, 18, 34, '#ffb04a'); ctx.restore(); }
+    px(ctx, 6, 82, 30, 10, '#9a4232'); px(ctx, 6, 82, 30, 1, '#c86a50');
+    const push = calm ? 0 : Math.round((Math.sin(t * 0.7) * 0.5 + 0.5) * 6); // creeping in, then back, then in
+    const pzx = 38 - push;
+    px(ctx, pzx - 2, 84, 40, 2, '#c89a5a'); px(ctx, pzx + 38, 84, 30 - (38 - pzx), 2, '#a07a48'); // peel + handle
+    for (let j = 0; j < 4; j++) { const o = j === 0 || j === 3 ? 2 : 0; px(ctx, pzx + o, 80 + j, 36 - 2 * o, 1, j === 0 ? '#e8b060' : '#f2d27a'); } // pizza
+    for (const [dx, c] of [[5, '#d8402e'], [13, '#5aa84a'], [22, '#d8402e'], [29, '#5aa84a']]) px(ctx, pzx + dx, 81, 2, 1, c);
+    if (!calm) { petAt(ctx, st, t, pzx - 1, 43 + (Math.sin(t * 12) > 0.6 ? 1 : 0), { flip: true });
+      if (Math.sin(t * 2.5) > 0) px(ctx, pzx - 2, 54, 1, 2, '#8fd3f0'); // sweat drop
+      const [ax, ay] = racWithPaw(ctx, st, t, 'stir'); pline(ctx, ax, ay, 72, 85, '#a07a48'); px(ctx, ax - 1, ay - 1, 3, 3, '#1f1a28'); }
   },
 };
 export const PERIL_SPECIES = Object.keys(PERIL);

@@ -1,5 +1,7 @@
 import { ACHIEVEMENTS, achById } from './cheers.js';
-import { planFor, dayGoal } from './plan.js';
+import { planFor, dayGoal, PLAN_V, FIXED } from './plan.js';
+// v0.8.1: which runs still need the plan migration (plan-2 runs only if their animal's plan changed since)
+export const needsPlan = h => !!h && h.plan !== PLAN_V && !(h.plan === 2 && !FIXED[h.rung]);
 import { colorById, itemFor, owns, emptyCosmetics, VILLAINS, REWARDS, styleKey, hasStyle, wallById, wallPrice, wallNeed, roomOf, BULBS, BULB_PRICE, WALL_NEED_RESCUED } from './shop.js';
 // Pet Hostage v0.2 rules: a rescue LADDER. Tunable constants up top.
 export const RULES = {
@@ -25,6 +27,10 @@ export const ANIMALS = [
   { species: 'panda', name: 'Bao' },
   { species: 'capybara', name: 'Yuzu' }, // v0.4.3: appended so nobody's rungs shift
   { species: 'unicorn', name: 'Marmalade' }, // v0.5.7: appended the same way (rung 9, 21 days)
+  // v0.8.1: three brand-new farm animals replace the old II repeats at rungs 10-12 (23/25/27 days); the II loop now starts at rung 13
+  { species: 'calf', name: 'Moozart' },
+  { species: 'lamb', name: 'Baabara' },
+  { species: 'goat', name: 'Goatzilla' },
 ];
 // Cartoon deaths, in the order a pet meets them (offset by rung so the ladder varies). Each leaves its own patch-up.
 export const DEATHS = ['pop', 'anvil', 'catapult', 'zap'];
@@ -79,7 +85,7 @@ export function petAt(st, rung) {
 function kidnap(st, rung, date) {
   const p = petAt(st, rung);
   p.rescuedOn = null; if (!p.firstKidnapped) p.firstKidnapped = date;
-  st.hostage = { rung, streak: 0, since: date, settledThrough: st.hostage ? st.hostage.settledThrough : addDays(date, -1), bosses: bossDaysFor(rung), big: bigDaysFor(rung), plan: 2 };
+  st.hostage = { rung, streak: 0, since: date, settledThrough: st.hostage ? st.hostage.settledThrough : addDays(date, -1), bosses: bossDaysFor(rung), big: bigDaysFor(rung), plan: PLAN_V };
 }
 
 export function newState(code, today) {
@@ -128,15 +134,15 @@ export function normalize(st, today = localParts().date) {
     let open = 0; for (let d = addDays(st.hostage.settledThrough, 1); d <= today && open < 400; d = addDays(d, 1)) open++; // unsettled days incl. today
     const lastLocked = st.hostage.streak + Math.max(1, open); // the furthest day number that could be today
     st.hostage.bosses = bossDaysFor(st.hostage.rung).filter(d => d > lastLocked);
-    st.hostage.big = bigDaysFor(st.hostage.rung).filter(d => d > lastLocked); st.hostage.plan = 2;
+    st.hostage.big = bigDaysFor(st.hostage.rung).filter(d => d > lastLocked); st.hostage.plan = PLAN_V;
   }
   // v0.8.0 migration: a run in progress keeps today (and every day that could still be today) and closed days as they
   // were; days after that follow the new plan. So nobody's goal changes mid-day.
-  if (st.hostage && st.hostage.plan !== 2) {
+  if (st.hostage && needsPlan(st.hostage)) { // v0.8.1: also re-plans runs on Acorn/Prickles from plan 2
     let open = 0; for (let d = addDays(st.hostage.settledThrough, 1); d <= today && open < 400; d = addDays(d, 1)) open++;
     const lastLocked = st.hostage.streak + Math.max(1, open), p = planFor(st.hostage.rung);
     st.hostage.bosses = [...runBosses(st.hostage).filter(d => d <= lastLocked), ...p.bosses.filter(d => d > lastLocked)];
-    st.hostage.big = p.big.filter(d => d > lastLocked); st.hostage.plan = 2;
+    st.hostage.big = [...runBig(st.hostage).filter(d => d <= lastLocked), ...p.big.filter(d => d > lastLocked)]; st.hostage.plan = PLAN_V;
   }
   return st;
 }

@@ -1,4 +1,4 @@
-import { RULES, RESETTLE_KEYS, bankMove, localParts, newState, migrate, settle, view, petAt, needFor, goalToday, DEATH_TEXT, normalize, addDays, buyPause, publicView, buyItem, equipItem, equipStyle, updateAch, claimAch } from './game.js';
+import { RULES, needsPlan, RESETTLE_KEYS, bankMove, localParts, newState, migrate, settle, view, petAt, needFor, goalToday, DEATH_TEXT, normalize, addDays, buyPause, publicView, buyItem, equipItem, equipStyle, updateAch, claimAch } from './game.js';
 import { note, nudgeText, DISH, ITEM, PET_EMOJI } from './messages.js';
 import { sendPush } from './push.js';
 import { revivedVars } from './revived.js';
@@ -30,7 +30,7 @@ const load = async (env, code) => {
   const s = await env.PH.get(PKEY(code)); if (!s) return null;
   let st = JSON.parse(s);
   if (st.v !== 2) { st = migrate(st, localParts().date); await env.PH.put(PKEY(code), JSON.stringify(st)); }
-  const needsBosses = !(st.hostage && Array.isArray(st.hostage.bosses) && st.hostage.plan === 2); // v0.8.0: plan locked in once
+  const needsBosses = !(st.hostage && Array.isArray(st.hostage.bosses)) || needsPlan(st.hostage); // v0.8.0/1: plan locked in once (one write)
   normalize(st);
   if (needsBosses) await env.PH.put(PKEY(code), JSON.stringify(st)); // v0.5.2: lock in the remaining mini-boss days once
   if (!st.friendId) await assignFriendId(env, st);

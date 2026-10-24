@@ -177,6 +177,12 @@ export const REVIVED = {
       raccoon: ["Hot pot, reheated. {name} soaks it up.", "Still calm, {name}? Even after last time?", "I kept the yuzu. Saved a slot for you."] },
     unicorn: { pet: ["I'm a mythical creature. I shouldn't even HAVE stitches.", "My horn survived {how}. My optimism didn't. {left} steps.", "Glitter doesn't cover scars. I checked."],
       raccoon: ["Juice, the sequel. Pulp included.", "Even magic needs patching, {name}.", "I kept the glass from last time."] },
+    calf: { pet: ["Moo-ved on? Not really. {left} steps.", "I still flinch at the sound of blenders.", "I was a milkshake once. Never again."],
+      raccoon: ["Milkshake, round two. Same straw.", "Back in the blender, {name}.", "I kept the whipped cream."] },
+    lamb: { pet: ["My wool grew back. My trust didn't.", "I still smell faintly of rosemary.", "Spit-roasted once. Shame on you. {left} steps."],
+      raccoon: ["The mint sauce never expired.", "Second spin, {name}.", "Roast lamb, the encore."] },
+    goat: { pet: ["I came back from {how}. Kidding. I'm furious.", "I won't even look at pizza now.", "Goatzilla, revived. Still tiny. Still scared."],
+      raccoon: ["Pizza night again, {name}.", "The oven missed you.", "Back on the peel, kid."] },
   },
 };
 export const tierOf = deaths => Math.max(1, Math.min(3, deaths | 0));
