@@ -78,9 +78,9 @@ export const MISS_LINES = [
 ];
 export const replyLine = (kind, id) => (kind === 'win' ? WIN_LINES : MISS_LINES).find(l => l.id === id) || null;
 
-// v0.7.8 Premium Cheer: only on a friend's 15,000-step day (mini boss / final). Sender's steps are sunk; the friend
-// claims half after hitting 15,000 that day (tap to claim, never auto). Expires at midnight PT.
-export const PREMIUM_GOAL = 15000;
+// v0.7.8 Premium Cheer: only on a friend's 15k+ day (mini boss / final). Sender's steps are sunk; the friend
+// claims half after hitting that day's goal (15k or 20k, v0.8.0) (tap to claim, never auto). Expires at midnight PT.
+export const PREMIUM_GOAL = 15000; // eligibility minimum; the claim uses the day's actual goal
 export const PREMIUM_TIERS = { p: { icon: '⭐', label: 'Premium', cost: 5000, reward: 2500 }, mega: { icon: '🌟', label: 'Mega', cost: 10000, reward: 5000 } };
 export const PREMIUM_RECENT = 6; // don't repeat the last few lines a player got, per tier
 export const PREMIUM_LINES = {

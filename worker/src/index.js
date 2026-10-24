@@ -30,7 +30,7 @@ const load = async (env, code) => {
   const s = await env.PH.get(PKEY(code)); if (!s) return null;
   let st = JSON.parse(s);
   if (st.v !== 2) { st = migrate(st, localParts().date); await env.PH.put(PKEY(code), JSON.stringify(st)); }
-  const needsBosses = !(st.hostage && Array.isArray(st.hostage.bosses));
+  const needsBosses = !(st.hostage && Array.isArray(st.hostage.bosses) && st.hostage.plan === 2); // v0.8.0: plan locked in once
   normalize(st);
   if (needsBosses) await env.PH.put(PKEY(code), JSON.stringify(st)); // v0.5.2: lock in the remaining mini-boss days once
   if (!st.friendId) await assignFriendId(env, st);
@@ -134,7 +134,7 @@ async function syncInbox(env, st, today, prev) {
     let dirty = false;
     if (it.kind === 'cheer' && !it.counted) { st.cheersTotal++; it.counted = true; dirty = changed = true; }
     if (it.kind === 'premium' && !it.counted) { st.cheersTotal++; it.counted = true; dirty = changed = true; }
-    if (it.kind === 'premium' && it.date === today && it.msg) premium.push({ id: it.id, tier: it.tier, from: it.from, name: it.name, msg: it.msg, reward: it.reward, at: it.at, claimed: !!(it.claimed || (st.pClaimed || []).includes(it.id)) });
+    if (it.kind === 'premium' && it.date === today && it.msg) premium.push({ id: it.id, tier: it.tier, from: it.from, name: it.name, msg: it.msg, reward: it.reward, goal: it.goal || PREMIUM_GOAL, at: it.at, claimed: !!(it.claimed || (st.pClaimed || []).includes(it.id)) });
     if (it.kind === 'pclaim' && !it.booked) { // v0.7.8: the friend claimed my premium cheer -> mark it on my side
       const ps = (st.pSent || []).find(x => x.id === it.re); if (ps && !ps.claimed) ps.claimed = it.at || Date.now();
       it.booked = true; dirty = changed = true; }
@@ -480,7 +480,7 @@ async function handle(req, env) {
     if (req.method !== 'POST') return json({ error: 'not found' }, 404);
 
     if (path === '/settings') {
-      // The goal is fixed by the rules (10,000; 15,000 on a final day) and ignored if sent. Only the current hostage's name can change.
+      // The goal is fixed by the rules (10,000 / 15,000 / 20,000 per the run's plan) and ignored if sent. Only the current hostage's name can change.
       if (typeof body.name === 'string' && body.name.trim()) petAt(st, st.hostage.rung).name = body.name.trim().slice(0, 24);
       if (typeof body.displayName === 'string') { const d = cleanName(body.displayName); if (d) st.displayName = d; else delete st.displayName; } // v0.5.8: shown on cheers
       await commit(env, st, today, null, inbox); return json(viewX(st));
@@ -558,8 +558,8 @@ async function handle(req, env) {
       console.log('cheer', st.friendId, '->', to, c.id);
       return json({ ok: true, state: viewX(st) });
     }
-    // v0.7.8 Premium Cheer: only on the friend's 15,000-step day. Steps are sunk; the friend claims the reward once
-    // they hit 15,000 that day (tap to claim). No per-friend or weekly cap.
+    // v0.7.8 Premium Cheer: only on the friend's 15k/20k day. Steps are sunk; the friend claims the reward once
+    // they hit that day's goal (stored on the cheer) (tap to claim). No per-friend or weekly cap.
     if (path === '/premiumCheer') {
       const to = normFid(body.to), tier = PREMIUM_TIERS[body.tier] ? body.tier : null, T = tier && PREMIUM_TIERS[tier];
       if (!T) return json({ error: 'no such tier', state: viewX(st) }, 409);
@@ -568,12 +568,13 @@ async function handle(req, env) {
       const rc = await env.PH.get(FKEY(to)), rst = rc && await load(env, rc); // read-only: never saved
       if (!rst || rst.friendId !== to) return json({ error: 'not a friend', state: viewX(st) }, 409);
       settle(rst, today);
-      if (goalToday(rst) < PREMIUM_GOAL || rst.paused[today]) return json({ error: 'not a boss day', state: viewX(st) }, 409);
+      const rgoal = goalToday(rst); // v0.8.0: the friend's actual goal today (15k or 20k)
+      if (rgoal < PREMIUM_GOAL || rst.paused[today]) return json({ error: 'not a boss day', state: viewX(st) }, 409);
       const name = myName(st), toName = rst.displayName || petAt(rst, rst.hostage.rung).name;
-      const it = { id: 'p' + rid(), kind: 'premium', tier, from: st.friendId, name, pick: 'premium-' + tier, at: Date.now(), date: today, reward: T.reward };
+      const it = { id: 'p' + rid(), kind: 'premium', tier, from: st.friendId, name, pick: 'premium-' + tier, at: Date.now(), date: today, reward: T.reward, goal: rgoal };
       bankMove(st, today, 'premium', -T.cost, { to, name: toName, tier });
       st.pSent = [...(st.pSent || []).filter(x => x.date >= addDays(today, -3)), { id: it.id, to, tier, date: today, claimed: false }];
-      await commit(env, st, today, { changed: true, after: [...inbox.after, putItem(env, to, it), () => push(env, rst, T.icon + ' ' + name, `${T.label} Cheer: hit ${PREMIUM_GOAL.toLocaleString('en-US')} today to claim ${T.reward.toLocaleString('en-US')} Spare Steps`, 'ph-pcheer-' + it.id)] });
+      await commit(env, st, today, { changed: true, after: [...inbox.after, putItem(env, to, it), () => push(env, rst, T.icon + ' ' + name, `${T.label} Cheer: hit ${rgoal.toLocaleString('en-US')} today to claim ${T.reward.toLocaleString('en-US')} Spare Steps`, 'ph-pcheer-' + it.id)] });
       console.log('premium', st.friendId, '->', to, tier);
       return json({ ok: true, state: viewX(st) });
     }
@@ -582,7 +583,7 @@ async function handle(req, env) {
       if (!it || it.date !== today) return json({ error: 'nothing to claim', state: viewX(st) }, 409);
       st.pClaimed = (st.pClaimed || []).filter(x => typeof x === 'string');
       if (it.claimed || st.pClaimed.includes(id)) return json({ error: 'already claimed', state: viewX(st) }, 409);
-      if ((st.days[today] || 0) < PREMIUM_GOAL) return json({ error: 'goal not met', state: viewX(st) }, 409);
+      if ((st.days[today] || 0) < (it.goal || PREMIUM_GOAL)) return json({ error: 'goal not met', state: viewX(st) }, 409);
       st.pClaimed = [...st.pClaimed, id].slice(-40);
       bankMove(st, today, 'pclaim', it.reward, { to: it.from, name: it.name, tier: it.tier });
       const mine = { ...it, claimed: Date.now() }, back = { id: 'c' + id, kind: 'pclaim', re: id, from: st.friendId, name: myName(st), at: Date.now(), date: today };

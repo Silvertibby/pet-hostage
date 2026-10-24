@@ -1,12 +1,14 @@
 import { maybeRevived, revivedVars } from './revived.js';
+import { planFor, dayGoal } from './plan.js';
 import { CHEERS, CHEER_COST, cheerById, DISPLAY_NAME_MAX, replyLine, WIN_LINES, PREMIUM_TIERS, PREMIUM_GOAL, premiumLine, ACHIEVEMENTS } from './cheers.js';
 import { VILLAINS, SLOTS, COLORS, TIERS, colorById, forSlot, owns, REWARDS, STYLE_INFO, styleKey, hasStyle, rewardFor, WALLS, wallPrice, wallNeed, wallById, roomOf, BULBS, BULB_PRICE, WALL_NEED_RESCUED, bulbIds } from './shop.js';
 import { drawWall, drawBulbIcon, drawScene, drawDeath, drawShelfPet, raccoon, raccoonBody, setRaccoonLook, itemSprite, blit, hitBoxes, VIEW_W, VIEW_H, DEATH_LEN, SPECIES } from './art.js';
 
 // ---- tunables ----
-const VERSION = 'v0.7.9';
+const VERSION = 'v0.8.0';
 const PAUSE_COST = 30000; // the server decides; shown in the dialog
-const GOAL = 10000, FINAL_GOAL = 15000; // the server decides; these are only for demos
+const GOAL = 10000; // the server decides; this is only for demos
+const kGoal = g => `${Math.round((g || 15000) / 1000)}k`; // 15000 -> '15k'
 const WORKER = 'https://pet-hostage.silvertibby.workers.dev';
 const APP_URL = 'https://silvertibby.github.io/pet-hostage/';
 const SHORTCUT_NAME = 'Pet Hostage Sync';
@@ -107,12 +109,12 @@ function cutout(text) {
 function stopAnim() { if (anim) cancelAnimationFrame(anim); anim = null; }
 let sceneT = 0, sceneReact = null;
 const isFinal = h => !!(h && (h.finalDay ?? (h.day >= h.need)));
-const isBoss = h => !!(h && h.bossToday && !isFinal(h)); // v0.5.2 mini-boss day: a 15k day mid-run
-// day squares; 15k days (mini-bosses + the final day) are highlighted
+const isBoss = h => !!(h && h.bossToday && !isFinal(h)); // v0.5.2 mini-boss day: a 15k/20k day mid-run
+// day squares; 15k/20k days (mini-bosses + the final day) are highlighted, 20k ones brighter
 function pipsHtml(h) {
-  const bosses = h.bosses || [];
-  return Array.from({ length: h.need }, (_, i) => { const d = i + 1, boss = d === h.need && h.need > 1 ? 'boss final' : bosses.includes(d) ? 'boss' : '';
-    return `<span class="dpip ${boss} ${i < h.streak ? 'on' : i === h.streak ? (h.todayMet ? 'on today' : 'today') : ''}" title="Day ${d}${boss ? ': 15,000' : ''}"></span>`; }).join('');
+  const bosses = h.bosses || [], big = h.big || [];
+  return Array.from({ length: h.need }, (_, i) => { const d = i + 1, g = dayGoal(d, h.need, bosses, big), boss = (d === h.need && h.need > 1 ? 'boss final' : g > GOAL ? 'boss' : '') + (g >= 20000 ? ' big' : '');
+    return `<span class="dpip ${boss} ${i < h.streak ? 'on' : i === h.streak ? (h.todayMet ? 'on today' : 'today') : ''}" title="Day ${d}${g > GOAL ? ': ' + fmt(g) : ''}"></span>`; }).join('');
 }
 const sceneSt = () => { const h = state.hostage || {}; return { mood: state.mood, species: h.species, injuries: h.injuries, deaths: h.deaths || 0, freed: !!h.todayMet, final: isFinal(h) || isBoss(h), paused: !!(h.paused || state.pausedToday), react: sceneReact, room: roomOf(state.cosmetics) }; };
 function startScene(canvas) {
@@ -161,18 +163,18 @@ const MORE_LINES = {"pet": {"behind": ["I'm too small to be a whole meal. Walk a
 for (const who in MORE_LINES) for (const mode in MORE_LINES[who]) LINES[who][mode].push(...MORE_LINES[who][mode]);
 const SPECIES_LINES = {"bunny": {"pet": {"behind": ["My ears are shaking. Both of them. {left} steps!", "I'll thump the floor for every step you take. Thump!", "I'm a bunny! I belong in a meadow, not a pot!", "He keeps waving a carrot at me. It's a TRAP carrot.", "I can hop three feet. You can walk {left} steps. Teamwork!", "My nose is wiggling at max speed. Please hurry."], "banked": ["Binky! That's a happy bunny jump! BINKY!", "My ears are up! Ears up means joy!", "Carrots for everyone! Well, for me."]}, "raccoon": {"behind": ["Bunny stew needs carrots. Look, {name} brought their own.", "Lucky rabbit's foot? Not so lucky, huh, {name}?", "Hop into the pot, {name}. It's warm.", "Got the rosemary. Rabbit loves rosemary.", "Those ears would make great pot handles.", "I'll pull you out of a hat. Then into a stew."], "banked": ["Fine. No stew. Just carrot sticks. Sad.", "Hop away, {name}. Not far. Chain.", "Ears up today. Ears in soup tomorrow."]}}, "hamster": {"pet": {"behind": ["I ran four miles on my wheel. Your turn! {left} steps!", "I stuffed my cheeks with courage. It's running out.", "He wants me on a skewer. I'm a FLUFFBALL.", "My tiny heart beats 400 times a minute. Mostly fear.", "I'd lend you my wheel, but, you know. Cage.", "Hamsters don't faint. I might be the first."], "banked": ["Cheeks full of joy! Mmmph!", "Wheel time! Free wheel time!", "Running in circles! Happy circles!"]}, "raccoon": {"behind": ["Skewers: sharpened. Hamster: plump.", "Cute cheeks, {name}. Bet they're crispy.", "I'll put you in a ball. A meatball.", "Your wheel can't save you now.", "Hamster on a stick. Fair food classic.", "Pocket-sized dinner. My favorite size."], "banked": ["Put the skewers away. Ugh.", "Keep your cheeks, {name}. For now.", "Spin your little wheel. I'll wait."]}}, "squirrel": {"pet": {"behind": ["I hid acorns for both of us. Walk and I'll show you where!", "My tail's all puffed. That's squirrel for HELP.", "I'm nuts about you! {left} steps, please!", "He said pot pie. I don't want to be the pot OR the pie.", "If I had a tree I'd climb out. I have you. Walk!", "Chitter chitter! That means {left} steps, please!"], "banked": ["Tail flick of joy! Flick flick!", "Zoom zoom up the cage bars!", "Burying a thank-you acorn for you!"]}, "raccoon": {"behind": ["Squirrel pot pie. Flaky crust. Flaky human.", "That fluffy tail? Feather duster after dinner.", "Nutty flavor, {name}. Very on brand.", "I'll stuff you like you stuff acorns.", "Gather your nuts, {name}. Last chance.", "Tree to table. That's my whole philosophy."], "banked": ["Fine. No pie. Just sad crust.", "Scurry off, {name}. Not too far.", "Hide your acorns. I'll be back."]}}, "hedgehog": {"pet": {"behind": ["I'm curled in a ball. It's not helping. {left} steps!", "I'm spiky, not crunchy! Don't make me crisps!", "My spines are up. That's how scared I am.", "I sniffed out {left} steps for you. Follow your nose!", "Prickly outside, terrified inside.", "I'm too pokey to eat! Probably! Walk anyway!"], "banked": ["Unrolling! I'm unrolling! Ta-da!", "Happy snuffle! Snuffle snuffle!", "Spines down. I'm SO relaxed."]}, "raccoon": {"behind": ["Hedgehog crisps. Salt and vinegar.", "I'll peel the spines first. Like an artichoke.", "Roll into a ball, {name}. Easier to bread.", "Spines make great toothpicks after dinner.", "Crunchy outside, juicy inside. Chef's dream.", "Don't worry. Oven gloves for the pokey bits."], "banked": ["Put the crisps away. Ow. Spines.", "Stay pointy, {name}. For now.", "Rolled up and safe. Annoying."]}}, "kitten": {"pet": {"behind": ["Mew. That's kitten for {left} steps, please.", "I have nine lives but I'd like to keep THIS one.", "I'm purring to calm down. It's not working.", "He wants a casserole. I want to knead your lap.", "I knocked his spoon off the table. Bought you a minute. Walk!", "Big eyes. Tiny meow. {left} steps."], "banked": ["Purrrrrr! Max purr!", "Kitten zoomies! Chained zoomies!", "Slow blink. That's kitty for I love you."]}, "raccoon": {"behind": ["Kitten casserole. Nine servings.", "Curiosity killed the cat. So will a lazy human.", "Sharpening my claws. And my knives.", "Here, kitty kitty. Into the dish.", "Purr all you want. The oven purrs louder.", "Save those whiskers. I'll floss with them."], "banked": ["Fine. Land on your feet, {name}.", "One of nine lives saved. Don't get cocky.", "Go chase your tail. I'll chase dinner."]}}, "duckling": {"pet": {"behind": ["Peep! Peep peep! (That's {left} steps.)", "I just learned to waddle. You can do better!", "He said 'à l'orange'. I don't even LIKE oranges.", "My fluff is fluffing up from fear.", "Ducks walk in a row. Walk with me! In spirit!", "Quack? Quack. QUACK. Please walk."], "banked": ["Waddle waddle! Happy waddle!", "Peep peep hooray!", "Puddle stomp of joy!"]}, "raccoon": {"behind": ["Duck à l'orange. Three oranges zested already.", "Your feathers? My new pillow, {name}.", "Waddle into the roasting pan, {name}.", "Just ducky. For me.", "Quack quack. That's duck for 'garnish'.", "Get your ducks in a row. Then in the oven."], "banked": ["Put the oranges back. Ugh.", "Waddle off, {name}. Chain's that way.", "Lucky duck. Literally."]}}, "piglet": {"pet": {"behind": ["Oink! That's piglet for HELP!", "I don't want to be bacon! I want to be your friend!", "My curly tail is uncurling from stress.", "I'll roll in mud for joy if you walk {left} steps!", "He's whispering 'crispy' at me. CRISPY.", "This little piggy wants to go home!"], "banked": ["Happy oink! Snort snort!", "Mud party tonight! Kidding. Chained.", "My tail's curly again! That means joy!"]}, "raccoon": {"behind": ["Bacon. Sizzle. Sizzle. Sizzle.", "This little piggy went to the frying pan.", "Hear that sizzle, {name}? That's your future.", "Snout to tail. I use everything.", "Got the maple syrup. Breakfast is ON.", "Pork chop, pork chop, pork chop."], "banked": ["No bacon. Toast. Plain toast.", "Snort all you want, {name}.", "Pig out on freedom. While it lasts."]}}, "panda": {"pet": {"behind": ["I'm a cub. A CUB. Walk {left} steps!", "I'd climb bamboo for you. You walk for me!", "He wants dumplings. I'm not a dumpling. I'm chubby.", "I did a roly-poly. Motivated? Walk!", "Endangered! I'm endangered! Right now!", "Black and white and scared all over."], "banked": ["Roly-poly of joy!", "Bamboo for everybody!", "Happy panda tumble! Oof!"]}, "raccoon": {"behind": ["Panda dumplings. Steamed. With dipping sauce.", "Black and white and ready to eat.", "Steamer basket's warmed up.", "Endangered species? More like entrée species.", "Roll over, {name}. Into the dumpling.", "Bamboo shoots. Perfect side dish."], "banked": ["Put the steamer away. Sigh.", "Tumble along, {name}.", "No dumplings tonight. Again."]}}, "capybara": {"pet": {"behind": ["I'm staying calm. Calmly asking you to walk {left} steps.", "The water's getting warm. Nice. Too nice. Walk!", "Everyone loves capybaras! Even you! So walk!", "I balanced a yuzu on my head for you. Your turn: {left} steps.", "Chill vibes only. Please restore the vibes. {left} steps.", "He keeps saying 'hot pot'. I thought he meant a spa."], "banked": ["Ahh. Full chill restored.", "Best. Bath. Day. Ever.", "The yuzu stays on my head. Not in the soup!"]}, "raccoon": {"behind": ["Capybara hot pot. Yuzu on top. Lovely.", "So relaxed. Marinating nicely.", "Turning the hot spring up a notch.", "Biggest rodent around. Biggest dinner, too.", "Stay calm, {name}. Calm guests simmer evenly.", "{steps} steps. The broth thanks you."], "banked": ["Drain the hot spring. Ugh.", "Enjoy your bath, {name}. While it lasts.", "Can't stay mad at that face. Kidding. Furious."]}}, "unicorn": {"pet": {"behind": ["I'm a unicorn! I grant wishes! My wish is {left} steps!", "He keeps squeezing oranges and looking at me.", "My horn is for sparkles, not for stirring. Walk!", "Rainbows need sunshine. And you. Walking. {left}!", "Gallop! Prance! Anything! Just move!", "He asked if I come in 'pulp or no pulp'."], "banked": ["Sparkles restored! Prance prance!", "My mane is fluffy with relief.", "Magic AND steps. We're unstoppable."]}, "raccoon": {"behind": ["Orange you glad you're not walking? I am.", "Fresh-squeezed {name}. Breakfast of villains.", "The juicer's plugged in. Just saying.", "Mythical? Delicious, more like.", "{left} steps. I'll get the big glass.", "That horn will make a fine cocktail stick."], "banked": ["No juice today. Water again. Ugh.", "Fine. Keep your sparkles, {name}.", "Put the juicer away. Grumble."]}}, "potato": {"pet": {"behind": ["Shh. Sleeping. Don't wake me.", "Steps? Ew. Sit down.", "Don't you dare reach that goal.", "Five more minutes. Or hours.", "The couch misses you. Come back.", "Walking is a trap. Lie down.", "Zzz… {left} steps? Nah.", "Why walk when you can nap?"], "banked": ["Ugh. You walked. Rude.", "I was comfy. Thanks for nothing.", "Fine. Free. Now let me sleep.", "All that effort. Exhausting to watch."]}, "raccoon": {"behind": ["A POTATO? I ordered bunny. Walk, so I can swap.", "I can't make bunny soup out of THIS. {left} steps. Go.", "Ugh, a spud. Walk {left} and bring my bunny back.", "Squirrel pot pie dreams, potato reality. Move it.", "I'm rooting for you. Don't tell anyone. {left} steps.", "Hurry up. This thing isn't even scared of me."], "banked": ["Finally. Bye, spud. Hello, bunny soup.", "Good. Get this lump out of my cage.", "Yes! The bunny's back on the menu."]}}};
 const lastLine = {};
-// v0.4.2 final-day (15k) tap lines; mixed with the usual 'behind' pools on day N of N
+// v0.4.2 final-day (15k/20k) tap lines; mixed with the usual 'behind' pools on day N of N
 const FINAL_LINES = {
   pet: ["LAST DAY! {left} more and I'm out!", "It's {goal} today?! Okay. Okay. You can do this. WE can do this.", "I'm being brave! Look how brave! {left} steps!",
     "Something just went 'creak'. {left} steps, please hurry.", "So close to home I can smell it. Walk!", "Don't look down, don't look down... {left} to go!",
     "Final day! I packed my tiny bag already!", "Day {day} of {need}! {steps} so far! Keep going keep going!"],
   raccoon: ["Final day. Price is {goal}. I don't make the rules. I do, actually.", "Timer's set. {left} to go. Tick. Tock.", "Big finale tonight. You're the opening act.",
-    "{steps}? On the LAST day? Bold.", "I wore my good apron for this.", "Fifteen thousand. Call it a service charge.",
+    "{steps}? On the LAST day? Bold.", "I wore my good apron for this.", "{goal}. Call it a service charge.",
     "Don't mind me. Just checking the temperature.", "You were doing so well. Shame about today."],
 };
-// v0.5.2: mini-boss days (15k mid-run). Generic on purpose: no spoilers about what comes later.
+// v0.5.2: mini-boss days (15k/20k mid-run). Generic on purpose: no spoilers about what comes later.
 const BOSS_LINES = {
-  pet: ['Big day today. {goal} big. {left} to go!', 'Why is today harder? Nobody told me today was harder!', "It's a 15k day. I believe in you. Loudly.",
+  pet: ['Big day today. {goal} big. {left} to go!', 'Why is today harder? Nobody told me today was harder!', "It's a {goal} day. I believe in you. Loudly.",
     "He brought out the fancy equipment today. Walk, please.", 'Extra steps today. Extra cuddles later. Deal?', 'Today counts double scary. {left} more!'],
   raccoon: ['Surprise! Today costs {goal}.', 'Special menu today. Very special.', "Fine print, page two: today's a big one.",
     '{left} steps? On a day like this? Cute.', 'I saved my best gadget for today.', 'Midweek treat. For me.'],
@@ -243,7 +245,7 @@ function renderHome() {
   const filled = Math.floor(prog * BAR_SEGMENTS);
   const pips = pipsHtml(h);
   const paused = !!(h.paused || s.pausedToday);
-  const tag = paused ? '⏸ paused' : h.todayMet ? (h.day >= h.need ? '🎉 rescue at midnight' : '✓ banked') : isFinal(h) ? '🔥 final day · 15k' : isBoss(h) ? '⚔️ mini-boss · 15k' : '';
+  const tag = paused ? '⏸ paused' : h.todayMet ? (h.day >= h.need ? '🎉 rescue at midnight' : '✓ banked') : isFinal(h) ? `🔥 final day · ${kGoal(s.goal)}` : isBoss(h) ? `⚔️ mini-boss · ${kGoal(s.goal)}` : '';
   view.innerHTML = `
     <div id="cheerbar">${cheerBarHtml(s)}</div>${replyBtnHtml(s)}${premiumCardsHtml(s)}
     <div class="scenewrap big"><canvas id="scene" class="px" width="${VIEW_W}" height="${VIEW_H}"></canvas>
@@ -513,7 +515,7 @@ const PET_ICON = { potato: '🥔', bunny: '🐰', hamster: '🐹', squirrel: '�
 function friendStatus(f) {
   if (f.paused) return '⏸ paused today';
   if (f.todayMet) return f.finalDay ? '🎉 rescue at midnight' : f.bossToday ? '⚔️ mini-boss beaten' : '✓ safe today';
-  return f.finalDay ? '🔥 final day · 15k' : f.bossToday ? '⚔️ mini-boss · 15k' : f.mood === 'scared' ? '😱 in danger' : '⏳ walking';
+  return f.finalDay ? `🔥 final day · ${kGoal(f.goal)}` : f.bossToday ? `⚔️ mini-boss · ${kGoal(f.goal)}` : f.mood === 'scared' ? '😱 in danger' : '⏳ walking';
 }
 async function fetchFriends(ids) {
   if (!ids.length) return [];
@@ -579,7 +581,7 @@ function renderFriendView(id) {
     anim = requestAnimationFrame(loop);
     $('#fback').addEventListener('click', () => go('friends'));
     $('#fcheer')?.addEventListener('click', () => openCheerPicker(id, x.nick || f.name));
-    $('#fprem')?.addEventListener('click', () => openPremium(id, x.nick || f.name));
+    $('#fprem')?.addEventListener('click', () => openPremium(id, x.nick || f.name, f.goal));
     $('#fnicksave').addEventListener('click', () => { const l = loadFriends(), e = l.find(z => z.id === id); if (e) { e.nick = $('#fnick').value.trim().slice(0, 24); saveFriends(l); toast('Saved.'); draw(f); } });
     $('#fremove').addEventListener('click', () => { if (!confirm('Remove this friend from your list?')) return; localStorage.setItem('ph.friends', JSON.stringify(loadFriends().filter(z => z.id !== id))); state.friends = (state.friends || []).filter(x => x !== id);
       if (!DEMO) api('/friends/remove', { id }).then(r => { state = r.state; }).catch(() => {}); go('friends'); });
@@ -612,7 +614,7 @@ function demoCosmetics(rung = 6) {
   if (qs.get('style')) { equipped.styles = {}; for (const kv of qs.get('style').split(',')) { const [sl, st] = kv.split(':'); if (sl && st) { equipped.styles[sl] = st; if (!unl.includes(styleKey(sl, st))) unl.push(styleKey(sl, st)); } } }
   return { owned: { raccoon: owned }, equipped: { raccoon: equipped }, unlocked: { raccoon: unl }, room: { ...(qs.get('wall') ? { walls: [qs.get('wall')], wall: qs.get('wall') } : {}), ...(qs.get('bulb') ? { bulbs: [qs.get('bulb')], bulb: qs.get('bulb') } : {}) } };
 }
-function demoBosses(rung) { const n = 3 + 2 * rung, k = rung < 2 ? 0 : Math.floor((n - 4) / 3), o = []; for (let i = 1; i <= k; i++) { const d = Math.min(n - 2, Math.max(2, Math.round(1 + i * (n - 1) / (k + 1)))); if (!o.includes(d)) o.push(d); } return o; }
+const demoBosses = rung => planFor(rung).bosses, demoBig = rung => planFor(rung).big;
 // ---- v0.5.8: cheers. 1,000 Spare Steps to send a preset cheer; a free reply once today's goal is met. ----
 const canCheer = () => (state.bank || 0) >= CHEER_COST;
 const todayCheers = s => (s.cheers || []).filter(c => c.date === s.today); // expire at midnight PT
@@ -670,24 +672,24 @@ function openCheerPicker(to, name) {
   ov.querySelectorAll('[data-msg]').forEach(b => b.addEventListener('click', () => confirmCheer(to, name, cheerById(b.dataset.msg))));
 }
 // v0.6.0: every spend is confirmed: what, cost, balance after
-// v0.7.8 Premium Cheer (friend's 15k day only). Sender's steps are sunk; friend claims after hitting 15k today.
+// v0.7.8 Premium Cheer (friend's 15k/20k day only). Sender's steps are sunk; friend claims after hitting that day's goal.
 function premSentHtml(id) {
   const l = (state.pSent || []).filter(x => x.to === id); if (!l.length) return '';
   return `<div class="psent">${l.map(x => `<span class="tag">Sent ${PREMIUM_TIERS[x.tier].icon} ${PREMIUM_TIERS[x.tier].label} · ${x.claimed ? '✓ claimed' : '⏳'}</span>`).join(' ')}</div>`;
 }
-function openPremium(to, name) {
+function openPremium(to, name, goal) {
   const ov = $('#overlay'); ov.hidden = false;
   ov.innerHTML = `<div class="ovbox cheer"><h2>⭐ ${esc(name)}</h2><div class="ptiers">${Object.entries(PREMIUM_TIERS).map(([k, T]) =>
     `<button class="scell ptier" data-t="${k}" ${state.bank < T.cost ? 'disabled' : ''}><b>${T.icon} ${T.label}</b><span>👟 ${fmt(T.cost)}</span><span class="dim small">→ 🎁 ${fmt(T.reward)}</span></button>`).join('')}</div>
     <p class="dim small">👟 ${fmt(state.bank)}</p><div class="row"><button class="btn ghost" id="cno">Cancel</button></div></div>`;
   $('#cno').addEventListener('click', () => { ov.hidden = true; ov.innerHTML = ''; });
-  ov.querySelectorAll('.ptier').forEach(b => b.addEventListener('click', () => confirmPremium(to, name, b.dataset.t)));
+  ov.querySelectorAll('.ptier').forEach(b => b.addEventListener('click', () => confirmPremium(to, name, b.dataset.t, goal)));
 }
-function confirmPremium(to, name, tier) {
+function confirmPremium(to, name, tier, goal) {
   const T = PREMIUM_TIERS[tier], ov = $('#overlay'); ov.hidden = false;
   ov.innerHTML = `<div class="ovbox cheer"><h2>${T.icon} ${esc(name)}</h2>
     <p>${T.label} Cheer · <b>${fmt(T.cost)}</b></p>
-    <p class="dim small">🎁 ${fmt(T.reward)} if they hit ${fmt(PREMIUM_GOAL)} today · no refund</p>
+    <p class="dim small">🎁 ${fmt(T.reward)} if they hit ${fmt(Math.max(PREMIUM_GOAL, goal || 0))} today · no refund</p>
     <p class="dim small">👟 ${fmt(state.bank)} → ${fmt(state.bank - T.cost)}</p>
     <div class="row" style="justify-content:space-between"><button class="btn ghost" id="cno">Cancel</button><button class="btn acc" id="cyes" ${state.bank < T.cost ? 'disabled' : ''}>Send · ${fmt(T.cost)}</button></div></div>`;
   const close = () => { ov.hidden = true; ov.innerHTML = ''; };
@@ -697,21 +699,21 @@ function confirmPremium(to, name, tier) {
     if (DEMO) { state.bank -= T.cost; state.pSent = [...(state.pSent || []), { id: 'd' + Date.now(), to, tier, claimed: false }]; close(); toast(T.icon + ' Sent'); render(); return; }
     try { const r = await api('/premiumCheer', { to, tier }); state = r.state; close(); toast(T.icon + ' Sent'); render(); }
     catch (err) { close(); if (err.body && err.body.state) { state = err.body.state; render(); }
-      toast({ 'not a boss day': 'Only on a 15k day', 'not enough Spare Steps': `👟 ${fmt(T.cost)} needed`, 'not a friend': 'Not on your friends list' }[err.message] || "Couldn't send"); }
+      toast({ 'not a boss day': 'Only on a 15k/20k day', 'not enough Spare Steps': `👟 ${fmt(T.cost)} needed`, 'not a friend': 'Not on your friends list' }[err.message] || "Couldn't send"); }
   });
 }
 function premiumCardsHtml(s) {
-  return (s.premium || []).map(p => { const T = PREMIUM_TIERS[p.tier] || PREMIUM_TIERS.p, line = premiumLine(p.tier, p.msg), prog = Math.min(1, s.todaySteps / PREMIUM_GOAL), met = prog >= 1;
+  return (s.premium || []).map(p => { const T = PREMIUM_TIERS[p.tier] || PREMIUM_TIERS.p, line = premiumLine(p.tier, p.msg), pg = p.goal || PREMIUM_GOAL, prog = Math.min(1, s.todaySteps / pg), met = prog >= 1;
     return `<div class="pcard ${p.tier}"><div class="phead"><b>${T.icon} ${T.label}</b><span class="dim small">${esc(p.name)}</span></div>
       ${line ? `<p class="cheerprev">${esc(line.text)}</p>` : ''}
       <div class="pbar"><div class="ptrack"><i style="width:${Math.round(prog * 100)}%"></i></div><span>🎁 ${fmt(p.reward)}</span></div>
-      <div class="row nowrap" style="justify-content:space-between"><span class="dim small">${fmt(Math.min(s.todaySteps, PREMIUM_GOAL))} / ${fmt(PREMIUM_GOAL)}</span>${p.claimed ? '<span class="tag">✓</span>' : met ? `<button class="btn small acc pclaim" data-id="${esc(p.id)}">Claim</button>` : ''}</div></div>`; }).join('');
+      <div class="row nowrap" style="justify-content:space-between"><span class="dim small">${fmt(Math.min(s.todaySteps, pg))} / ${fmt(pg)}</span>${p.claimed ? '<span class="tag">✓</span>' : met ? `<button class="btn small acc pclaim" data-id="${esc(p.id)}">Claim</button>` : ''}</div></div>`; }).join('');
 }
 async function claimPremium(id) {
   const p = (state.premium || []).find(x => x.id === id); if (!p) return;
   if (DEMO) { p.claimed = true; state.bank += p.reward; toast('🎁 +' + fmt(p.reward)); render(); return; }
   try { const r = await api('/claimCheer', { id }); state = r.state; toast('🎁 +' + fmt(p.reward)); render(); }
-  catch (err) { if (err.body && err.body.state) { state = err.body.state; render(); } toast({ 'goal not met': `${fmt(PREMIUM_GOAL)} first`, 'already claimed': '✓ Already claimed' }[err.message] || "Couldn't claim"); }
+  catch (err) { if (err.body && err.body.state) { state = err.body.state; render(); } toast({ 'goal not met': `${fmt(((state.premium || []).find(x => x.id === id) || {}).goal || PREMIUM_GOAL)} first`, 'already claimed': '✓ Already claimed' }[err.message] || "Couldn't claim"); }
 }
 function achHtml(s) {
   const a = s.ach || { earned: {}, claimed: {} };
@@ -747,7 +749,7 @@ function demoFriend(id) {
     STEPH1: { name: 'Chompsky', species: 'bunny', rung: 0, need: 3, streak: 2, todaySteps: 9120, mood: 'worried', deaths: 0, injuries: [] },
     BRO777: { name: 'Chompsky', species: 'bunny', rung: 0, need: 3, streak: 1, todaySteps: 4300, mood: 'scared', deaths: 1, injuries: ['pop'] },
     NAPPER: { name: 'Acorn', species: 'squirrel', rung: 2, need: 7, streak: 4, todaySteps: 2100, mood: 'happy', deaths: 1, injuries: ['catapult'], paused: true } };
-  const b = D[id] || D.STEPH1, finalDay = b.streak + 1 >= b.need, bosses = demoBosses(b.rung), bossToday = !finalDay && bosses.includes(b.streak + 1), goal = finalDay || bossToday ? FINAL_GOAL : GOAL;
+  const b = D[id] || D.STEPH1, finalDay = b.streak + 1 >= b.need, bosses = demoBosses(b.rung), big = demoBig(b.rung), bossToday = !finalDay && (bosses.includes(b.streak + 1) || big.includes(b.streak + 1)), goal = dayGoal(b.streak + 1, b.need, bosses, big);
   return { friendId: id, ...b, day: b.streak + 1, goal, finalDay, bosses, bossToday, todayMet: b.todaySteps >= goal, paused: !!b.paused, shelf: b.rung, lastSync: Date.now() - 14 * 60000, started: state.started, baseGoal: GOAL, today: state.today, days: state.days.map((d, i, a) => i === a.length - 1 ? { ...d, steps: b.todaySteps, goal } : { ...d, steps: d.steps && Math.round(d.steps * (0.6 + (i % 5) / 8)) }) };
 }
 
@@ -1016,7 +1018,7 @@ function renderSettings() {
       <input type="text" id="pname" maxlength="24" value="${esc(s.hostage.name)}">
       <label for="dname" class="dim small">📣 Your name on cheers</label><input type="text" id="dname" maxlength="${DISPLAY_NAME_MAX}" placeholder="${esc(s.hostage.name)}" value="${esc(s.displayName || '')}">
       <p><button class="btn" id="save">Save</button></p>
-      <p class="dim small">👟 10,000/day · 🔥 15,000 final day · ⏰ midnight PT</p>
+      <p class="dim small">👟 10,000/day · ⚔️ 15–20k boss days · ⏰ midnight PT</p>
     </div>
     <h2>🔒 YOUR CODE</h2>
     <div class="card">
@@ -1263,9 +1265,9 @@ function demoState(m) {
   const shelf = Array.from({ length: rung }, (_, r) => pet(r));
   if (m === 'shop') { if (!qs.has('rung')) rung = 6; streak = 2; todaySteps = 10420; mood = 'happy'; }
   if (m === 'boss') { if (!qs.has('rung')) rung = 4; streak = +(qs.get('streak') || 7); todaySteps = 8800; mood = 'worried'; hour = 17; }
-  const bosses = demoBosses(rung), bossToday = streak + 1 < need(rung) && bosses.includes(streak + 1);
-  const goal = streak + 1 >= need(rung) || bossToday ? FINAL_GOAL : GOAL;
-  const hostage = { ...pet(rung), streak, since: day(-streak), todayMet: todaySteps >= goal, day: streak + 1, finalDay: streak + 1 >= need(rung), goal, paused: m === 'paused', bosses, bossToday };
+  const bosses = demoBosses(rung), big = demoBig(rung), bossToday = streak + 1 < need(rung) && (bosses.includes(streak + 1) || big.includes(streak + 1));
+  const goal = dayGoal(streak + 1, need(rung), bosses, big);
+  const hostage = { ...pet(rung), streak, since: day(-streak), todayMet: todaySteps >= goal, day: streak + 1, finalDay: streak + 1 >= need(rung), goal, paused: m === 'paused', bosses, big, bossToday };
   const top = Math.max(rung, m === 'death' ? 2 : rung) + 1;
   const ladder = Array.from({ length: sp.length }, (_, r) => ({ rung: r, need: need(r), species: sp[r], name: nm[r], known: r <= top - 1 || m === 'lineup', status: r < rung ? 'rescued' : r === rung ? 'hostage' : 'locked', deaths: (inj[r] || []).length, injuries: inj[r] || [] }));
   return {
@@ -1277,7 +1279,7 @@ function demoState(m) {
     stats: { metDays: 27, missedDays: 3, rescues: 4 }, push: !qs.has('nopush'),
     cheers: m === 'win' || m === 'miss' ? [{ id: 'r1', kind: m, from: 'STEPH1', name: 'Steph', msg: m === 'win' ? 'w1' : 'm2', at: Date.now() - 5e5, date: today }, { id: 'c2', kind: 'cheer', from: 'BEN123', name: 'Nugget', msg: CHEERS[1].id, at: Date.now() - 3e5, date: today }] : m === 'cheer' || m === 'cheered' ? [{ id: 7, from: 'BEN123', name: 'Nugget', msg: CHEERS[0].id, at: Date.now() - 9e5, date: today, reply: false }, { id: 8, from: 'STEPH1', name: 'Steph', msg: CHEERS[2].id, at: Date.now() - 6e5, date: today, reply: false }, { id: 6, from: 'BRO777', name: 'Old', msg: CHEERS[1].id, at: Date.now() - 9e7, date: day(-1) }] : [],
     canReply: qs.has('reply') ? [{ id: 'c9', from: 'STEPH1', name: 'Steph' }] : [], cheersTotal: 5, displayName: null, friends: ['BEN123', 'STEPH1'], newFriends: qs.has('newfriend') ? ['STEPH1'] : [],
-    baseGoal: GOAL, days: Array.from({ length: 14 }, (_, i) => ({ date: day(i - 13), goal: i === 13 ? goal : m === 'boss' && i === 9 ? FINAL_GOAL : GOAL, paused: m !== 'boss' && (i === 9 || (m === 'paused' && i === 13)), steps: i === 13 ? (todaySteps || null) : (m === 'nosync' ? null : hist[i]) })),
+    baseGoal: GOAL, days: Array.from({ length: 14 }, (_, i) => ({ date: day(i - 13), goal: i === 13 ? goal : m === 'boss' && i === 9 ? 15000 : GOAL, paused: m !== 'boss' && (i === 9 || (m === 'paused' && i === 13)), steps: i === 13 ? (todaySteps || null) : (m === 'nosync' ? null : hist[i]) })),
   };
 }
 

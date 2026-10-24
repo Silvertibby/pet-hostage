@@ -34,6 +34,13 @@ r = await call('/claimCheer', { code: B, id: p1.id }); assert.equal(r.body.error
 r = await call('/claimCheer', { code: B, id: p2.id }); assert.equal(r.body.state.bank, bank0 + 7500);
 assert.equal(r.body.state.bankLog.filter(e => e.kind === 'pclaim').length, 2);
 let a = (await call('/state?code=' + A)).body; assert.ok(a.pSent.every(x => x.claimed)); assert.ok(!a.bankLog.some(e => e.kind === 'reply'));
+// v0.8.0: on a 20k day the cheer carries that goal; 15k isn't enough to claim
+await poke(B, s => { s.hostage.bosses = []; s.hostage.big = [s.hostage.streak + 1]; });
+await poke(A, s => { s.bank = 60000; });
+r = await call('/premiumCheer', { code: A, to: fb, tier: 'p' }); assert.equal(r.status, 200, JSON.stringify(r.body.error));
+b = (await call('/state?code=' + B)).body; assert.equal(b.goal, 20000); const p3 = b.premium.find(x => !x.claimed); assert.equal(p3.goal, 20000);
+r = await call('/claimCheer', { code: B, id: p3.id }); assert.equal(r.body.error, 'goal not met');
+await call('/sync', { code: B, steps: 20000 }); r = await call('/claimCheer', { code: B, id: p3.id }); assert.equal(r.status, 200, JSON.stringify(r.body.error));
 // expires at midnight
 fake += 86400000; b = (await call('/state?code=' + B)).body; assert.equal(b.premium.length, 0);
 r = await call('/claimCheer', { code: B, id: p1.id }); assert.equal(r.status, 409);

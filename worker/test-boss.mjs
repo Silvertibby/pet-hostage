@@ -2,7 +2,7 @@
 import assert from 'node:assert';
 import { bossDaysFor, needFor, settle, view, goalToday, newState, addDays } from './src/game.js';
 assert.deepEqual(bossDaysFor(0), []); assert.deepEqual(bossDaysFor(1), []);
-for (let r = 2; r < 20; r++) {
+for (let r = 2; r < 9; r++) { // v0.8.0: rungs 9+ use the late plan (test-plan.mjs)
   const n = needFor(r), b = bossDaysFor(r);
   assert.equal(b.length, Math.floor((n - 4) / 3), 'count r' + r);
   for (const d of b) { assert.ok(d >= 2 && d <= n - 2, `r${r} d${d}`); }
@@ -31,4 +31,4 @@ const m3 = newState('TESTBOSS05', '2026-10-01'); m3.hostage = { rung: 2, streak:
 settle(m3, '2026-10-03'); assert.deepEqual(m3.hostage.bosses, [], 'day 4 could be today: left alone');
 // old players below Acorn: nothing changes
 const b = newState('TESTBOSS06', '2026-10-01'); delete b.hostage.bosses; b.hostage.rung = 1; settle(b, '2026-10-01'); assert.deepEqual(b.hostage.bosses, []);
-console.log('✓ mini-boss days (counts/placement r2..r19, 15k goal, bank vs day goal, death on miss, safe migration)');
+console.log('✓ mini-boss days (counts/placement r2..r8, 15k goal, bank vs day goal, death on miss, safe migration)');
